@@ -1,0 +1,36 @@
+# ---- Target ----
+CONFIG_IDF_TARGET="esp32s3"
+
+# ---- Partition table ----
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+
+# ---- Flash 16MB ----
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+
+# ---- Octal PSRAM (8MB) @ 80MHz ----
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_TYPE_AUTO=y
+CONFIG_SPIRAM_SPEED_80M=y
+# Keep PSRAM out of the general heap: only via heap_caps_malloc(MALLOC_CAP_SPIRAM),
+# so we can grab one big contiguous block for the guest RAM.
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+# Skip the boot-time PSRAM memtest to boot faster.
+CONFIG_SPIRAM_MEMTEST=n
+
+# ---- CPU 240MHz ----
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# ---- Emulator loop is long-running: no task watchdog ----
+CONFIG_ESP_TASK_WDT_INIT=n
+
+# ---- Bigger main-task stack (emulator runs in app_main) ----
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+
+# ---- Console on UART0 (routed to the CH343 -> /dev/ttyACM0) ----
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
