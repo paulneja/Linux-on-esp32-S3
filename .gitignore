@@ -1,0 +1,9 @@
+# ESP-IDF build artifacts
+build/
+managed_components/
+sdkconfig.old
+dependencies.lock
+
+# Python
+__pycache__/
+*.pyc
