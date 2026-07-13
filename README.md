@@ -23,11 +23,20 @@ Also over cable: `python tools/capture_boot.py 60` (or any serial terminal at
 115200 on `/dev/ttyACM0`). `idf.py monitor` does NOT work here (it requires a TTY).
 
 ## Build and flash
-Requires ESP-IDF v5.3 activated with the helper (Python 3.14→3.12 workaround):
+Requires ESP-IDF v5.3. First provide your home WiFi (the uplink that gives the
+guest internet); this file is gitignored so your password is never committed:
+```bash
+cp main/wifi_creds.h.example main/wifi_creds.h
+# then edit main/wifi_creds.h with your SSID/password
+```
+Then build and flash (the helper is a Python 3.14→3.12 workaround):
 ```bash
 source ~/esp/idfenv.sh        # bash   (or: source ~/esp/idfenv.fish  in fish)
 ./flash.sh /dev/ttyACM0       # build + flash app + flash kernel Image
 ```
+
+> Don't want to build? Grab the prebuilt single-file image from the
+> [Releases](../../releases) page and flash it to offset `0x0`.
 
 ## How it is put together
 - `main/uc-rv32ima.c` — Sv32 loop, SBI and 8250 UART emulation. Runs in a task
