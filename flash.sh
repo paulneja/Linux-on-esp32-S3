@@ -5,8 +5,26 @@ set -euo pipefail
 PORT="${1:-/dev/ttyACM0}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
-source "$HOME/esp/idfenv.sh"
 cd "$HERE"
+
+# Activate ESP-IDF v5.3 (skipped if idf.py is already on PATH).
+if ! command -v idf.py >/dev/null 2>&1; then
+    if [[ -n "${IDF_PATH:-}" && -f "$IDF_PATH/export.sh" ]]; then
+        # shellcheck disable=SC1091
+        source "$IDF_PATH/export.sh"
+    else
+        echo "ESP-IDF not found. Activate it first (v5.3), e.g.:" >&2
+        echo "  . \"\$IDF_PATH/export.sh\"" >&2
+        exit 1
+    fi
+fi
+
+# The uplink WiFi credentials are gitignored; create them from the template.
+if [[ ! -f main/wifi_creds.h ]]; then
+    echo "main/wifi_creds.h is missing. Create it from the template:" >&2
+    echo "  cp main/wifi_creds.h.example main/wifi_creds.h   # then edit it" >&2
+    exit 1
+fi
 
 echo "=== build ==="
 idf.py build
