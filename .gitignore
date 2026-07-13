@@ -15,3 +15,6 @@ main/wifi_creds.h
 main/Image
 main/Image.orig8mb
 main/rootfs.romfs
+
+# Merged release firmware (published as a GitHub Release asset, not in-tree)
+dist/
