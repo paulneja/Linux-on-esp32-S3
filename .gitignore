@@ -7,3 +7,11 @@ dependencies.lock
 # Python
 __pycache__/
 *.pyc
+
+# Local WiFi credentials (do not commit)
+main/wifi_creds.h
+
+# Obsolete kernel/rootfs blobs (superseded by Image_mmu + rootfs.ext4)
+main/Image
+main/Image.orig8mb
+main/rootfs.romfs

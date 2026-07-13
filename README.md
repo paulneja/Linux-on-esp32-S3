@@ -1,6 +1,6 @@
 # Linux real (RISC-V emulado) en ESP32-S3, accesible por Telnet/WiFi
 
-Un kernel de Linux **auténtico** (6.9 RV32IMA NOMMU + BusyBox) corre sobre un
+Un kernel de Linux **auténtico** (RV32IMA con MMU Sv32 + BusyBox/uClibc) corre sobre un
 emulador RISC-V (mini-rv32ima) dentro de un ESP32-S3, usando la PSRAM como RAM
 del sistema. Te conectás a su WiFi y entrás por Telnet a una shell de Linux.
 
@@ -27,28 +27,35 @@ source ~/esp/idfenv.sh        # bash   (o: source ~/esp/idfenv.fish  en fish)
 ```
 
 ## Cómo está armado
-- `main/uc-rv32ima.c` — bucle del emulador + emulación del UART 8250. Corre en un
+- `main/uc-rv32ima.c` — bucle Sv32, SBI y emulación del UART 8250. Corre en un
   task pineado al **Core 1**.
 - `main/port-esp.c` — reserva la RAM del guest en PSRAM (`heap_caps_malloc`), carga
   el kernel desde la partición `kernel`, e I/O de UART0.
 - `main/net_console.c` — AP WiFi WPA2 + servidor Telnet (:23) en el **Core 0**.
   Dos StreamBuffers puentean guest↔socket. La consola queda espejada en UART0.
-- `main/Image` — kernel + initramfs + DTB embebido (payload del guest, va a flash
-  en `0x110000`).
+- `main/Image_mmu` — kernel MMU sin initramfs, flasheado en `0x110000`.
+- `main/rootfs.ext4` — root persistente virtio-blk, flasheado en `0x710000`.
+- `main/s3.dts` — DTB Sv32, PLIC S-mode, virtio-net y virtio-blk.
 
 ## Detalles finos (fixes propios)
-1. **RAM = 7.5 MB, no 8 MB.** El S3 solo entrega ~7.88 MB contiguos de PSRAM, pero
-   el DTB embebido pedía 8 MB → panic al tope de RAM. Se parchea el nodo `memory`
-   del DTB dentro del `Image` (`0x800000`→`0x780000`) con `tools/patch_dtb.py`.
-   El Image de este repo **ya viene parcheado**; backup en `main/Image.orig8mb`.
+1. **RAM guest = 7.5 MB.** El firmware exige PSRAM suficiente, anuncia exactamente
+   `0x780000` bytes y guarda el DTB externo por encima del rango administrado.
 2. **Input de consola.** (a) se lee de UART0 (no del USB-JTAG nativo). (b) el
    registro **IIR** del 8250 emulado devuelve `0xC4` (RX data available) cuando hay
    tecla, si no el driver 8250 (irq=0, polling) nunca lee el byte. Ver
    `HandleControlLoad` en `uc-rv32ima.c`.
 
 ## Limitaciones conocidas
-- Lento (~2 BogoMIPS). Rootfs **volátil** (initramfs en RAM). 1 cliente Telnet a la
-  vez. El guest no tiene red propia (solo consola). Queda debug por UART0.
+- Lento (~2 BogoMIPS). El backend ext4 hace read-modify-erase-write de 4 KB y está
+  pensado como prototipo, sin wear leveling. Un cliente Telnet a la vez.
+
+## Reconstruir las imágenes guest
+
+```bash
+cd ../refs/mini-rv32ima
+./build_slim_mmu.sh
+./build_slim_rootfs.sh
+```
 
 ## Herramientas (`tools/`)
 - `patch_dtb.py` — parchea el tamaño de RAM en el DTB embebido del Image.
