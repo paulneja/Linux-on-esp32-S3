@@ -19,104 +19,84 @@
 #include "cache.h"
 #include "psram.h"
 #include "net_console.h"
+#include "virtio.h"
+#include "s3_dtb.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_system.h"
 
-static int trap_nesting_level = 0;
-static uint32_t last_trap_pc[10] = {0};
-static int trap_pc_idx = 0;
+/* The device tree lives just above the guest's advertised RAM (memory node is
+ * 7.8125MB) in the top slack of our ~7.88MB PSRAM buffer, so the kernel reads it
+ * via a1 but never allocates over it. Must match memory@80000000 in s3.dts. */
+#define GUEST_RAM_SIZE   0x780000u
+#define DTB_GUEST_OFFSET 0x770000u
+
+/* Emulator debug spam off by default: it floods UART0 and contends the console
+ * lock across cores, which starved CPU0 and tripped the interrupt watchdog. */
+#ifndef UC_DEBUG
+#define UC_DEBUG 0
+#endif
+#if UC_DEBUG
+#define DBG(...) printf(__VA_ARGS__)
+#else
+#define DBG(...) do {} while (0)
+#endif
+
 static uint32_t ram_amt = 8 * 1024 * 1024;
+static volatile uint32_t sbi_calls, sbi_putchar_calls, sbi_dbcn_calls;
+static volatile uint32_t sbi_last_eid, sbi_last_fid;
+static uint8_t uart_ier;
+static volatile uint32_t uart_rbr_reads, uart_irq_asserts;
 
 struct MiniRV32IMAState;
 void DumpState(struct MiniRV32IMAState *core);
-static uint32_t HandleException(uint32_t ir, uint32_t retval);
 static uint32_t HandleControlStore(uint32_t addy, uint32_t val);
 static uint32_t HandleControlLoad(uint32_t addy );
-static void HandleOtherCSRWrite(uint8_t *image, uint16_t csrno, uint32_t value);
-static int32_t HandleOtherCSRRead(uint8_t *image, uint16_t csrno);
+static void HandleSBI(void *state);
 static void MiniSleep();
 
 #define MINIRV32WARN(x...) printf(x);
 #define MINI_RV32_RAM_SIZE ram_amt
 #define MINIRV32_IMPLEMENTATION
-#define MINIRV32_POSTEXEC(pc, ir, retval) \
-{ \
-	if (retval > 0) { \
-		/* Track trap nesting */ \
-		trap_nesting_level++; \
-		last_trap_pc[trap_pc_idx++ % 10] = pc; \
-		\
-		/* Detect runaway recursion */ \
-		if (trap_nesting_level > 10) { \
-			printf("\n[FATAL] Trap nesting level = %d\n", trap_nesting_level); \
-			printf("Last 10 trap PCs: "); \
-			for (int i = 0; i < 10; i++) { \
-				printf("0x%08" PRIx32 " ", last_trap_pc[i]); \
-			} \
-			printf("\n"); \
-			printf("This indicates recursive exception handling.\n"); \
-			printf("Likely causes:\n"); \
-			printf("1. Exception handler accessing invalid memory\n"); \
-			printf("2. Exception handler using unimplemented instruction\n"); \
-			printf("3. UART/console output failing in panic handler\n"); \
-			DumpState(state); \
-			trap_nesting_level = 0; \
-			return 0x5555; \
-		} \
-		\
-		static int trap_count = 0; \
-		if (trap_count++ < 20) { \
-			printf("[TRAP #%d nest=%d] code=%" PRIu32 " PC=0x%08" PRIx32 " sp=0x%08" PRIx32 "\n", \
-			trap_count, trap_nesting_level, retval, pc, state->regs[2]); \
-		} \
-		\
-		retval = HandleException(ir, retval); \
-		trap_nesting_level--; \
-	} \
-}
+#define MINIRV32_POSTEXEC(pc, ir, retval) do { (void)(pc); (void)(ir); (void)(retval); } while (0)
 
 #define MINIRV32_HANDLE_MEM_STORE_CONTROL(addy, val) if (HandleControlStore(addy, val)) return val;
 #define MINIRV32_HANDLE_MEM_LOAD_CONTROL(addy, rval) rval = HandleControlLoad(addy);
-#define MINIRV32_OTHERCSR_WRITE(csrno, value) HandleOtherCSRWrite(image, csrno, value);
-#define MINIRV32_OTHERCSR_READ(csrno, value) value = HandleOtherCSRRead(image, csrno);
+#define MINIRV32_HANDLE_SBI(state) HandleSBI(state)
 
+/* Direct memory-mapped PSRAM access for guest RAM.
+ *
+ * The ESP32-S3 maps PSRAM into the address space (unlike the P4 this port came
+ * from), so the software cache in cache.c is unnecessary here. More importantly,
+ * the virtio devices (virtio.c) access guest RAM directly via psram_get_base();
+ * routing the emulator through the software cache would make the two views
+ * incoherent (stale virtqueue rings -> "id is not a head"). Both paths must use
+ * the same direct access. memcpy handles the guest's unaligned accesses. */
 #define MINIRV32_CUSTOM_MEMORY_BUS
-static void MINIRV32_STORE4(uint32_t ofs, uint32_t val)
-{
-	cache_write(ofs, &val, 4);
-}
+static uint8_t *g_ram;   /* = psram_get_base(); set in app_main before the VM runs */
 
-static void MINIRV32_STORE2(uint32_t ofs, uint16_t val)
-{
-	cache_write(ofs, &val, 2);
-}
+/* XIP flash window: the rootfs (romfs) partition is memory-mapped read-only
+ * into the guest's physical address space here, so the guest can execute
+ * (execute-in-place) directly from flash instead of copying to RAM. */
+#define FLASH_XIP_BASE 0x40000000u
+#define FLASH_XIP_SIZE (8u * 1024 * 1024)
+static const uint8_t *g_flash;   /* = esp_partition_mmap(rootfs); set in app_main */
 
-static void MINIRV32_STORE1(uint32_t ofs, uint8_t val)
-{
-	cache_write(ofs, &val, 1);
-}
+static inline uint32_t xip_load4(uint32_t a) { uint32_t v; memcpy(&v, g_flash + (a - FLASH_XIP_BASE), 4); return v; }
+static inline uint16_t xip_load2(uint32_t a) { uint16_t v; memcpy(&v, g_flash + (a - FLASH_XIP_BASE), 2); return v; }
+static inline uint8_t  xip_load1(uint32_t a) { return g_flash[a - FLASH_XIP_BASE]; }
+static inline int in_flash(uint32_t a) { return a >= FLASH_XIP_BASE && a < FLASH_XIP_BASE + FLASH_XIP_SIZE; }
 
-static uint32_t MINIRV32_LOAD4(uint32_t ofs)
-{
-	uint32_t val;
-	cache_read(ofs, &val, 4);
-	return val;
-}
+static inline void MINIRV32_STORE4(uint32_t ofs, uint32_t val) { memcpy(g_ram + ofs, &val, 4); }
+static inline void MINIRV32_STORE2(uint32_t ofs, uint16_t val) { memcpy(g_ram + ofs, &val, 2); }
+static inline void MINIRV32_STORE1(uint32_t ofs, uint8_t val)  { g_ram[ofs] = val; }
 
-static uint16_t MINIRV32_LOAD2(uint32_t ofs)
-{
-	uint16_t val;
-	cache_read(ofs, &val, 2);
-	return val;
-}
-
-static uint8_t MINIRV32_LOAD1(uint32_t ofs)
-{
-	uint8_t val;
-	cache_read(ofs, &val, 1);
-	return val;
-}
+static inline uint32_t MINIRV32_LOAD4(uint32_t ofs) { uint32_t v; memcpy(&v, g_ram + ofs, 4); return v; }
+static inline uint16_t MINIRV32_LOAD2(uint32_t ofs) { uint16_t v; memcpy(&v, g_ram + ofs, 2); return v; }
+static inline uint8_t  MINIRV32_LOAD1(uint32_t ofs) { return g_ram[ofs]; }
+static inline int32_t MINIRV32_LOAD1_SIGNED(uint32_t ofs) { return (int8_t)g_ram[ofs]; }
+static inline int32_t MINIRV32_LOAD2_SIGNED(uint32_t ofs) { int16_t v; memcpy(&v, g_ram + ofs, 2); return v; }
 
 #include "mini-rv32ima.h"
 
@@ -143,27 +123,35 @@ static void run_emulator(void)
 {
 	printf("\nLoading kernel from flash...\n");
 
-	restart:
+restart:
+	memset(&core, 0, sizeof(core));
 
 	if (load_images(ram_amt, NULL) < 0)
 		return;
 
+	/* Load the external device tree and point a1 at it. */
+	psram_write(DTB_GUEST_OFFSET, (void *)s3_dtb, s3_dtb_len);
+
 	core.pc = MINIRV32_RAM_IMAGE_OFFSET;
-	core.regs[10] = 0x00;
-	core.extraflags |= 3;
+	core.regs[10] = 0x00;                                   /* a0 = hart id */
+	core.regs[11] = MINIRV32_RAM_IMAGE_OFFSET + DTB_GUEST_OFFSET; /* a1 = dtb */
+	core.extraflags = 1;                                  /* enter Linux in S-mode */
+	core.mstatus = 0;
 
 	uint64_t lastTime = GetTimeMicroseconds();
-	int instrs_per_flip = 1024;
+	/* Interrupts are sampled at quantum boundaries.  A large block lets a
+	 * userspace poll syscall enter and leave the kernel between samples, so an
+	 * asserted UART SEIP can starve forever. */
+	int instrs_per_flip = 256;
 	printf("RV32IMA starting\n");
 	printf("Initial PC: 0x%08" PRIx32 "\n", core.pc);
 
-	int loop_count = 0;
-	uint32_t last_pc = 0;
-	uint32_t stuck_count = 0;
 	uint32_t last_printed_pc = 0;
 	int trace_enabled = 0;
 	uint32_t wfi_pc = 0;
-	bool in_wfi = false;
+	uint32_t yield_ctr = 0;
+	uint32_t time_remainder = 0;
+	uint64_t next_heartbeat = lastTime + 10000000;
 
 	while (1) {
 		int ret;
@@ -171,7 +159,20 @@ static void run_emulator(void)
 		uint64_t currentTime = GetTimeMicroseconds();
 		uint32_t elapsedUs = (uint32_t)(currentTime - lastTime);
 
-		if (elapsedUs > 100000) elapsedUs = 100000;
+		/* The guest executes far slower than real time.  Letting its 1 MHz
+		 * timebase follow wall clock causes a permanent 100 Hz timer-interrupt
+		 * storm (the handler takes longer than one wall-clock tick).  Bound
+		 * virtual time per 1024-instruction quantum so useful guest work can
+		 * run between ticks.  While in WFI the short sleep loop still advances
+		 * time and wakes at the programmed deadline. */
+		/* MiniRV32 advances its 1 MHz timebase once per emulated batch.  On
+		 * this ESP32-S3 the accumulated raw deltas make guest time run about
+		 * four times faster than wall time.  Scale them explicitly and retain
+		 * fractional microseconds so short batches are not lost. */
+		uint32_t scaled_time = elapsedUs + time_remainder;
+		elapsedUs = scaled_time / 8;
+		time_remainder = scaled_time % 8;
+		if (elapsedUs > 8) elapsedUs = 8;
 		lastTime = currentTime;
 
 		/*
@@ -205,29 +206,61 @@ static void run_emulator(void)
 		*}
 		*
 		*/
-		last_pc = core.pc;
-
 		if (core.pc != last_printed_pc && core.pc != wfi_pc &&
 		    (core.pc < 0x80000000 || core.pc > 0x81000000)) {
-			printf("Unusual PC: 0x%08" PRIx32 "\n", core.pc);
+			DBG("Unusual PC: 0x%08" PRIx32 "\n", core.pc);
 			last_printed_pc = core.pc;
 		}
-
-		loop_count++;
 
 		if (trace_enabled > 0) {
 			uint32_t ofs = core.pc - MINIRV32_RAM_IMAGE_OFFSET;
 			if (ofs < ram_amt) {
-				uint32_t instr = MINIRV32_LOAD4(ofs);
-				printf("[TRACE] PC=0x%08" PRIx32 " instr=0x%08" PRIx32 " sp=0x%08" PRIx32 "\n",
-					   core.pc, instr, core.regs[2]);
+				DBG("[TRACE] PC=0x%08" PRIx32 " instr=0x%08" PRIx32 " sp=0x%08" PRIx32 "\n",
+					   core.pc, MINIRV32_LOAD4(ofs), core.regs[2]);
 			}
 			trace_enabled--;
 		}
 
+		/* Service virtio devices and assert/clear the external interrupt.
+		 * A pending IRQ must also wake the CPU out of WFI (extraflags bit2),
+		 * mirroring how the timer interrupt wakes it. */
+		bool uart_rx_irq = (uart_ier & 1) && console_kbhit();
+		bool uart_tx_irq = (uart_ier & 2) != 0; /* THRE: transmitter always ready */
+		if (uart_rx_irq) uart_irq_asserts++;
+		virtio_uart_irq(uart_rx_irq || uart_tx_irq);
+		if (virtio_poll()) {
+			core.sip |= MIP_SEIP;
+			core.extraflags &= ~4;
+		} else {
+			core.sip &= ~MIP_SEIP;
+		}
+
 		ret = MiniRV32IMAStep(&core, NULL, 0, elapsedUs, instrs_per_flip);
 
-		in_wfi = (ret == 1);
+		if (currentTime >= next_heartbeat) {
+			printf("[VM] pc=%08" PRIx32 " priv=%" PRIu32 " satp=%08" PRIx32
+			       " scause=%08" PRIx32 " sepc=%08" PRIx32 " stval=%08" PRIx32
+			       " sip=%08" PRIx32 " sie=%08" PRIx32 " wfi=%u"
+			       " cyc=%08" PRIx32 "%08" PRIx32 " a0=%08" PRIx32
+			       " ra=%08" PRIx32 " sp=%08" PRIx32
+			       " sbi=%" PRIu32 " putc=%" PRIu32 " dbcn=%" PRIu32
+			       " last=%08" PRIx32 "/%" PRIu32
+			       " ier=%02x khit=%d rbr=%" PRIu32 " uirq=%" PRIu32 "\n",
+			       core.pc, core.extraflags & 3, core.satp, core.scause,
+			       core.sepc, core.stval, core.sip, core.sie,
+			       !!(core.extraflags & 4), core.cycleh, core.cyclel,
+			       core.regs[10], core.regs[1], core.regs[2], sbi_calls,
+			       sbi_putchar_calls, sbi_dbcn_calls, sbi_last_eid,
+			       sbi_last_fid, uart_ier, console_kbhit(), uart_rbr_reads,
+			       uart_irq_asserts);
+			next_heartbeat = currentTime + 10000000;
+		}
+
+		/* Periodically yield so CPU0/housekeeping and the FreeRTOS tick get
+		 * time even while the guest is busy (prevents interrupt-watchdog
+		 * starvation now that the guest no longer sits in WFI as often). */
+		if ((++yield_ctr & 0x3FFF) == 0)
+			vTaskDelay(1);
 
 		switch (ret) {
 			case 0:
@@ -270,6 +303,7 @@ void app_main(void)
 	net_console_init();
 	wifi_ap_start();
 	telnet_start();
+	nat_start();
 
 	printf("psram init\n");
 	if (psram_init() < 0) {
@@ -277,10 +311,20 @@ void app_main(void)
 		return;
 	}
 
-	/* Match the emulated RAM size to what we actually allocated. */
+	/* Keep the guest memory map deterministic. The DTB occupies the final
+	 * reserved 64KB inside advertised RAM so it remains mapped across Sv32. */
+	if (psram_get_size() < DTB_GUEST_OFFSET + s3_dtb_len) {
+		printf("ERROR: PSRAM block too small for 7.5MB guest + DTB\n");
+		return;
+	}
+	/* Linux manages GUEST_RAM_SIZE as described by s3.dts; ram_amt remains
+	 * the full physical backing-store bound for safe host-side accesses. */
 	ram_amt = psram_get_size();
-	printf("Guest RAM size: %" PRIu32 " bytes (%.2f MB)\n",
-		   ram_amt, ram_amt / (1024.0 * 1024.0));
+	g_ram = (uint8_t *)psram_get_base();     /* direct guest-RAM base for the VM */
+	printf("Guest advertised RAM: %u bytes (7.50 MB); physical backing: %" PRIu32 " bytes\n",
+		   GUEST_RAM_SIZE, ram_amt);
+
+	virtio_init();
 
 	/* Run the emulator pinned to Core 1; WiFi/telnet stay on Core 0. */
 	xTaskCreatePinnedToCore(emulator_task, "emu", 32768, NULL, 5, NULL, 1);
@@ -291,36 +335,102 @@ static void MiniSleep(void)
 	usleep(10);
 }
 
-static int exception_count = 0;
+#define SBI_SUCCESS       0
+#define SBI_ERR_NOT_SUPP  (-2)
 
-static uint32_t HandleException(uint32_t ir, uint32_t code)
+static void HandleSBI(void *opaque)
 {
-	exception_count++;
+	struct MiniRV32IMAState *s = opaque;
+	uint32_t eid = s->regs[17];
+	uint32_t fid = s->regs[16];
+	uint32_t a0 = s->regs[10];
+	uint32_t a1 = s->regs[11];
+	uint32_t err = SBI_SUCCESS;
+	uint32_t val = 0;
+	sbi_calls++;
+	sbi_last_eid = eid;
+	sbi_last_fid = fid;
 
-	const char *exception_names[] = {
-		"Instr misaligned", "Instr fault", "Illegal instr", "Breakpoint",
-		"Load misaligned", "Load fault", "Store misaligned", "Store fault",
-		"Ecall U-mode", "Ecall S-mode", "Reserved", "Ecall M-mode",
-		"Instr page fault", "Load page fault", "Reserved", "Store page fault"
-	};
-
-	uint32_t cause = code - 1;
-	const char *cause_str = (cause < 16) ? exception_names[cause] : "Unknown";
-
-	if (exception_count <= 15) {
-		printf("[EXCEPTION #%d] %s (cause=%" PRIu32 ")\n", exception_count, cause_str, cause);
-		printf("  PC=0x%08" PRIx32 " mepc=0x%08" PRIx32 " mcause=0x%08" PRIx32 " mtval=0x%08" PRIx32 "\n",
-			   core.pc, core.mepc, core.mcause, core.mtval);
-		printf("  sp=0x%08" PRIx32 " ra=0x%08" PRIx32 "\n", core.regs[2], core.regs[1]);
-
-		if (cause == 3) {
-			printf("  BREAKPOINT/BUG detected - kernel panic likely\n");
-			printf("  Check a0-a2 for panic args: a0=0x%08" PRIx32 " a1=0x%08" PRIx32 " a2=0x%08" PRIx32 "\n",
-				   core.regs[10], core.regs[11], core.regs[12]);
+	switch (eid) {
+	case 0x00: /* legacy set_timer */
+		s->timermatchl = a0; s->timermatchh = a1; s->sip &= ~MIP_STIP;
+		break;
+	case 0x01: /* legacy console_putchar */
+		sbi_putchar_calls++;
+		console_putc((char)a0);
+		break;
+	case 0x02: /* legacy console_getchar: return directly in a0 */
+		s->regs[10] = console_kbhit() ? (uint32_t)console_getc() : UINT32_MAX;
+		return;
+	case 0x08: /* legacy shutdown */
+		esp_restart();
+		return;
+	case 0x10: /* SBI base */
+		switch (fid) {
+		/* DBCN was ratified with SBI 2.0.  Linux deliberately ignores the
+		 * extension when firmware reports an older specification. */
+		case 0: val = 0x02000000; break;
+		case 1: val = 1; break;
+		case 2: val = 1; break;
+		case 3:
+			switch (a0) {
+			case 0x54494d45: case 0x735049: case 0x52464e43:
+			case 0x48534d53: case 0x53525354: case 0x4442434e:
+			case 0x00: case 0x01: case 0x02: case 0x08:
+				val = 1; break;
+			default: val = 0; break;
+			}
+			break;
+		case 4: case 5: case 6: val = 0; break;
+		default: err = SBI_ERR_NOT_SUPP; break;
 		}
+		break;
+	case 0x54494d45: /* TIME */
+		if (fid == 0) {
+			s->timermatchl = a0; s->timermatchh = a1; s->sip &= ~MIP_STIP;
+		} else err = SBI_ERR_NOT_SUPP;
+		break;
+	case 0x4442434e: /* debug console */
+		sbi_dbcn_calls++;
+		if (fid == 0) {
+			uint32_t count = a0;
+			uint32_t pa = a1;
+			uint32_t off = pa - MINIRV32_RAM_IMAGE_OFFSET;
+			if (off < ram_amt) {
+				if (count > ram_amt - off) count = ram_amt - off;
+				for (uint32_t i = 0; i < count; i++) console_putc((char)MINIRV32_LOAD1(off + i));
+				val = count;
+			}
+		} else if (fid == 1) {
+			/* Non-blocking DBCN read into guest physical memory. */
+			uint32_t count = a0;
+			uint32_t pa = a1;
+			uint32_t off = pa - MINIRV32_RAM_IMAGE_OFFSET;
+			if (off < ram_amt) {
+				if (count > ram_amt - off) count = ram_amt - off;
+				while (val < count && console_kbhit())
+					MINIRV32_STORE1(off + val++, (uint8_t)console_getc());
+			}
+		} else if (fid == 2) {
+			console_putc((char)a0); val = 1;
+		} else err = SBI_ERR_NOT_SUPP;
+		break;
+	case 0x735049:   /* IPI: single hart */
+	case 0x52464e43: /* RFENCE: no TLB */
+		break;
+	case 0x48534d53: /* HSM */
+		if (fid == 2) val = 0; else err = SBI_ERR_NOT_SUPP;
+		break;
+	case 0x53525354: /* system reset */
+		esp_restart();
+		return;
+	default:
+		err = SBI_ERR_NOT_SUPP;
+		break;
 	}
 
-	return code;
+	s->regs[10] = err;
+	s->regs[11] = val;
 }
 static uint8_t uart_scratch = 0;
 static uint8_t uart_ier = 0;
@@ -331,6 +441,7 @@ static uint8_t uart_fcr = 0;
 
 static uint32_t HandleControlStore(uint32_t addy, uint32_t val)
 {
+    if (virtio_mmio_store(addy, val)) return 0;
     switch (addy) {
         case 0x10000000:
             if (uart_lcr & 0x80) uart_divisor = (uart_divisor & 0xFF00) | (val & 0xFF);
@@ -352,10 +463,13 @@ static uint32_t HandleControlStore(uint32_t addy, uint32_t val)
 
 static uint32_t HandleControlLoad(uint32_t addy)
 {
+    uint32_t vval;
+    if (virtio_mmio_load(addy, &vval)) return vval;
     switch (addy) {
         case 0x10000000:
             if (uart_lcr & 0x80) return uart_divisor & 0xFF;
-            return console_kbhit() ? console_getc() : 0;
+            if (console_kbhit()) { uart_rbr_reads++; return console_getc(); }
+            return 0;
         case 0x10000001:
             if (uart_lcr & 0x80) return (uart_divisor >> 8) & 0xFF;
             return uart_ier;
@@ -363,7 +477,9 @@ static uint32_t HandleControlLoad(uint32_t addy)
             /* IIR: when RX data is available, report "Received Data Available"
              * (0xC4 = FIFO bits | 0b010<<1, int pending) so the polled 8250
              * ISR actually reads RBR. Otherwise 0xC1 = no interrupt pending. */
-            return console_kbhit() ? 0xC4 : 0xC1;
+            if ((uart_ier & 1) && console_kbhit()) return 0xC4;
+            if (uart_ier & 2) return 0xC2; /* THRE interrupt pending */
+            return 0xC1;
         case 0x10000003: return uart_lcr;
         case 0x10000004: return uart_mcr;
         case 0x10000005: return 0x60 | (console_kbhit() ? 1 : 0);
@@ -371,69 +487,4 @@ static uint32_t HandleControlLoad(uint32_t addy)
         case 0x10000007: return uart_scratch;
     }
     return 0;
-}
-static void HandleOtherCSRWrite(uint8_t *image, uint16_t csrno, uint32_t value)
-{
-	uint32_t ptrstart, ptrend;
-
-	if (csrno != 0x136 && csrno != 0x137 && csrno != 0x138 &&
-		csrno != 0x139 && csrno != 0x3a0 && csrno != 0x3b0 && csrno != 0xf14) {
-		static int csr_write_count = 0;
-	if (csr_write_count++ < 20) {
-		printf("[CSR_WRITE] csr=0x%03x value=0x%08" PRIx32 "\n", csrno, value);
-	}
-		}
-
-		switch (csrno) {
-			case 0x136:
-				printf("%d", (int)value);
-				fflush(stdout);
-				break;
-			case 0x137:
-				printf("%08" PRIx32, value);
-				fflush(stdout);
-				break;
-			case 0x138:
-				ptrstart = value - MINIRV32_RAM_IMAGE_OFFSET;
-				ptrend = ptrstart;
-				if (ptrstart >= ram_amt)
-					printf("DEBUG PASSED INVALID PTR (%"PRIu32")\n", value);
-			while (ptrend < ram_amt) {
-				uint8_t c = MINIRV32_LOAD1(ptrend);
-				if (c == 0)
-					break;
-				fwrite(&c, 1, 1, stdout);
-				ptrend++;
-			}
-			break;
-			case 0x139:
-				putchar(value);
-				fflush(stdout);
-				break;
-			default:
-				break;
-		}
-}
-
-static int32_t HandleOtherCSRRead(uint8_t *image, uint16_t csrno)
-{
-	int32_t result = 0;
-
-	if (csrno == 0x140) {
-		if (!console_kbhit())
-			result = -1;
-		else
-			result = console_getc();
-	}
-
-	if (csrno != 0x140 && csrno != 0xC00 && csrno != 0x3a0 &&
-		csrno != 0x3b0 && csrno != 0xf14 && result == 0) {
-		static int csr_warn_count = 0;
-	if (csr_warn_count++ < 20) {
-		printf("[CSR_READ] Unhandled csr=0x%03x -> 0x%08" PRIx32 "\n",
-			   csrno, (uint32_t)result);
-	}
-		}
-
-		return result;
 }

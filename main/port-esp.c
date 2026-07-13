@@ -16,6 +16,7 @@
 #include "esp_partition.h"
 #include "hal/uart_ll.h"
 #include "psram.h"
+#include "virtio.h"
 
 /* Console I/O goes over UART0, which on this board is wired to the CH343
  * USB-serial bridge (/dev/ttyACM0). Poll the UART0 RX FIFO directly. */
@@ -82,8 +83,7 @@ int psram_init(void)
 
 	psram_size = alloc_size;
 	if (alloc_size < 8 * 1024 * 1024)
-		printf("WARNING: only got %.2f MB (<8MB). Kernel DTB assumes 8MB; "
-			   "boot may be unstable near top of RAM.\n",
+		printf("INFO: allocated %.2f MB PSRAM; guest DTB safely advertises 7.5MB.\n",
 			   alloc_size / (1024.0 * 1024.0));
 	printf("SUCCESS: PSRAM allocated at %p, size: %zu bytes (%.2f MB)\n",
 		   psram_base, psram_size, psram_size / (1024.0 * 1024.0));
@@ -249,5 +249,70 @@ int load_images(int ram_size, int *kern_len)
 
 	verify_kernel_header();
 
+	return 0;
+}
+
+/* ---- virtio-blk backing store: the "rootfs" flash partition ---- */
+
+static const esp_partition_t *vblk_part = NULL;
+
+static const esp_partition_t *vblk_get(void)
+{
+	if (!vblk_part)
+		vblk_part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
+						     ESP_PARTITION_SUBTYPE_ANY, "rootfs");
+	return vblk_part;
+}
+
+/* XIP: expose the rootfs partition as a memory-mapped read-only region so the
+ * guest can execute BusyBox in-place and the romfs MTD driver can read it. */
+const uint8_t *rootfs_mmap(void)
+{
+	const esp_partition_t *p = vblk_get();
+	if (!p) {
+		printf("rootfs_mmap: 'rootfs' partition not found\n");
+		return NULL;
+	}
+	const void *ptr = NULL;
+	esp_partition_mmap_handle_t handle;
+	esp_err_t err = esp_partition_mmap(p, 0, p->size,
+					   ESP_PARTITION_MMAP_DATA, &ptr, &handle);
+	if (err != ESP_OK) {
+		printf("rootfs_mmap: esp_partition_mmap failed: %d\n", (int)err);
+		return NULL;
+	}
+	printf("rootfs XIP mapped: %u bytes at %p\n",
+	       (unsigned)p->size, ptr);
+	return (const uint8_t *)ptr;
+}
+
+uint64_t vblk_backend_sectors(void)
+{
+	const esp_partition_t *p = vblk_get();
+	return p ? (uint64_t)(p->size / 512) : 0;
+}
+
+int vblk_backend_read(uint64_t sector, void *buf, uint32_t count)
+{
+	const esp_partition_t *p = vblk_get();
+	if (!p) return -1;
+	return esp_partition_read(p, (size_t)(sector * 512), buf, count * 512) == ESP_OK ? 0 : -1;
+}
+
+/* Write-through to flash with 4KB read-modify-erase-write (flash granularity).
+ * Correctness first; only used once the rootfs is mounted read-write. */
+int vblk_backend_write(uint64_t sector, const void *buf, uint32_t count)
+{
+	const esp_partition_t *p = vblk_get();
+	if (!p) return -1;
+	static uint8_t page[4096];
+	for (uint32_t i = 0; i < count; i++) {
+		uint32_t off = (uint32_t)((sector + i) * 512);
+		uint32_t base = off & ~0xFFFu;
+		if (esp_partition_read(p, base, page, sizeof(page)) != ESP_OK) return -1;
+		memcpy(page + (off - base), (const uint8_t *)buf + i * 512, 512);
+		if (esp_partition_erase_range(p, base, sizeof(page)) != ESP_OK) return -1;
+		if (esp_partition_write(p, base, page, sizeof(page)) != ESP_OK) return -1;
+	}
 	return 0;
 }

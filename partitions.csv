@@ -2,8 +2,10 @@
 # ESP32-S3, 16MB flash:
 # 0x0      - 0x10000  : bootloader + part table + nvs + phy
 # 0x10000  - 0x110000 : App firmware (1MB)
-# 0x110000 - 0x310000 : Kernel Image (2MB; Image real ~1.6MB)
+# 0x110000 - 0x710000 : Kernel Image (6MB; buildroot Image ~4.1MB)
+# 0x710000 - 0xF10000 : rootfs ext2 disk for virtio-blk (8MB)
 nvs,      data, nvs,     0x9000,   0x6000,
 phy_init, data, phy,     0xf000,   0x1000,
 factory,  app,  factory, 0x10000,  1M,
-kernel,   data, 0x58,    0x110000, 2M,
+kernel,   data, 0x58,    0x110000, 6M,
+rootfs,   data, 0x59,    0x710000, 8M,

@@ -27,9 +27,10 @@
 
 #include "net_console.h"
 #include "port.h"   /* ReadKBByte()/IsKBHit() -> UART0 local input */
+#include "wifi_creds.h"
 
 #define WIFI_SSID   "esp32-linux"
-#define WIFI_PASS   "linux1234"      /* >= 8 chars for WPA2 */
+#define WIFI_PASS   "linux1234"       /* >= 8 chars for WPA2 */
 #define WIFI_CHAN   1
 #define WIFI_MAXCONN 4
 #define TELNET_PORT 23
@@ -81,11 +82,12 @@ void wifi_ap_start(void)
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_create_default_wifi_ap();
+    esp_netif_create_default_wifi_sta();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-    wifi_config_t wcfg = {
+    wifi_config_t apcfg = {
         .ap = {
             .ssid = WIFI_SSID,
             .ssid_len = strlen(WIFI_SSID),
@@ -95,11 +97,17 @@ void wifi_ap_start(void)
             .authmode = WIFI_AUTH_WPA2_PSK,
         },
     };
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wcfg));
+    wifi_config_t stacfg = { 0 };
+    strncpy((char *)stacfg.sta.ssid, STA_SSID, sizeof(stacfg.sta.ssid) - 1);
+    strncpy((char *)stacfg.sta.password, STA_PASS, sizeof(stacfg.sta.password) - 1);
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &apcfg));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &stacfg));
     ESP_ERROR_CHECK(esp_wifi_start());
 
-    ESP_LOGI(TAG, "SoftAP up: SSID='%s' pass='%s' -> telnet 192.168.4.1", WIFI_SSID, WIFI_PASS);
+    ESP_LOGI(TAG, "AP+STA up: AP '%s' (telnet 192.168.4.1), STA joining '%s'",
+             WIFI_SSID, STA_SSID);
 }
 
 /* ---- Telnet server ---- */
