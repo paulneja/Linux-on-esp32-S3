@@ -29,11 +29,13 @@ guest internet); this file is gitignored so your password is never committed:
 cp main/wifi_creds.h.example main/wifi_creds.h
 # then edit main/wifi_creds.h with your SSID/password
 ```
-Then build and flash (the helper is a Python 3.14→3.12 workaround):
+Then activate ESP-IDF and flash:
 ```bash
-source ~/esp/idfenv.sh        # bash   (or: source ~/esp/idfenv.fish  in fish)
+. "$IDF_PATH/export.sh"       # activate ESP-IDF v5.3 (bash/zsh)
 ./flash.sh /dev/ttyACM0       # build + flash app + flash kernel Image
 ```
+`flash.sh` also activates ESP-IDF on its own if `idf.py` is not yet on `PATH`
+(via `$IDF_PATH/export.sh`), so the manual step above is optional.
 
 > Don't want to build? Grab the prebuilt single-file image from the
 > [Releases](../../releases) page and flash it to offset `0x0`.
