@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Linux on ESP32-S3</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    background: #0d1117; color: #c9d1d9; line-height: 1.5;
+    display: flex; flex-direction: column; align-items: center; padding: 24px;
+  }
+  main { width: 100%; max-width: 560px; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; color: #58a6ff; }
+  .sub { color: #8b949e; margin: 0 0 24px; font-size: .9rem; }
+  .card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px 18px; margin-bottom: 14px;
+  }
+  .row { display: flex; justify-content: space-between; padding: 5px 0; }
+  .row + .row { border-top: 1px solid #21262d; }
+  .k { color: #8b949e; }
+  .v { color: #e6edf3; text-align: right; }
+  .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    font-size: .8rem; font-weight: 600;
+  }
+  .ok  { background: #12331d; color: #3fb950; border: 1px solid #238636; }
+  .bad { background: #3d1417; color: #f85149; border: 1px solid #b62324; }
+  .bar { height: 8px; background: #21262d; border-radius: 4px; overflow: hidden; margin-top: 6px; }
+  .bar > i { display: block; height: 100%; background: #58a6ff; }
+  footer { color: #6e7681; font-size: .8rem; margin-top: 8px; text-align: center; }
+  a { color: #58a6ff; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Linux on ESP32-S3</h1>
+  <p class="sub">A real Linux kernel running natively on a $3 microcontroller.</p>
+
+  <div class="card">
+    <div class="row"><span class="k">Hardware RSA accelerator</span>
+      <span class="v"><span id="rsa" class="badge">…</span></span></div>
+    <div class="row"><span class="k">Host</span><span class="v" id="host">…</span></div>
+    <div class="row"><span class="k">Kernel</span><span class="v" id="kernel">…</span></div>
+    <div class="row"><span class="k">Uptime</span><span class="v" id="uptime">…</span></div>
+  </div>
+
+  <div class="card">
+    <div class="row"><span class="k">Memory used</span><span class="v" id="memtxt">…</span></div>
+    <div class="bar"><i id="membar" style="width:0"></i></div>
+  </div>
+
+  <footer>Served by BusyBox httpd · status from a Lua CGI · refreshes every 3s</footer>
+</main>
+
+<script>
+function fmtUptime(s) {
+  s = parseInt(s, 10) || 0;
+  var d = Math.floor(s/86400), h = Math.floor(s%86400/3600), m = Math.floor(s%3600/60);
+  return (d ? d+"d " : "") + h+"h " + m+"m";
+}
+function tick() {
+  fetch("/cgi-bin/status", { cache: "no-store" }).then(function(r){ return r.json(); })
+  .then(function(j) {
+    var rsa = document.getElementById("rsa");
+    if (j.hw_rsa === "active") { rsa.textContent = "ACTIVE"; rsa.className = "badge ok"; }
+    else { rsa.textContent = "absent"; rsa.className = "badge bad"; }
+    document.getElementById("host").textContent = j.host || "?";
+    document.getElementById("kernel").textContent = j.kernel || "?";
+    document.getElementById("uptime").textContent = fmtUptime(j.uptime_s);
+    var tot = j.mem_total_kb || 0, free = j.mem_free_kb || 0, used = tot - free;
+    var pct = tot ? Math.round(used * 100 / tot) : 0;
+    document.getElementById("memtxt").textContent =
+      Math.round(used/1024) + " / " + Math.round(tot/1024) + " MB (" + pct + "%)";
+    document.getElementById("membar").style.width = pct + "%";
+  }).catch(function(){});
+}
+tick();
+setInterval(tick, 3000);
+</script>
+</body>
+</html>

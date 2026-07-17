@@ -1,0 +1,52 @@
+diff --git a/rebuild-esp32s3-linux-wifi.sh b/rebuild-esp32s3-linux-wifi.sh
+index a04c363..f8d5cbf 100755
+--- a/rebuild-esp32s3-linux-wifi.sh
++++ b/rebuild-esp32s3-linux-wifi.sh
+@@ -16,6 +16,19 @@
+ 
+ SET_BAUDRATE='-b 2000000'
+ 
++# This machine's default host GCC is 16.x, whose C23 default breaks the old
++# companion-lib configure scripts (GMP 6.2.1 fails with "too many arguments to
++# function 'g'; expected 0"). Force the gcc-14 shim (C17/gnu17 default) as the
++# host compiler for the whole toolchain build.
++export PATH=/home/paulneja/esp/gcc14shim:$PATH
++
++# This machine's CMake is also newer than these old buildroot host-tool
++# packages expect (e.g. host-lzo's CMakeLists.txt requires a `cmake_minimum_
++# required` below 3.5, which modern CMake refuses to honor at all). Fall back
++# to policy version 3.5 globally so any such package configures instead of
++# hard-erroring with "Compatibility with CMake < 3.5 has been removed".
++export CMAKE_POLICY_VERSION_MINIMUM=3.5
++
+ CTNG_VER=xtensa-fdpic
+ CTNG_CONFIG=xtensa-esp32s3-linux-uclibcfdpic
+ BUILDROOT_VER=xtensa-2024.08-fdpic
+@@ -137,18 +150,16 @@ if [ -n "$reconfigure_boot" ] ; then
+ 	cp sdkconfig $ESP_HOSTED_CONFIG
+ fi
+ idf.py build
+-read -p 'ready to flash... press enter'
+-while ! idf.py $SET_BAUDRATE flash ; do
+-	read -p 'failure... press enter to try again'
+-done
+ popd
+ 
+ #
+-# flash
++# flash — SKIPPED for unattended build (no board present). Images are ready;
++# flashing (esp-hosted app + linux/rootfs/etc partitions) is done manually
++# once the board is connected. See PLAN.md.
+ #
+-parttool.py $SET_BAUDRATE write_partition --partition-name linux  --input build-buildroot-$BUILDROOT_CONFIG/images/xipImage
+-parttool.py $SET_BAUDRATE write_partition --partition-name rootfs --input build-buildroot-$BUILDROOT_CONFIG/images/rootfs.cramfs
+-if [ -z "$keep_etc" ] ; then
+-	read -p 'ready to flash /etc... press enter'
+-	parttool.py $SET_BAUDRATE write_partition --partition-name etc --input build-buildroot-$BUILDROOT_CONFIG/images/etc.jffs2
+-fi
++echo "=== BUILD COMPLETE — images ready (flashing skipped: no board) ==="
++ls -l build-buildroot-$BUILDROOT_CONFIG/images/xipImage \
++      build-buildroot-$BUILDROOT_CONFIG/images/rootfs.cramfs \
++      build-buildroot-$BUILDROOT_CONFIG/images/etc.jffs2 2>/dev/null
++echo "=== esp-hosted network_adapter app built at: esp-hosted/esp_hosted_ng/esp/esp_driver/network_adapter/build ==="
++exit 0

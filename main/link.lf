@@ -1,4 +1,0 @@
-[mapping:main]
-archive: libmain.a
-entries:
-    uc-rv32ima (noflash)

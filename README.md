@@ -1,79 +1,124 @@
-# Real Linux (emulated RISC-V) on an ESP32-S3, reachable over Telnet/WiFi
+# Linux on an ESP32-S3 — natively, with WiFi
 
-An **authentic** Linux kernel (RV32IMA with Sv32 MMU + BusyBox/uClibc) runs on a
-RISC-V emulator (mini-rv32ima) inside an ESP32-S3, using the PSRAM as system RAM.
-You join its WiFi and open a Linux shell over Telnet.
+A real Linux 6.11 kernel, compiled for **Xtensa** and running **natively on the
+ESP32-S3's own cores** — no emulator in between. WiFi keeps working while it
+runs: the Espressif firmware lives on the same die and Linux talks to it, so
+the board joins your network, reaches the internet, and you get a shell over
+telnet or the serial console.
 
-Based on [`Epiczhul/esp32p4-rv32ima`](https://github.com/Epiczhul/esp32p4-rv32ima)
-and the [`cnlohr/mini-rv32ima`](https://github.com/cnlohr/mini-rv32ima) core.
+The chip's **hardware RSA accelerator** is exposed to Linux through the Crypto
+API, so it is usable by any program, not just one demo.
 
-> **Status: beta / experimental.** It boots to a shell and reaches the internet
-> from the guest by IP via NAT; DNS resolution is still a work in progress.
+> **Status: working, validated on real hardware.** Flashed to a fully erased
+> ESP32-S3: it boots to a login prompt, the RSA accelerator passes its
+> self-tests, the rootfs mounts from flash, telnet comes up and the board
+> reaches the internet. It is a hobby project, not a product — see
+> [What works](#what-works-and-what-does-not) for the honest list.
+
+> **Note on history.** This repo used to host an *emulated* approach (a RISC-V
+> RV32IMA interpreter running Linux on top of the ESP32-S3). That worked, but
+> was inherently slow and limited. This is the same project, continued: the
+> native Xtensa build replaces it and improves on it in every way. The old
+> approach remains in the git history and in the `0.1` release.
 
 ## Hardware
-- ESP32-S3, **8 MB Octal PSRAM (OPI)**, 16 MB flash.
-- Serial console over UART0 (on this board, the CH343 → `/dev/ttyACM0`).
 
-## Usage (end user)
-1. Power the board.
-2. Connect to the WiFi **`esp32-linux`** (password **`linux1234`**).
-3. `telnet 192.168.4.1` → Linux shell. Boot ~12 s.
+- **ESP32-S3 with 16 MB flash and 8 MB Octal PSRAM** (an N16R8 module, e.g.
+  DevKitC-1). The PSRAM is the system RAM — the 8 MB Octal part is required.
+- A USB cable. The console is the built-in USB-Serial-JTAG (`/dev/ttyACM0`).
 
-Also over cable: `python tools/capture_boot.py 60` (or any serial terminal at
-115200 on `/dev/ttyACM0`). `idf.py monitor` does NOT work here (it requires a TTY).
+## Quick start (nothing to build)
 
-## Build and flash
-Requires ESP-IDF v5.3. First provide your home WiFi (the uplink that gives the
-guest internet); this file is gitignored so your password is never committed:
-```bash
-cp main/wifi_creds.h.example main/wifi_creds.h
-# then edit main/wifi_creds.h with your SSID/password
-```
-Then activate ESP-IDF and flash:
-```bash
-. "$IDF_PATH/export.sh"       # activate ESP-IDF v5.3 (bash/zsh)
-./flash.sh /dev/ttyACM0       # build + flash app + flash kernel Image
-```
-`flash.sh` also activates ESP-IDF on its own if `idf.py` is not yet on `PATH`
-(via `$IDF_PATH/export.sh`), so the manual step above is optional.
-
-> Don't want to build? Grab the prebuilt single-file image from the
-> [Releases](../../releases) page and flash it to offset `0x0`.
-
-## How it is put together
-- `main/uc-rv32ima.c` — Sv32 loop, SBI and 8250 UART emulation. Runs in a task
-  pinned to **Core 1**.
-- `main/port-esp.c` — reserves the guest RAM in PSRAM (`heap_caps_malloc`), loads
-  the kernel from the `kernel` partition, and handles UART0 I/O.
-- `main/net_console.c` — WPA2 WiFi AP + Telnet server (:23) on **Core 0**.
-  Two StreamBuffers bridge guest↔socket. The console is mirrored on UART0.
-- `main/Image_mmu` — MMU kernel without initramfs, flashed at `0x110000`.
-- `main/rootfs.ext4` — persistent virtio-blk root, flashed at `0x710000`.
-- `main/s3.dts` — Sv32 DTB, S-mode PLIC, virtio-net and virtio-blk.
-
-## Fine details (custom fixes)
-1. **Guest RAM = 7.5 MB.** The firmware requires enough PSRAM, advertises exactly
-   `0x780000` bytes and stores the external DTB above the managed range.
-2. **Console input.** (a) it is read from UART0 (not the native USB-JTAG). (b) the
-   **IIR** register of the emulated 8250 returns `0xC4` (RX data available) when a
-   key is pending, otherwise the 8250 driver (irq=0, polling) never reads the byte.
-   See `HandleControlLoad` in `uc-rv32ima.c`.
-
-## Known limitations
-- Slow (~2 BogoMIPS). The ext4 backend does 4 KB read-modify-erase-write and is
-  meant as a prototype, with no wear leveling. One Telnet client at a time.
-- DNS resolution from the guest is still being worked on; use IP addresses for now.
-
-## Rebuilding the guest images
+Prebuilt images are in `images/`. You only need `esptool`:
 
 ```bash
-cd ../refs/mini-rv32ima
-./build_slim_mmu.sh
-./build_slim_rootfs.sh
+pip install esptool          # or activate ESP-IDF: . $IDF_PATH/export.sh
+./flash.sh --erase           # erase the chip, then write the combined image
 ```
 
-## Tools (`tools/`)
-- `patch_dtb.py` — patches the RAM size in the DTB embedded in the Image.
-- `capture_boot.py N` — captures N s of serial (resets the board; no TTY needed).
-- `interactive_test.py` — boots + sends test commands over serial.
-- `telnet_test.py` — test Telnet client against 192.168.4.1.
+`flash.sh` finds esptool and the serial port on its own (`-p /dev/ttyXXX` to
+override). It writes `images/linux-esp32s3-native-full.bin`, a single ~11.8 MB
+image for offset `0x0` containing everything: bootloader, partition table, WiFi
+firmware, `/etc`, kernel and rootfs.
+
+Then open the console and log in:
+
+```bash
+screen /dev/ttyACM0 115200   # or: picocom -b 115200 /dev/ttyACM0
+```
+
+Login is **`root`** / **`changeme123`** — change it with `passwd`.
+
+A fresh flash has no WiFi configured, so `Starting network: ... FAIL` in the
+boot log is expected. Join your network with:
+
+```sh
+wifi connect "YOUR SSID" "YOUR PASSWORD"
+```
+
+From then on the board gets an IP over DHCP and you can `telnet` to it from
+your LAN. Right after boot RAM is tight while services start, so an occasional
+command can be killed by the OOM killer — wait a few seconds and retry.
+
+## What works, and what does not
+
+**Works**
+
+- Serial console and **telnet** (on by default).
+- **STA WiFi** with real internet access (`wifi connect`).
+- **Hardware RSA accelerator** — `rsa-esp32s3` in the Crypto API, with a
+  boot-time self-test at 512 and 2048 bits. The kernel stacks
+  `pkcs1pad(rsa-esp32s3,sha256)` on top, so X.509 verification uses it.
+- **SSH** (dropbear) — present but **off by default**: `ssh-server on|off|status`.
+  It is slow here, and the RSA accelerator does not help it (modern SSH uses
+  Curve25519, not RSA).
+- **Lua**, and a BusyBox **httpd** serving a small status page (`/www`), started
+  on demand with `httpd -h /www -p 80` so it costs nothing when unused.
+- **curl** over plain HTTP.
+
+**Partly works**
+
+- **curl over HTTPS** — real certificate verification against a curated CA
+  bundle, checked against sites like github and google, but **experimental**:
+  the bundle is trimmed to 34 major roots because the full 140-cert set
+  exhausts mbedTLS's memory on this board, TLS is 1.2 only, and RAM is tight.
+  Fine for light fetches, not a robust tool.
+
+**Does not work**
+
+- **SoftAP** (the board acting as an access point). The closed WiFi blob
+  beacons as **WEP** instead of WPA2, so clients reject it or fail to get an
+  IP. The proper fix — hostapd building the beacon — is blocked by NOMMU: there
+  is no `fork()`. Note the SSID shows up in a scan **even when `ap status` says
+  off**, because the beacon comes from the firmware while the `ap` command only
+  controls the Linux side. Do not rely on it.
+
+## Build from source
+
+Everything needed to reproduce the images is here: the kernel patches (including
+the RSA driver), the buildroot configuration and overlay, and the firmware
+patches. They apply automatically on top of fresh upstream clones.
+
+See **[DEVELOPMENT.md](DEVELOPMENT.md)** for the build, the patch system and how
+to restore it by hand. See **[ARCHITECTURE.md](ARCHITECTURE.md)** for how two
+operating systems share one chip, the boot flow and the flash layout.
+
+## Constraints worth knowing
+
+For Linux's purposes the ESP32-S3 has **no MMU**, so this is a NOMMU build
+(`BINFMT_ELF_FDPIC`): there is **no `fork()`**, which rules out anything that
+depends on it (bash, python, nginx, hostapd...). BusyBox `ash` and everything
+shipped here work within that limit. The rootfs is a read-only **cramfs executed
+in place (XIP)** straight from flash, which is why it fits at all; `/etc` and
+`/home` are separate writable jffs2 partitions mounted over it.
+
+## Credits and license
+
+Built on the Xtensa Linux, buildroot and esp-hosted work of
+[**jcmvbkbc**](https://github.com/jcmvbkbc) (Max Filippov), and on Espressif's
+esp-hosted firmware. See [NOTICE](NOTICE) for the full list of third-party
+components and their licenses.
+
+This project is licensed under the **GPLv3** (see [LICENSE](LICENSE)). Kernel
+code contributed here (`drivers/crypto/esp32s3_rsa.c`) is GPL-2.0-or-later, as
+kernel code must be.

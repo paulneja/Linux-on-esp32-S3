@@ -1,0 +1,579 @@
+Add the ESP32-S3 hardware RSA accelerator as a Linux Crypto API akcipher driver.
+
+The chip's RSA/MPI accelerator is the only crypto block Linux can safely claim:
+the WiFi firmware runs concurrently on the same die and uses the AES and SHA
+blocks for WPA2, but never RSA/MPI (WPA2-PSK does not need it). The firmware
+hands the block over by calling periph_module_enable(PERIPH_RSA_MODULE) once
+before linux_boot(), and is built with CONFIG_MBEDTLS_HARDWARE_MPI=n so it
+never touches it afterwards. The driver only writes RSA-specific registers, so
+there is no contention over shared clock/reset registers.
+
+It registers as "rsa" (driver name rsa-esp32s3) with priority 300, beating
+rsa-generic, and does Z = X^Y mod M in hardware for 1..128 words (up to
+4096-bit). Montgomery constants are computed in the kernel: M' by Newton
+iteration, RR via mpi_powm(). A boot-time self-test checks the hardware against
+mpi_powm() at 512 and 2048 bits.
+
+Signed-off-by: paulneja <jeremiasnejanky360@gmail.com>
+---
+diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
+--- a/drivers/crypto/esp32s3_rsa.c	1969-12-31 21:00:00.000000000 -0300
++++ b/drivers/crypto/esp32s3_rsa.c	2026-07-16 22:55:12.410162550 -0300
+@@ -0,0 +1,549 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++/*
++ * ESP32-S3 RSA / big-number accelerator driver for the Linux Crypto API.
++ *
++ * Registers an "rsa" akcipher backed by the chip's hardware modular-
++ * exponentiation unit, so kernel RSA consumers (X.509 verification, the
++ * asymmetric key type, keyctl pkey_* from userspace) run on the accelerator
++ * instead of the software mpi_powm path.
++ *
++ * Only the RSA/MPI block is used: the esp-hosted WiFi firmware drives the
++ * AES and SHA accelerators for WPA2, but never RSA (WPA2-PSK has no RSA), so
++ * this block is ours exclusively. The firmware enables its clock once at boot
++ * (built with CONFIG_MBEDTLS_HARDWARE_MPI=n), so this driver never touches the
++ * SYSTEM clock/reset registers shared with AES/SHA -- see PLAN.md, Stage 1.
++ *
++ * The math is Montgomery-domain modexp: Z = X^Y mod M. The Montgomery
++ * constants M' = -M^-1 mod 2^32 and RR = R^2 mod M (R = 2^(32*nwords)) are
++ * computed on the CPU (M' by Newton's iteration, RR via the kernel mpi lib)
++ * and handed to the hardware with the operands.
++ */
++
++#include <linux/delay.h>
++#include <linux/io.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/slab.h>
++#include <linux/mpi.h>
++#include <crypto/internal/rsa.h>
++#include <crypto/internal/akcipher.h>
++#include <crypto/akcipher.h>
++#include <crypto/algapi.h>
++
++/* --- ESP32-S3 physical addresses --- */
++#define RSA_BASE	0x6003C000
++#define RSA_SPAN	0x900
++#define SYS_BASE	0x600C0000
++#define SYS_SPAN	0x100
++
++/* RSA operand memory blocks (word arrays) and command/status registers */
++#define RSA_M_MEM	0x000
++#define RSA_Z_MEM	0x200	/* result Z out; RR (Rinv) in on entry */
++#define RSA_Y_MEM	0x400
++#define RSA_X_MEM	0x600
++#define RSA_M_DASH	0x800
++#define RSA_LENGTH	0x804
++#define RSA_QUERY_CLEAN	0x808
++#define RSA_MODEXP_START	0x80C
++#define RSA_QUERY_INT	0x818
++#define RSA_CLEAR_INT	0x81C
++#define RSA_CONSTANT_TIME	0x820
++#define RSA_SEARCH_OPEN	0x824
++#define RSA_SEARCH_POS	0x828
++#define RSA_INT_ENA	0x82C
++
++/* SYSTEM: only the RSA-specific operand-memory power bit (not shared) */
++#define SYS_RSA_PD_CTRL	0x40
++#define RSA_MEM_PD_BIT	BIT(0)
++
++#define ESP_RSA_MAX_WORDS	128	/* 4096-bit */
++
++static void __iomem *rsa;
++static void __iomem *sys;
++static DEFINE_MUTEX(esp_rsa_lock);	/* serialises the single hardware block */
++
++/* -------- word/byte helpers (hardware is little-endian 32-bit words) -------- */
++
++/* big-endian significant bytes -> zero-padded little-endian word array */
++static void be_bytes_to_words(const u8 *be, unsigned len, u32 *w, int nwords)
++{
++	unsigned i;
++
++	memset(w, 0, nwords * sizeof(u32));
++	for (i = 0; i < len; i++)
++		w[i >> 2] |= (u32)be[len - 1 - i] << (8 * (i & 3));
++}
++
++/* little-endian word array -> big-endian bytes (nwords*4, may lead with zeros) */
++static void words_to_be_bytes(const u32 *w, int nwords, u8 *be)
++{
++	unsigned i, len = nwords * 4;
++
++	for (i = 0; i < len; i++)
++		be[len - 1 - i] = (w[i >> 2] >> (8 * (i & 3))) & 0xff;
++}
++
++static int words_bitlen(const u32 *w, int nwords)
++{
++	int i;
++
++	for (i = nwords - 1; i >= 0; i--)
++		if (w[i])
++			return i * 32 + fls(w[i]);
++	return 0;
++}
++
++/* M' = -M^-1 mod 2^32, from the least-significant word of an odd modulus. */
++static u32 compute_mprime(u32 m0)
++{
++	u32 inv = 1;	/* inv == m0^-1 mod 2^(2^k), doubling each step */
++	int i;
++
++	for (i = 0; i < 5; i++)		/* 2 -> 4 -> 8 -> 16 -> 32 bits */
++		inv *= 2 - m0 * inv;
++	return (u32)(0 - inv);		/* negate mod 2^32 */
++}
++
++/* RR = R^2 mod n, R = 2^(32*nwords), computed with the kernel mpi library. */
++static int compute_rr(MPI n, int nwords, u32 *rr_words)
++{
++	MPI two, exp, rr;
++	u8 *be;
++	unsigned nbytes, got;
++	int sign, ret = -ENOMEM;
++
++	two = mpi_alloc_set_ui(2);
++	exp = mpi_alloc_set_ui(64u * nwords);	/* R^2 = 2^(2*32*nwords) */
++	rr = mpi_alloc(0);
++	nbytes = nwords * 4;
++	be = kzalloc(nbytes, GFP_KERNEL);
++	if (!two || !exp || !rr || !be)
++		goto out;
++
++	ret = mpi_powm(rr, two, exp, n);	/* rr = 2^(64*nwords) mod n */
++	if (ret)
++		goto out;
++
++	ret = mpi_read_buffer(rr, be, nbytes, &got, &sign);
++	if (ret)
++		goto out;
++	be_bytes_to_words(be, got, rr_words, nwords);
++	ret = 0;
++out:
++	kfree(be);
++	mpi_free(rr);
++	mpi_free(exp);
++	mpi_free(two);
++	return ret;
++}
++
++/* -------- the hardware engine: Z = X^Y mod M -------- */
++
++static void block_write(u32 off, const u32 *w, int nwords)
++{
++	int i;
++
++	for (i = 0; i < nwords; i++)
++		writel(w[i], rsa + off + i * 4);
++}
++
++static void block_read(u32 off, u32 *w, int nwords)
++{
++	int i;
++
++	for (i = 0; i < nwords; i++)
++		w[i] = readl(rsa + off + i * 4);
++}
++
++/*
++ * Z = X^Y mod M, all as nwords-long little-endian word arrays. M must be odd
++ * (always true for RSA moduli and primes). rr_words = R^2 mod M and mprime =
++ * -M^-1 mod 2^32 are supplied by the caller. Serialised by esp_rsa_lock.
++ */
++static int hw_modexp(u32 *z, const u32 *x, const u32 *y, const u32 *m,
++		     const u32 *rr, u32 mprime, int nwords)
++{
++	int ybits = words_bitlen(y, nwords);
++	int i, ret = -ETIMEDOUT;
++
++	if (ybits == 0) {		/* X^0 mod M = 1 */
++		memset(z, 0, nwords * sizeof(u32));
++		z[0] = 1;
++		return 0;
++	}
++
++	mutex_lock(&esp_rsa_lock);
++
++	writel(nwords - 1, rsa + RSA_LENGTH);
++	block_write(RSA_X_MEM, x, nwords);
++	block_write(RSA_Y_MEM, y, nwords);
++	block_write(RSA_M_MEM, m, nwords);
++	block_write(RSA_Z_MEM, rr, nwords);	/* RR goes in the Z/RB block */
++	writel(mprime, rsa + RSA_M_DASH);
++
++	writel(0, rsa + RSA_CONSTANT_TIME);
++	writel(1, rsa + RSA_SEARCH_OPEN);
++	writel(ybits - 1, rsa + RSA_SEARCH_POS);
++
++	writel(1, rsa + RSA_CLEAR_INT);
++	writel(1, rsa + RSA_MODEXP_START);
++	writel(0, rsa + RSA_SEARCH_OPEN);
++
++	for (i = 0; i < 5000000; i++) {
++		if (readl(rsa + RSA_QUERY_INT) == 1) {
++			ret = 0;
++			break;
++		}
++		cpu_relax();
++	}
++	writel(1, rsa + RSA_CLEAR_INT);
++	if (!ret)
++		block_read(RSA_Z_MEM, z, nwords);
++
++	mutex_unlock(&esp_rsa_lock);
++	return ret;
++}
++
++/* -------- akcipher key context -------- */
++
++struct esp_rsa_key {
++	int nwords;
++	u32 mprime;
++	MPI n_mpi;			/* kept for the payload range check */
++	u32 n[ESP_RSA_MAX_WORDS];
++	u32 e[ESP_RSA_MAX_WORDS];
++	u32 d[ESP_RSA_MAX_WORDS];
++	u32 rr[ESP_RSA_MAX_WORDS];
++	bool have_e, have_d;
++};
++
++static void esp_rsa_free_key(struct esp_rsa_key *k)
++{
++	mpi_free(k->n_mpi);
++	k->n_mpi = NULL;
++	k->have_e = k->have_d = false;
++	k->nwords = 0;
++}
++
++/* 1 < payload < n - 1, matching the software driver's conservative bound. */
++static int check_payload(MPI x, MPI n)
++{
++	MPI n1;
++	int ret = -EINVAL;
++
++	if (mpi_cmp_ui(x, 1) <= 0)
++		return -EINVAL;
++	n1 = mpi_alloc(0);
++	if (!n1)
++		return -ENOMEM;
++	if (!mpi_sub_ui(n1, n, 1) && mpi_cmp(x, n1) < 0)
++		ret = 0;
++	mpi_free(n1);
++	return ret;
++}
++
++/* Common path for both operations: exponent is e (encrypt/verify) or d. */
++static int esp_rsa_op(struct akcipher_request *req, const u32 *exp)
++{
++	struct crypto_akcipher *tfm = crypto_akcipher_reqtfm(req);
++	struct esp_rsa_key *k = akcipher_tfm_ctx(tfm);
++	int nwords = k->nwords, ret;
++	u32 *x, *z;
++	u8 *be;
++	MPI in, out;
++	unsigned got;
++	int sign;
++
++	if (!nwords || !k->n_mpi)
++		return -EINVAL;
++
++	in = mpi_read_raw_from_sgl(req->src, req->src_len);
++	if (!in)
++		return -ENOMEM;
++	ret = check_payload(in, k->n_mpi);
++	if (ret) {
++		mpi_free(in);
++		return ret;
++	}
++
++	x = kzalloc(nwords * sizeof(u32), GFP_KERNEL);
++	z = kzalloc(nwords * sizeof(u32), GFP_KERNEL);
++	be = kzalloc(nwords * 4, GFP_KERNEL);
++	if (!x || !z || !be) {
++		ret = -ENOMEM;
++		goto out;
++	}
++
++	ret = mpi_read_buffer(in, be, nwords * 4, &got, &sign);
++	if (ret)
++		goto out;
++	be_bytes_to_words(be, got, x, nwords);
++
++	ret = hw_modexp(z, x, exp, k->n, k->rr, k->mprime, nwords);
++	if (ret)
++		goto out;
++
++	words_to_be_bytes(z, nwords, be);
++	out = mpi_read_raw_data(be, nwords * 4);
++	if (!out) {
++		ret = -ENOMEM;
++		goto out;
++	}
++	ret = mpi_write_to_sgl(out, req->dst, req->dst_len, &sign);
++	mpi_free(out);
++out:
++	kfree(be);
++	kfree(z);
++	kfree(x);
++	mpi_free(in);
++	return ret;
++}
++
++static int esp_rsa_enc(struct akcipher_request *req)
++{
++	struct esp_rsa_key *k = akcipher_tfm_ctx(crypto_akcipher_reqtfm(req));
++
++	if (!k->have_e)
++		return -EINVAL;
++	return esp_rsa_op(req, k->e);
++}
++
++static int esp_rsa_dec(struct akcipher_request *req)
++{
++	struct esp_rsa_key *k = akcipher_tfm_ctx(crypto_akcipher_reqtfm(req));
++
++	if (!k->have_d)
++		return -EINVAL;
++	return esp_rsa_op(req, k->d);
++}
++
++/* Turn a parsed raw key into hardware word arrays + Montgomery constants. */
++static int esp_rsa_setup(struct esp_rsa_key *k, const struct rsa_key *raw,
++			 bool priv)
++{
++	int nbits, nwords, ret;
++
++	esp_rsa_free_key(k);
++
++	k->n_mpi = mpi_read_raw_data(raw->n, raw->n_sz);
++	if (!k->n_mpi)
++		return -ENOMEM;
++
++	nbits = mpi_get_nbits(k->n_mpi);
++	nwords = DIV_ROUND_UP(nbits, 32);
++	if (nwords < 1 || nwords > ESP_RSA_MAX_WORDS) {
++		ret = -EINVAL;
++		goto err;
++	}
++	k->nwords = nwords;
++
++	be_bytes_to_words(raw->n, raw->n_sz, k->n, nwords);
++	if (!(k->n[0] & 1)) {		/* modexp needs an odd modulus */
++		ret = -EINVAL;
++		goto err;
++	}
++	be_bytes_to_words(raw->e, raw->e_sz, k->e, nwords);
++	k->have_e = true;
++	if (priv) {
++		be_bytes_to_words(raw->d, raw->d_sz, k->d, nwords);
++		k->have_d = true;
++	}
++
++	k->mprime = compute_mprime(k->n[0]);
++	ret = compute_rr(k->n_mpi, nwords, k->rr);
++	if (ret)
++		goto err;
++
++	return 0;
++err:
++	esp_rsa_free_key(k);
++	return ret;
++}
++
++static int esp_rsa_set_pub_key(struct crypto_akcipher *tfm, const void *key,
++			       unsigned int keylen)
++{
++	struct rsa_key raw = {0};
++	int ret = rsa_parse_pub_key(&raw, key, keylen);
++
++	if (ret)
++		return ret;
++	return esp_rsa_setup(akcipher_tfm_ctx(tfm), &raw, false);
++}
++
++static int esp_rsa_set_priv_key(struct crypto_akcipher *tfm, const void *key,
++				unsigned int keylen)
++{
++	struct rsa_key raw = {0};
++	int ret = rsa_parse_priv_key(&raw, key, keylen);
++
++	if (ret)
++		return ret;
++	return esp_rsa_setup(akcipher_tfm_ctx(tfm), &raw, true);
++}
++
++static unsigned int esp_rsa_max_size(struct crypto_akcipher *tfm)
++{
++	struct esp_rsa_key *k = akcipher_tfm_ctx(tfm);
++
++	return k->n_mpi ? mpi_get_size(k->n_mpi) : 0;
++}
++
++static void esp_rsa_exit_tfm(struct crypto_akcipher *tfm)
++{
++	esp_rsa_free_key(akcipher_tfm_ctx(tfm));
++}
++
++static struct akcipher_alg esp_rsa_alg = {
++	.encrypt = esp_rsa_enc,
++	.decrypt = esp_rsa_dec,
++	.set_priv_key = esp_rsa_set_priv_key,
++	.set_pub_key = esp_rsa_set_pub_key,
++	.max_size = esp_rsa_max_size,
++	.exit = esp_rsa_exit_tfm,
++	.base = {
++		.cra_name = "rsa",
++		.cra_driver_name = "rsa-esp32s3",
++		.cra_priority = 300,	/* beat rsa-generic (100) */
++		.cra_module = THIS_MODULE,
++		.cra_ctxsize = sizeof(struct esp_rsa_key),
++	},
++};
++
++/* -------- boot self-test: hardware modexp vs the software mpi_powm oracle -------- */
++
++static int selftest_one(int nbytes)
++{
++	u8 *nb, *xb, eb[3] = { 0x01, 0x00, 0x01 };	/* e = 65537 */
++	MPI n = NULL, x = NULL, e = NULL, ref = NULL;
++	u32 *xw = NULL, *ew = NULL, *nw = NULL, *rr = NULL, *zw = NULL, *refw = NULL;
++	int nwords = DIV_ROUND_UP(nbytes, 4), i, ret = -ENOMEM;
++	unsigned got;
++	int sign;
++
++	nb = kmalloc(nbytes, GFP_KERNEL);
++	xb = kmalloc(nbytes, GFP_KERNEL);
++	if (!nb || !xb)
++		goto out;
++	for (i = 0; i < nbytes; i++) {		/* deterministic pseudo-random */
++		nb[i] = (u8)(i * 37 + 11);
++		xb[i] = (u8)(i * 13 + 7);
++	}
++	nb[0] |= 0x80;				/* modulus: full width */
++	nb[nbytes - 1] |= 1;			/* modulus: odd */
++	xb[0] = 0x02;				/* base < modulus */
++
++	n = mpi_read_raw_data(nb, nbytes);
++	x = mpi_read_raw_data(xb, nbytes);
++	e = mpi_read_raw_data(eb, sizeof(eb));
++	ref = mpi_alloc(0);
++	xw = kzalloc(nwords * 4, GFP_KERNEL);
++	ew = kzalloc(nwords * 4, GFP_KERNEL);
++	nw = kzalloc(nwords * 4, GFP_KERNEL);
++	rr = kzalloc(nwords * 4, GFP_KERNEL);
++	zw = kzalloc(nwords * 4, GFP_KERNEL);
++	refw = kzalloc(nwords * 4, GFP_KERNEL);
++	if (!n || !x || !e || !ref || !xw || !ew || !nw || !rr || !zw || !refw)
++		goto out;
++
++	ret = mpi_powm(ref, x, e, n);		/* software oracle */
++	if (ret)
++		goto out;
++
++	be_bytes_to_words(xb, nbytes, xw, nwords);
++	be_bytes_to_words(eb, sizeof(eb), ew, nwords);
++	be_bytes_to_words(nb, nbytes, nw, nwords);
++	if (compute_rr(n, nwords, rr)) {
++		ret = -EIO;
++		goto out;
++	}
++	ret = hw_modexp(zw, xw, ew, nw, rr, compute_mprime(nw[0]), nwords);
++	if (ret)
++		goto out;
++
++	/* compare hardware result to the oracle, word for word */
++	{
++		u8 *refb = kzalloc(nwords * 4, GFP_KERNEL);
++
++		if (!refb) {
++			ret = -ENOMEM;
++			goto out;
++		}
++		mpi_read_buffer(ref, refb, nwords * 4, &got, &sign);
++		be_bytes_to_words(refb, got, refw, nwords);
++		kfree(refb);
++	}
++	ret = memcmp(zw, refw, nwords * 4) ? -EINVAL : 0;
++out:
++	kfree(refw); kfree(zw); kfree(rr); kfree(nw); kfree(ew); kfree(xw);
++	mpi_free(ref); mpi_free(e); mpi_free(x); mpi_free(n);
++	kfree(xb); kfree(nb);
++	return ret;
++}
++
++static void esp_rsa_selftest(void)
++{
++	static const int sizes[] = { 64, 256 };	/* 512-bit, 2048-bit */
++	int i, r;
++
++	for (i = 0; i < ARRAY_SIZE(sizes); i++) {
++		r = selftest_one(sizes[i]);
++		pr_info("esp32s3-rsa: selftest %d-bit %s\n",
++			sizes[i] * 8, r ? "FAIL" : "PASS");
++	}
++}
++
++static void rsa_hw_enable(void)
++{
++	u32 v;
++
++	/* RSA-only operand-memory power bit; the shared clock is firmware-owned. */
++	v = readl(sys + SYS_RSA_PD_CTRL);
++	writel(v & ~RSA_MEM_PD_BIT, sys + SYS_RSA_PD_CTRL);
++	while (readl(rsa + RSA_QUERY_CLEAN) != 1)
++		cpu_relax();
++	writel(0, rsa + RSA_INT_ENA);
++}
++
++static int __init esp_rsa_init(void)
++{
++	int ret;
++
++	rsa = ioremap(RSA_BASE, RSA_SPAN);
++	sys = ioremap(SYS_BASE, SYS_SPAN);
++	if (!rsa || !sys) {
++		ret = -ENOMEM;
++		goto err;
++	}
++	rsa_hw_enable();
++	esp_rsa_selftest();
++
++	ret = crypto_register_akcipher(&esp_rsa_alg);
++	if (ret) {
++		pr_err("esp32s3-rsa: akcipher register failed: %d\n", ret);
++		goto err;
++	}
++	pr_info("esp32s3-rsa: hardware RSA registered (rsa-esp32s3)\n");
++	return 0;
++err:
++	if (rsa)
++		iounmap(rsa);
++	if (sys)
++		iounmap(sys);
++	return ret;
++}
++
++static void __exit esp_rsa_exit(void)
++{
++	crypto_unregister_akcipher(&esp_rsa_alg);
++	iounmap(rsa);
++	iounmap(sys);
++}
++
++module_init(esp_rsa_init);
++module_exit(esp_rsa_exit);
++
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("ESP32-S3 hardware RSA accelerator (Crypto API akcipher)");
++MODULE_ALIAS_CRYPTO("rsa");
+diff -Naur a/drivers/crypto/Makefile b/drivers/crypto/Makefile
+--- a/drivers/crypto/Makefile	2026-07-16 22:55:12.403414161 -0300
++++ b/drivers/crypto/Makefile	2026-07-16 22:55:12.407197077 -0300
+@@ -52,3 +52,4 @@
+ obj-$(CONFIG_CRYPTO_DEV_AMLOGIC_GXL) += amlogic/
+ obj-y += intel/
+ obj-y += starfive/
++obj-y += esp32s3_rsa.o

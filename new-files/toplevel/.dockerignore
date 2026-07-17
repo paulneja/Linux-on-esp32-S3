@@ -1,0 +1,8 @@
+refs/esp32-linux-build/build/
+refs/esp32-linux-build/*.log
+refs/mini-rv32ima/
+refs/esp32p4-rv32ima/
+s3-linux/
+native-s3/images/
+native-s3/.git/
+.git/
