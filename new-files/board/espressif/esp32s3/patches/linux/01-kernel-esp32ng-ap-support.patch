@@ -1,0 +1,521 @@
+diff --git a/drivers/net/wireless/espressif/esp32-ng/adapter.h b/drivers/net/wireless/espressif/esp32-ng/adapter.h
+index 783d08b..cd6e0ea 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/adapter.h
++++ b/drivers/net/wireless/espressif/esp32-ng/adapter.h
+@@ -122,6 +122,8 @@ enum COMMAND_CODE {
+ 	CMD_SET_REG_DOMAIN,
+ 	CMD_RAW_TP_ESP_TO_HOST,
+ 	CMD_RAW_TP_HOST_TO_ESP,
++	CMD_AP_START,
++	CMD_AP_STOP,
+ 	CMD_MAX,
+ };
+ 
+@@ -131,6 +133,8 @@ enum EVENT_CODE {
+ 	EVENT_STA_DISCONNECT,
+ 	EVENT_AUTH_RX,
+ 	EVENT_ASSOC_RX,
++	EVENT_AP_STACONNECTED,
++	EVENT_AP_STADISCONNECTED,
+ };
+ 
+ enum COMMAND_RESPONSE_TYPE {
+@@ -203,6 +207,18 @@ struct cmd_sta_disconnect {
+ 	uint8_t    pad[2];
+ } __packed;
+ 
++struct cmd_ap_start {
++	struct     command_header header;
++	char       ssid[MAX_SSID_LEN+1];
++	uint8_t    ssid_len;
++	uint8_t    ssid_hidden;
++	uint8_t    channel;
++	uint8_t    authmode;
++	uint8_t    max_connection;
++	char       password[64+1];
++	uint8_t    pad[2];
++} __packed;
++
+ struct cmd_set_ip_addr {
+ 	struct command_header header;
+ 	uint32_t ip;
+@@ -292,6 +308,20 @@ struct disconnect_event {
+ 	uint8_t    reason;
+ } __packed;
+ 
++struct ap_sta_connected_event {
++	struct     event_header header;
++	uint8_t    mac[MAC_ADDR_LEN];
++	uint8_t    aid;
++	uint8_t    pad[1];
++} __packed;
++
++struct ap_sta_disconnected_event {
++	struct     event_header header;
++	uint8_t    mac[MAC_ADDR_LEN];
++	uint8_t    reason;
++	uint8_t    pad[1];
++} __packed;
++
+ struct esp_internal_bootup_event {
+ 	struct     event_header header;
+ 	uint8_t    len;
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp.h b/drivers/net/wireless/espressif/esp32-ng/esp.h
+index f0ea313..7aa58a3 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/esp.h
++++ b/drivers/net/wireless/espressif/esp32-ng/esp.h
+@@ -27,8 +27,8 @@
+ #define ESP_LINK_DOWN           0
+ #define ESP_LINK_UP             1
+ 
+-#define ESP_MAX_INTERFACE       1
+-//#define ESP_MAX_INTERFACE       2
++#define ESP_MAX_INTERFACE       2
++//#define ESP_MAX_INTERFACE       1
+ #define ESP_STA_NW_IF           0
+ #define ESP_AP_NW_IF            1
+ 
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c b/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c
+index 4975c77..b4f1d7a 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c
+@@ -194,6 +194,13 @@ struct wireless_dev *esp_cfg80211_add_iface(struct wiphy *wiphy,
+ 	esp_wdev->esp_dev = esp_dev;
+ 	esp_wdev->ndev = ndev;
+ 	esp_wdev->adapter = esp_dev->adapter;
++	esp_wdev->if_type = (type == NL80211_IFTYPE_AP) ? ESP_AP_IF : ESP_STA_IF;
++	/* Protocol if_num, not the priv[] slot: the firmware stamps every header
++	 * it sends with if_num 0 and distinguishes interfaces by if_type alone.
++	 * Using esp_nw_if_num here made get_priv_from_payload_header() miss on the
++	 * AP (which lands in slot 1), so its command responses were dropped as
++	 * "Empty priv" and cmd_init_interface timed out. */
++	esp_wdev->if_num = 0;
+ 	esp_wdev->adapter->priv[esp_nw_if_num] = esp_wdev;
+ 	/*esp_info("Updated priv[%u] to %px\n",
+ 	 * esp_nw_if_num, esp_wdev->adapter->priv[esp_nw_if_num]);*/
+@@ -277,6 +284,34 @@ static int esp_cfg80211_scan(struct wiphy *wiphy,
+ 	return cmd_scan_request(priv, request);
+ }
+ 
++static int esp_cfg80211_start_ap(struct wiphy *wiphy, struct net_device *dev,
++		struct cfg80211_ap_settings *settings)
++{
++	struct esp_wifi_device *priv = netdev_priv(dev);
++
++	esp_dbg("\n");
++	if (!priv) {
++		esp_err("Empty priv\n");
++		return -EINVAL;
++	}
++
++	return cmd_ap_start(priv, settings);
++}
++
++static int esp_cfg80211_stop_ap(struct wiphy *wiphy, struct net_device *dev,
++		unsigned int link_id)
++{
++	struct esp_wifi_device *priv = netdev_priv(dev);
++
++	esp_dbg("\n");
++	if (!priv) {
++		esp_err("Empty priv\n");
++		return -EINVAL;
++	}
++
++	return cmd_ap_stop(priv);
++}
++
+ #if 0
+ static int esp_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
+ 							  struct cfg80211_connect_params *sme)
+@@ -604,6 +639,8 @@ static const struct cfg80211_ops esp_cfg80211_ops = {
+ 	.change_virtual_intf = esp_cfg80211_change_iface,
+ #endif
+ 	.scan = esp_cfg80211_scan,
++	.start_ap = esp_cfg80211_start_ap,
++	.stop_ap = esp_cfg80211_stop_ap,
+ 	/*.connect = esp_cfg80211_connect,*/
+ 	.disconnect = esp_cfg80211_disconnect,
+ 	.add_key = esp_cfg80211_add_key,
+@@ -704,7 +741,7 @@ int esp_add_wiphy(struct esp_adapter *adapter)
+ 
+ 	set_wiphy_dev(wiphy, esp_dev->dev);
+ 
+-	wiphy->interface_modes = BIT(NL80211_IFTYPE_STATION);
++	wiphy->interface_modes = BIT(NL80211_IFTYPE_STATION) | BIT(NL80211_IFTYPE_AP);
+ 	wiphy->bands[NL80211_BAND_2GHZ] = &esp_wifi_bands;
+ 
+ 	/* Initialize cipher suits */
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c b/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c
+index 529201c..05ba336 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c
+@@ -239,6 +239,8 @@ static int wait_and_decode_cmd_resp(struct esp_wifi_device *priv,
+ 	case CMD_SET_REG_DOMAIN:
+ 	case CMD_RAW_TP_ESP_TO_HOST:
+ 	case CMD_RAW_TP_HOST_TO_ESP:
++	case CMD_AP_START:
++	case CMD_AP_STOP:
+ 		/* intentional fallthrough */
+ 		if (ret == 0)
+ 			ret = decode_common_resp(cmd_node);
+@@ -410,7 +412,7 @@ static void destroy_cmd_wq(struct esp_adapter *adapter)
+ 	}
+ }
+ 
+-struct command_node *prepare_command_request(struct esp_adapter *adapter, u8 cmd_code, u16 len)
++struct command_node *prepare_command_request(struct esp_adapter *adapter, u8 cmd_code, u16 len, u8 if_type)
+ {
+ 	struct command_header *cmd;
+ 	struct esp_payload_header *payload_header;
+@@ -444,7 +446,7 @@ struct command_node *prepare_command_request(struct esp_adapter *adapter, u8 cmd
+ 	payload_header = (struct esp_payload_header *)skb_put(node->cmd_skb, len);
+ 	memset(payload_header, 0, len);
+ 
+-	payload_header->if_type = ESP_STA_IF;
++	payload_header->if_type = if_type;
+ 	payload_header->len = cpu_to_le16(len - sizeof(struct esp_payload_header));
+ 	payload_header->offset = cpu_to_le16(sizeof(struct esp_payload_header));
+ 	payload_header->packet_type = PACKET_TYPE_COMMAND_REQUEST;
+@@ -692,8 +694,7 @@ int cmd_set_mcast_mac_list(struct esp_wifi_device *priv, struct multicast_list *
+ 	if (test_bit(ESP_CLEANUP_IN_PROGRESS, &priv->adapter->state_flags))
+ 		return 0;
+ 
+-	cmd_node = prepare_command_request(priv->adapter, CMD_SET_MCAST_MAC_ADDR,
+-			sizeof(struct cmd_set_mcast_mac_addr));
++	cmd_node = prepare_command_request(priv->adapter, CMD_SET_MCAST_MAC_ADDR, sizeof(struct cmd_set_mcast_mac_addr), priv->if_type);
+ 
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+@@ -727,8 +728,7 @@ int cmd_set_ip_address(struct esp_wifi_device *priv, u32 ip)
+ 	if (test_bit(ESP_CLEANUP_IN_PROGRESS, &priv->adapter->state_flags))
+ 		return 0;
+ 
+-	cmd_node = prepare_command_request(priv->adapter, CMD_SET_IP_ADDR,
+-			sizeof(struct cmd_set_ip_addr));
++	cmd_node = prepare_command_request(priv->adapter, CMD_SET_IP_ADDR, sizeof(struct cmd_set_ip_addr), priv->if_type);
+ 
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+@@ -761,8 +761,7 @@ int cmd_disconnect_request(struct esp_wifi_device *priv, u16 reason_code)
+ 	if (test_bit(ESP_CLEANUP_IN_PROGRESS, &priv->adapter->state_flags))
+ 		return 0;
+ 
+-	cmd_node = prepare_command_request(priv->adapter, CMD_STA_DISCONNECT,
+-			sizeof(struct cmd_sta_disconnect));
++	cmd_node = prepare_command_request(priv->adapter, CMD_STA_DISCONNECT, sizeof(struct cmd_sta_disconnect), priv->if_type);
+ 
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+@@ -808,7 +807,7 @@ int cmd_connect_request(struct esp_wifi_device *priv,
+ 
+ 	cmd_len = sizeof(struct cmd_sta_connect) + params->ie_len;
+ 
+-	cmd_node = prepare_command_request(adapter, CMD_STA_CONNECT, cmd_len);
++	cmd_node = prepare_command_request(adapter, CMD_STA_CONNECT, cmd_len, priv->if_type);
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+ 		return -ENOMEM;
+@@ -896,7 +895,7 @@ int cmd_assoc_request(struct esp_wifi_device *priv,
+ 
+ 	cmd_len = sizeof(struct cmd_sta_assoc) + req->ie_len;
+ 
+-	cmd_node = prepare_command_request(adapter, CMD_STA_ASSOC, cmd_len);
++	cmd_node = prepare_command_request(adapter, CMD_STA_ASSOC, cmd_len, priv->if_type);
+ 
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+@@ -963,7 +962,7 @@ int cmd_auth_request(struct esp_wifi_device *priv,
+ 
+ 	cmd_len = sizeof(struct cmd_sta_auth) + req->auth_data_len;
+ 
+-	cmd_node = prepare_command_request(adapter, CMD_STA_AUTH, cmd_len);
++	cmd_node = prepare_command_request(adapter, CMD_STA_AUTH, cmd_len, priv->if_type);
+ 
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+@@ -1034,7 +1033,7 @@ int cmd_set_default_key(struct esp_wifi_device *priv, u8 key_index)
+ 	cmd_len = sizeof(struct cmd_key_operation);
+ 
+ 	/* get new cmd node */
+-	cmd_node = prepare_command_request(priv->adapter, CMD_SET_DEFAULT_KEY, cmd_len);
++	cmd_node = prepare_command_request(priv->adapter, CMD_SET_DEFAULT_KEY, cmd_len, priv->if_type);
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+ 		return -ENOMEM;
+@@ -1087,7 +1086,7 @@ int cmd_del_key(struct esp_wifi_device *priv, u8 key_index, bool pairwise,
+ 	cmd_len = sizeof(struct cmd_key_operation);
+ 
+ 	/* get new cmd node */
+-	cmd_node = prepare_command_request(priv->adapter, CMD_DEL_KEY, cmd_len);
++	cmd_node = prepare_command_request(priv->adapter, CMD_DEL_KEY, cmd_len, priv->if_type);
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+ 		return -ENOMEM;
+@@ -1166,7 +1165,7 @@ int cmd_add_key(struct esp_wifi_device *priv, u8 key_index, bool pairwise,
+ 
+ 	cmd_len = sizeof(struct cmd_key_operation);
+ 
+-	cmd_node = prepare_command_request(priv->adapter, CMD_ADD_KEY, cmd_len);
++	cmd_node = prepare_command_request(priv->adapter, CMD_ADD_KEY, cmd_len, priv->if_type);
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+ 		return -ENOMEM;
+@@ -1234,7 +1233,7 @@ int cmd_init_interface(struct esp_wifi_device *priv)
+ 
+ 	cmd_len = sizeof(struct command_header);
+ 
+-	cmd_node = prepare_command_request(priv->adapter, CMD_INIT_INTERFACE, cmd_len);
++	cmd_node = prepare_command_request(priv->adapter, CMD_INIT_INTERFACE, cmd_len, priv->if_type);
+ 
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+@@ -1264,7 +1263,7 @@ int cmd_deinit_interface(struct esp_wifi_device *priv)
+ 
+ 	cmd_len = sizeof(struct command_header);
+ 
+-	cmd_node = prepare_command_request(priv->adapter, CMD_DEINIT_INTERFACE, cmd_len);
++	cmd_node = prepare_command_request(priv->adapter, CMD_DEINIT_INTERFACE, cmd_len, priv->if_type);
+ 
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+@@ -1304,7 +1303,7 @@ int internal_scan_request(struct esp_wifi_device *priv, char *ssid,
+ 
+ 	cmd_len = sizeof(struct scan_request);
+ 
+-	cmd_node = prepare_command_request(priv->adapter, CMD_SCAN_REQUEST, cmd_len);
++	cmd_node = prepare_command_request(priv->adapter, CMD_SCAN_REQUEST, cmd_len, priv->if_type);
+ 
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+@@ -1363,7 +1362,7 @@ int cmd_scan_request(struct esp_wifi_device *priv, struct cfg80211_scan_request
+ 
+ 	cmd_len = sizeof(struct scan_request);
+ 
+-	cmd_node = prepare_command_request(priv->adapter, CMD_SCAN_REQUEST, cmd_len);
++	cmd_node = prepare_command_request(priv->adapter, CMD_SCAN_REQUEST, cmd_len, priv->if_type);
+ 
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+@@ -1403,6 +1402,90 @@ int cmd_scan_request(struct esp_wifi_device *priv, struct cfg80211_scan_request
+ 	return 0;
+ }
+ 
++/* Fixed AP passphrase: nl80211/cfg80211_ap_settings does not carry the raw
++ * PSK for FullMAC APs (hostapd normally owns the 4-way handshake; here the
++ * ESP-IDF side does it internally instead). hostapd.conf's wpa_passphrase
++ * must match this value -- it only picks the SSID/channel dynamically. */
++static char esp_ap_password[65] = "linux1234";
++module_param_string(esp_ap_password, esp_ap_password, sizeof(esp_ap_password), 0400);
++MODULE_PARM_DESC(esp_ap_password, "WPA2-PSK passphrase for the esp32 SoftAP (must match hostapd.conf)");
++
++int cmd_ap_start(struct esp_wifi_device *priv, struct cfg80211_ap_settings *settings)
++{
++	u16 cmd_len;
++	struct command_node *cmd_node = NULL;
++	struct cmd_ap_start *ap_start;
++
++	if (!priv || !priv->adapter || !settings) {
++		esp_err("Invalid argument\n");
++		return -EINVAL;
++	}
++
++	if (test_bit(ESP_CLEANUP_IN_PROGRESS, &priv->adapter->state_flags)) {
++		esp_err("%u cleanup in progress, return", __LINE__);
++		return -EBUSY;
++	}
++
++	cmd_len = sizeof(struct cmd_ap_start);
++
++	cmd_node = prepare_command_request(priv->adapter, CMD_AP_START, cmd_len, priv->if_type);
++
++	if (!cmd_node) {
++		esp_err("Failed to get command node\n");
++		return -ENOMEM;
++	}
++
++	ap_start = (struct cmd_ap_start *) (cmd_node->cmd_skb->data +
++			sizeof(struct esp_payload_header));
++
++	if (settings->ssid && settings->ssid_len) {
++		memcpy(ap_start->ssid, settings->ssid,
++				min_t(size_t, settings->ssid_len, MAX_SSID_LEN));
++		ap_start->ssid_len = min_t(size_t, settings->ssid_len, MAX_SSID_LEN);
++	}
++
++	ap_start->ssid_hidden = (settings->hidden_ssid != NL80211_HIDDEN_SSID_NOT_IN_USE);
++	ap_start->channel = settings->chandef.chan ? settings->chandef.chan->hw_value : 1;
++	ap_start->authmode = settings->privacy ? 3 /* WIFI_AUTH_WPA2_PSK */ : 0 /* WIFI_AUTH_OPEN */;
++	ap_start->max_connection = 4;
++
++	strscpy(ap_start->password, esp_ap_password, sizeof(ap_start->password));
++
++	queue_cmd_node(priv->adapter, cmd_node, ESP_CMD_DFLT_PRIO);
++	queue_work(priv->adapter->cmd_wq, &priv->adapter->cmd_work);
++
++	RET_ON_FAIL(wait_and_decode_cmd_resp(priv, cmd_node));
++
++	return 0;
++}
++
++int cmd_ap_stop(struct esp_wifi_device *priv)
++{
++	u16 cmd_len;
++	struct command_node *cmd_node = NULL;
++
++	if (!priv || !priv->adapter) {
++		esp_err("Invalid argument\n");
++		return -EINVAL;
++	}
++
++	cmd_len = sizeof(struct command_header);
++
++	cmd_node = prepare_command_request(priv->adapter, CMD_AP_STOP, cmd_len, priv->if_type);
++
++	if (!cmd_node) {
++		esp_err("Failed to get command node\n");
++		return -ENOMEM;
++	}
++
++	queue_cmd_node(priv->adapter, cmd_node, ESP_CMD_DFLT_PRIO);
++	queue_work(priv->adapter->cmd_wq, &priv->adapter->cmd_work);
++
++	RET_ON_FAIL(wait_and_decode_cmd_resp(priv, cmd_node));
++
++	return 0;
++}
++
+ int cmd_init_raw_tp_task_timer(struct esp_wifi_device *priv)
+ {
+ 	u16 cmd_len;
+@@ -1416,9 +1499,9 @@ int cmd_init_raw_tp_task_timer(struct esp_wifi_device *priv)
+ 	cmd_len = sizeof(struct command_header);
+ 
+ 	if (raw_tp_mode == ESP_TEST_RAW_TP_ESP_TO_HOST) {
+-		cmd_node = prepare_command_request(priv->adapter, CMD_RAW_TP_ESP_TO_HOST, cmd_len);
++		cmd_node = prepare_command_request(priv->adapter, CMD_RAW_TP_ESP_TO_HOST, cmd_len, priv->if_type);
+ 	} else if (raw_tp_mode == ESP_TEST_RAW_TP_HOST_TO_ESP) {
+-		cmd_node = prepare_command_request(priv->adapter, CMD_RAW_TP_HOST_TO_ESP, cmd_len);
++		cmd_node = prepare_command_request(priv->adapter, CMD_RAW_TP_HOST_TO_ESP, cmd_len, priv->if_type);
+ 	}
+ 
+ 	if (!cmd_node) {
+@@ -1446,7 +1529,7 @@ int cmd_get_mac(struct esp_wifi_device *priv)
+ 
+ 	cmd_len = sizeof(struct command_header);
+ 
+-	cmd_node = prepare_command_request(priv->adapter, CMD_GET_MAC, cmd_len);
++	cmd_node = prepare_command_request(priv->adapter, CMD_GET_MAC, cmd_len, priv->if_type);
+ 
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+@@ -1474,7 +1557,7 @@ int cmd_set_mac(struct esp_wifi_device *priv, uint8_t *mac_addr)
+ 
+ 	cmd_len = sizeof(struct cmd_config_mac_address);
+ 
+-	cmd_node = prepare_command_request(priv->adapter, CMD_SET_MAC, cmd_len);
++	cmd_node = prepare_command_request(priv->adapter, CMD_SET_MAC, cmd_len, priv->if_type);
+ 
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+@@ -1545,7 +1628,7 @@ int cmd_set_tx_power(struct esp_wifi_device *priv, int power)
+ 
+ 	cmd_len = sizeof(struct cmd_set_get_val);
+ 
+-	cmd_node = prepare_command_request(priv->adapter, CMD_SET_TXPOWER, cmd_len);
++	cmd_node = prepare_command_request(priv->adapter, CMD_SET_TXPOWER, cmd_len, priv->if_type);
+ 
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+@@ -1577,7 +1660,7 @@ int cmd_get_tx_power(struct esp_wifi_device *priv)
+ 
+ 	cmd_len = sizeof(struct command_header) + sizeof(int32_t);
+ 
+-	cmd_node = prepare_command_request(priv->adapter, CMD_GET_TXPOWER, cmd_len);
++	cmd_node = prepare_command_request(priv->adapter, CMD_GET_TXPOWER, cmd_len, priv->if_type);
+ 
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+@@ -1604,7 +1687,7 @@ int cmd_get_reg_domain(struct esp_wifi_device *priv)
+ 
+ 	cmd_len = sizeof(struct cmd_reg_domain);
+ 
+-	cmd_node = prepare_command_request(priv->adapter, CMD_GET_REG_DOMAIN, cmd_len);
++	cmd_node = prepare_command_request(priv->adapter, CMD_GET_REG_DOMAIN, cmd_len, priv->if_type);
+ 
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+@@ -1632,7 +1715,7 @@ int cmd_set_reg_domain(struct esp_wifi_device *priv)
+ 
+ 	cmd_len = sizeof(struct cmd_reg_domain);
+ 
+-	cmd_node = prepare_command_request(priv->adapter, CMD_SET_REG_DOMAIN, cmd_len);
++	cmd_node = prepare_command_request(priv->adapter, CMD_SET_REG_DOMAIN, cmd_len, priv->if_type);
+ 
+ 	if (!cmd_node) {
+ 		esp_err("Failed to get command node\n");
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_cmd.h b/drivers/net/wireless/espressif/esp32-ng/esp_cmd.h
+index 393c13b..4892428 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_cmd.h
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_cmd.h
+@@ -40,6 +40,9 @@ int cmd_auth_request(struct esp_wifi_device *priv,
+ int cmd_assoc_request(struct esp_wifi_device *priv,
+ 		struct cfg80211_assoc_request *req);
+ int cmd_disconnect_request(struct esp_wifi_device *priv, u16 reason_code);
++int cmd_ap_start(struct esp_wifi_device *priv,
++		struct cfg80211_ap_settings *settings);
++int cmd_ap_stop(struct esp_wifi_device *priv);
+ int cmd_add_key(struct esp_wifi_device *priv, u8 key_index, bool pairwise,
+ 		const u8 *mac_addr, struct key_params *params);
+ int cmd_del_key(struct esp_wifi_device *priv, u8 key_index, bool pairwise,
+diff --git a/drivers/net/wireless/espressif/esp32-ng/main.c b/drivers/net/wireless/espressif/esp32-ng/main.c
+index f05a2b1..b7ca653 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/main.c
++++ b/drivers/net/wireless/espressif/esp32-ng/main.c
+@@ -27,10 +27,14 @@ static u32 clockspeed = 0;
+ extern u8 ap_bssid[MAC_ADDR_LEN];
+ extern volatile u8 host_sleep;
+ u32 raw_tp_mode = 0;
++static bool ap_iface;
+ 
+ module_param(clockspeed, uint, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+ MODULE_PARM_DESC(clockspeed, "Hosts clock speed in MHz");
+ 
++module_param(ap_iface, bool, 0444);
++MODULE_PARM_DESC(ap_iface, "Create the espap0 SoftAP interface (breaks STA scan)");
++
+ module_param(raw_tp_mode, uint, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+ MODULE_PARM_DESC(raw_tp_mode, "Mode choosed to test raw throughput");
+ 
+@@ -469,11 +473,28 @@ static int esp_add_network_ifaces(struct esp_adapter *adapter)
+ 	wdev = esp_cfg80211_add_iface(adapter->wiphy, "espsta%d", 1, NL80211_IFTYPE_STATION, NULL);
+ 	rtnl_unlock();
+ 
+-	/* Return success if network added successfully */
+-	if (wdev)
++	if (!wdev)
++		return -1;
++
++	/* MVP: statically create the AP interface alongside STA (no dynamic
++	 * add_virtual_intf support yet -- see esp_cfg80211.c).
++	 *
++	 * Off by default: bringing the SoftAP up leaves the firmware's wifi task
++	 * in a state where CMD_SCAN_REQUEST never returns a response, so the STA
++	 * cannot scan and therefore cannot associate. Upstream esp-hosted is
++	 * STA-only, which is the configuration known to work. Pass
++	 * esp32_wifi.ap_iface=1 on the kernel command line to create it anyway. */
++	if (!ap_iface)
+ 		return 0;
+ 
+-	return -1;
++	rtnl_lock();
++	wdev = esp_cfg80211_add_iface(adapter->wiphy, "espap%d", 1, NL80211_IFTYPE_AP, NULL);
++	rtnl_unlock();
++
++	if (!wdev)
++		esp_info("Failed to create espap interface (AP mode unavailable)\n");
++
++	return 0;
+ }
+ 
+ int esp_init_raw_tp(struct esp_adapter *adapter)

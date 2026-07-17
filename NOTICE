@@ -10,73 +10,83 @@ are retained as required. The GPLv3 applies to the combined work; each
 component below remains additionally available under its own original license.
 
 ================================================================================
-1. mini-rv32ima  —  the RISC-V (RV32IMA) emulator core
-   https://github.com/cnlohr/mini-rv32ima
-   Licensed under the MIT License.
+1. Linux kernel (Xtensa port for the ESP32)
+   https://github.com/jcmvbkbc/linux-xtensa  (branch xtensa-6.11-esp32-tag)
+   Copyright (c) Linus Torvalds and contributors.
+   Licensed under the GNU General Public License version 2 (with the Linux
+   syscall note). See https://kernel.org and the COPYING file of the kernel
+   tree for the full text.
 
-MIT License
+   This repository ships patches against that tree, not the tree itself:
 
-Copyright (c) 2022 CNLohr
+     new-files/board/espressif/esp32s3/patches/linux/
+       01-kernel-esp32ng-ap-support.patch   — AP support in the esp32-ng driver
+       02-kernel-esp32s3-rsa-crypto.patch   — drivers/crypto/esp32s3_rsa.c
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+   Both are derivative works of the Linux kernel and are therefore licensed
+   under GPL-2.0-or-later, as declared in their SPDX headers. The prebuilt
+   images/xipImage is a compiled Linux kernel; the corresponding source is the
+   upstream tree above plus these patches.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+   kernel-driver-esp32-ng/ is a readable reference copy of the in-tree
+   esp32-ng driver with AP support (same GPL-2.0 terms as the kernel).
 
 ================================================================================
-2. esp32p4-rv32ima  —  the ESP32 port this project is based on
-   https://github.com/Epiczhul/esp32p4-rv32ima
-   Licensed under the BSD-3-Clause License.
+2. Buildroot  —  builds the toolchain, kernel and root filesystem
+   https://github.com/jcmvbkbc/buildroot  (branch xtensa-2024.08-fdpic)
+   Copyright (c) The Buildroot developers.
+   Licensed under the GNU General Public License version 2 or later.
 
-Copyright (c) 2023, Jisheng Zhang. All rights reserved.
-
-Redistribution and use in source and binary forms, with or without modification,
-are permitted provided that the following conditions are met:
-
--  Redistributions of source code must retain the above copyright notice, this
-list of conditions and the following disclaimer.
-
--  Redistributions in binary form must reproduce the above copyright notice,
-this list of conditions and the following disclaimer in the documentation
-and/or other materials provided with the distribution.
-
--  Neither the name of the copyright holder nor the names of its contributors may
-be used to endorse or promote products derived from this software without
-specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
-ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
-ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+   This repository ships a defconfig, a board directory and a rootfs overlay
+   (new-files/), plus a patch of tracked buildroot files
+   (patches/03-buildroot-tracked-changes.patch).
 
 ================================================================================
-3. Bundled guest binaries (separate programs, not linked into this code)
+3. esp-hosted  —  the WiFi firmware that runs alongside Linux on the same chip
+   https://github.com/jcmvbkbc/esp-hosted  (branch ipc-5.1.1), itself derived
+   from Espressif's https://github.com/espressif/esp-hosted
+   Copyright (c) 2015-2024 Espressif Systems (Shanghai) CO LTD.
+   Licensed under the Apache License, Version 2.0.
 
-   main/Image_mmu   — Linux kernel, licensed GPLv2 (https://kernel.org)
-   main/rootfs.ext4 — root filesystem built with Buildroot, containing
-                      BusyBox (GPLv2) and uClibc, among other packages.
+   This repository ships patches and profile files against that tree
+   (patches/02-firmware-network-adapter-ap-support.patch and
+   new-files/esp-hosted/). The prebuilt images/network_adapter.bin and
+   images/bootloader.bin are compiled from it with the ESP-IDF.
 
-   These are the emulated guest operating system and are aggregated with,
-   not linked into, this project's source. They are distributed under their
-   own respective licenses. Corresponding source is available from the
-   upstream Linux, BusyBox and Buildroot projects.
+================================================================================
+4. ESP-IDF  —  Espressif's SDK, used to build the firmware and bootloader
+   https://github.com/espressif/esp-idf
+   Copyright (c) 2015-2024 Espressif Systems (Shanghai) CO LTD.
+   Licensed under the Apache License, Version 2.0.
+
+================================================================================
+5. Root filesystem contents (aggregated, not linked into this project's code)
+
+   images/rootfs.cramfs and images/etc.jffs2 are built with Buildroot and
+   contain, among others:
+
+     BusyBox        — GPLv2          https://busybox.net
+     uClibc-ng      — LGPLv2.1       https://uclibc-ng.org
+     Dropbear SSH   — MIT-style      https://matt.ucc.asn.au/dropbear/
+     wpa_supplicant — BSD-3-Clause   https://w1.fi/wpa_supplicant/
+     iptables       — GPLv2          https://netfilter.org
+     Lua            — MIT            https://lua.org
+     curl / libcurl — curl license   https://curl.se
+     Mbed TLS       — Apache-2.0     https://github.com/Mbed-TLS/mbedtls
+
+   These are separate programs aggregated on the same filesystem image, each
+   distributed under its own license. Corresponding source is available from
+   the upstream projects and from Buildroot, which fetches them verbatim.
+
+   images/linux-esp32s3-native-full.bin is simply the concatenation, at their
+   flash offsets, of the images above; every component keeps its own license.
+
+================================================================================
+6. CA certificate bundle
+
+   new-files/board/espressif/esp32s3/rootfs_overlay/usr/share/ca-certificates/
+   ca-bundle.crt is a subset of the Mozilla CA Certificate Store (the root
+   certificates themselves are published by their respective certificate
+   authorities). The Mozilla store is distributed under the Mozilla Public
+   License 2.0. See https://wiki.mozilla.org/CA
 ================================================================================

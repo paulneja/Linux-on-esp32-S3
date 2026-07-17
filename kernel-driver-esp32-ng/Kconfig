@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+config ESP32_WIFI
+	tristate "Espressif esp32/esp32sx/esp32cx devices"
+	depends on CFG80211
+	select WIRELESS_EXT
+	select CRYPTO
+	select CRYPTO_SKCIPHER
+	select WEXT_SPY
+	select WEXT_PRIV
+	help
+	  This is the standard Linux driver to support wifi on esp32 device
+	  family.
+
+config ESP32_BT
+	bool "Support BT on esp32/esp32sx/esp32cx devices"
+	depends on ESP32_WIFI && BT
+	help
+	  Also support Bluetooth on esp32 device family.
+
+config ESP32_WIFI_SHMEM
+	def_bool y
+	select ESP32_IPC
+
+config ESP32_WIFI_SPI
+	bool
+
+config ESP32_WIFI_SDIO
+	bool

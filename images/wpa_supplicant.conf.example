@@ -1,0 +1,4 @@
+network={
+	ssid="your ssid"
+	psk="your pre-shared key"
+}

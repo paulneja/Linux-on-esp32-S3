@@ -1,0 +1,26 @@
+#!/usr/bin/lua
+-- Live system status as JSON, for the board's web page. Reads only /proc, so
+-- it never fork()s -- safe on this NOMMU system.
+
+local function slurp(p)
+	local f = io.open(p)
+	if not f then return "" end
+	local s = f:read("*a")
+	f:close()
+	return s
+end
+local function trim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
+
+local uptime  = slurp("/proc/uptime"):match("^(%d+)")
+local mem     = slurp("/proc/meminfo")
+local memtot  = mem:match("MemTotal:%s*(%d+)")
+local memfree = mem:match("MemAvailable:%s*(%d+)") or mem:match("MemFree:%s*(%d+)")
+local host    = trim(slurp("/proc/sys/kernel/hostname"))
+local kver    = slurp("/proc/version"):match("Linux version (%S+)")
+local rsa     = slurp("/proc/crypto"):find("rsa%-esp32s3") and "active" or "absent"
+
+io.write("Content-type: application/json\r\n\r\n")
+io.write(string.format(
+	'{"host":"%s","kernel":"%s","uptime_s":%s,' ..
+	'"mem_total_kb":%s,"mem_free_kb":%s,"hw_rsa":"%s"}\n',
+	host, kver or "?", uptime or "0", memtot or "0", memfree or "0", rsa))

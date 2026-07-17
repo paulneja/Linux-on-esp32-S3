@@ -1,20 +1,13 @@
-# ESP-IDF build artifacts
-build/
-managed_components/
-sdkconfig.old
-dependencies.lock
-
-# Python
-__pycache__/
-*.pyc
-
-# Local WiFi credentials (do not commit)
-main/wifi_creds.h
-
-# Obsolete kernel/rootfs blobs (superseded by Image_mmu + rootfs.ext4)
-main/Image
-main/Image.orig8mb
-main/rootfs.romfs
-
-# Merged release firmware (published as a GitHub Release asset, not in-tree)
-dist/
+# images/etc.jffs2 is committed on purpose: it is built from the overlay, which
+# ships only wpa_supplicant.conf.example (placeholders), so it carries no real
+# credentials. It is needed to flash the /etc partition piece by piece, and it
+# is embedded in images/linux-esp32s3-native-full.bin anyway.
+#
+# ⚠️ WARNING — this used to leak. buildroot's target/ is incremental, and a
+# stale target/etc/wpa_supplicant.conf holding a real SSID/PSK once got baked
+# into this image. Before committing any regenerated image, ALWAYS verify:
+#
+#     strings images/*.bin images/etc.jffs2 | grep -iE 'your-ssid|your-psk'
+#
+# and delete build-buildroot-*/target/etc/wpa_supplicant.conf if it exists.
+# WiFi is meant to be configured at runtime: `wifi connect "SSID" "pass"`.

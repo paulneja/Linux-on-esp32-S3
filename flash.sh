@@ -1,48 +1,99 @@
-#!/usr/bin/env bash
-# Build + flash the ESP32-S3 Linux emulator (app + patched kernel Image).
-# Usage: ./flash.sh [PORT]   (default /dev/ttyACM0)
-set -euo pipefail
-PORT="${1:-/dev/ttyACM0}"
-HERE="$(cd "$(dirname "$0")" && pwd)"
+#!/bin/sh
+#
+# Flash Linux on an ESP32-S3 (native Xtensa build).
+#
+# Default: writes the single combined image to offset 0x0 — everything a bare
+# board needs (bootloader, partition table, WiFi firmware, /etc, kernel,
+# rootfs). Nothing else is required.
+#
+#   ./flash.sh                      # combined image, autodetected port
+#   ./flash.sh -p /dev/ttyUSB0      # pick the port
+#   ./flash.sh --erase              # full chip erase first (recommended once)
+#   ./flash.sh --parts              # flash the 6 pieces separately instead
+#
+# Requires esptool (pip install esptool) or an activated ESP-IDF environment.
+# Board: ESP32-S3 with 16 MB flash / 8 MB Octal PSRAM (N16R8).
+#
+set -eu
 
-cd "$HERE"
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+IMG="$DIR/images"
+PORT=""
+ERASE=0
+PARTS=0
 
-# Activate ESP-IDF v5.3 (skipped if idf.py is already on PATH).
-if ! command -v idf.py >/dev/null 2>&1; then
-    if [[ -n "${IDF_PATH:-}" && -f "$IDF_PATH/export.sh" ]]; then
-        # shellcheck disable=SC1091
-        source "$IDF_PATH/export.sh"
-    else
-        echo "ESP-IDF not found. Activate it first (v5.3), e.g.:" >&2
-        echo "  . \"\$IDF_PATH/export.sh\"" >&2
-        exit 1
-    fi
+usage() { sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-p|--port) PORT="${2:?-p needs a port}"; shift 2 ;;
+	--erase)   ERASE=1; shift ;;
+	--parts)   PARTS=1; shift ;;
+	-h|--help) usage 0 ;;
+	*) echo "unknown option: $1" >&2; usage 1 >&2 ;;
+	esac
+done
+
+# --- locate esptool -----------------------------------------------------
+if command -v esptool.py >/dev/null 2>&1; then
+	ESPTOOL="esptool.py"
+elif command -v esptool >/dev/null 2>&1; then
+	ESPTOOL="esptool"
+elif python3 -c 'import esptool' >/dev/null 2>&1; then
+	ESPTOOL="python3 -m esptool"
+else
+	echo "error: esptool not found. Install it with:" >&2
+	echo "    pip install esptool" >&2
+	echo "or activate your ESP-IDF environment (. \$IDF_PATH/export.sh)." >&2
+	exit 1
 fi
 
-# The uplink WiFi credentials are gitignored; create them from the template.
-if [[ ! -f main/wifi_creds.h ]]; then
-    echo "main/wifi_creds.h is missing. Create it from the template:" >&2
-    echo "  cp main/wifi_creds.h.example main/wifi_creds.h   # then edit it" >&2
-    exit 1
+# --- locate the board ---------------------------------------------------
+if [ -z "$PORT" ]; then
+	for p in /dev/ttyACM0 /dev/ttyACM1 /dev/ttyUSB0 /dev/ttyUSB1; do
+		[ -e "$p" ] && { PORT="$p"; break; }
+	done
+	[ -n "$PORT" ] || { echo "error: no board found; pass -p /dev/ttyXXX" >&2; exit 1; }
+	echo "Using port $PORT (override with -p)"
 fi
 
-echo "=== build ==="
-idf.py build
+COMMON="--chip esp32s3 -p $PORT -b 460800 --before default_reset --after hard_reset"
+FLASHOPTS="--flash_mode dio --flash_size 16MB --flash_freq 80m"
 
-echo "=== flash bootloader + partition table + app ==="
-idf.py -p "$PORT" -b 921600 flash
+if [ "$ERASE" = 1 ]; then
+	echo "==> Erasing the whole chip (this wipes /home too)"
+	# shellcheck disable=SC2086
+	$ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 erase_flash
+fi
 
-KERNEL="main/Image_mmu"
-ROOTFS="main/rootfs.ext4"
-[[ -f "$KERNEL" ]] || { echo "Missing $KERNEL" >&2; exit 1; }
-[[ -f "$ROOTFS" ]] || { echo "Missing $ROOTFS" >&2; exit 1; }
-(( $(stat -c %s "$KERNEL") <= 6 * 1024 * 1024 )) || { echo "Kernel exceeds 6MB partition" >&2; exit 1; }
-(( $(stat -c %s "$ROOTFS") <= 8 * 1024 * 1024 )) || { echo "Rootfs exceeds 8MB partition" >&2; exit 1; }
+if [ "$PARTS" = 1 ]; then
+	echo "==> Flashing the 6 images separately"
+	# shellcheck disable=SC2086
+	$ESPTOOL $COMMON write_flash $FLASHOPTS \
+		0x0      "$IMG/bootloader.bin" \
+		0x8000   "$IMG/partition-table.bin" \
+		0x10000  "$IMG/network_adapter.bin" \
+		0xb0000  "$IMG/etc.jffs2" \
+		0x120000 "$IMG/xipImage" \
+		0x5a0000 "$IMG/rootfs.cramfs"
+else
+	echo "==> Flashing the combined image at 0x0"
+	# shellcheck disable=SC2086
+	$ESPTOOL $COMMON write_flash $FLASHOPTS \
+		0x0 "$IMG/linux-esp32s3-native-full.bin"
+fi
 
-echo "=== flash MMU kernel @ 0x110000 + ext4 rootfs @ 0x710000 ==="
-esptool.py --chip esp32s3 -p "$PORT" -b 921600 \
-    --before default_reset --after hard_reset \
-    write_flash 0x110000 "$KERNEL" 0x710000 "$ROOTFS"
+cat <<'EOF'
 
-echo "=== done. Connect to WiFi 'esp32-linux' (pass 'linux1234') and: telnet 192.168.4.1 ==="
-echo "    or watch the local serial boot:  python tools/capture_boot.py 60"
+Done. Open the serial console at 115200 baud, e.g.:
+
+    screen /dev/ttyACM0 115200      (or: picocom -b 115200 /dev/ttyACM0)
+
+Log in as root / changeme123 and change the password with `passwd`.
+No WiFi is configured on a fresh flash — the boot log printing
+"Starting network: ... FAIL" is expected. Connect with:
+
+    wifi connect "YOUR SSID" "YOUR PASSWORD"
+
+Then telnet in from your LAN, or keep using the serial console.
+EOF

@@ -1,0 +1,57 @@
+#!/bin/sh
+#
+# Turn the SSH server (dropbear) on or off. SSH is OFF by default on this
+# board: telnet is the default way in, which is fine on a trusted home LAN and
+# far lighter than SSH on this hardware. This script flips the ssh line in
+# /etc/inetd.conf, which lives on the writable /etc partition, so the choice
+# survives a reboot. dropbear is launched with -R so it creates its host keys
+# on first use -- nothing to generate ahead of time.
+#
+# Note: SSH is slow on this board (the RSA hardware accelerator does not help
+# it -- modern SSH uses Curve25519, not RSA). Telnet is the recommended path.
+#
+
+CONF=/etc/inetd.conf
+SSH_LINE='ssh	stream	tcp	nowait	root	/usr/sbin/dropbear	dropbear -i -R -I 600'
+
+restart_inetd() {
+	killall inetd 2>/dev/null
+	sleep 1
+	/usr/sbin/inetd
+}
+
+case "$1" in
+on|enable)
+	if grep -q '^ssh[ 	]' "$CONF"; then
+		echo "SSH is already enabled."
+		exit 0
+	fi
+	if grep -q '^#ssh[ 	]' "$CONF"; then
+		# uncomment the existing (disabled) line
+		sed -i 's/^#ssh\([ 	]\)/ssh\1/' "$CONF"
+	else
+		# no ssh line at all: add one
+		printf '%s\n' "$SSH_LINE" >> "$CONF"
+	fi
+	restart_inetd
+	echo "SSH enabled (starts on boot too). Disable with: ssh-server off"
+	;;
+off|disable)
+	if grep -q '^ssh[ 	]' "$CONF"; then
+		sed -i 's/^ssh\([ 	]\)/#ssh\1/' "$CONF"
+		restart_inetd
+	fi
+	echo "SSH disabled. Telnet is still available."
+	;;
+status|"")
+	if grep -q '^ssh[ 	]' "$CONF"; then
+		echo "SSH: enabled"
+	else
+		echo "SSH: disabled (telnet only)"
+	fi
+	;;
+*)
+	echo "usage: ssh-server {on|off|status}" >&2
+	exit 1
+	;;
+esac
