@@ -1,0 +1,34 @@
+#!/bin/sh
+#
+# WiFi provisioning over BLE. The board advertises as "Esp32-Linux"; a phone
+# connects with any BLE serial app and gets a scan/pick/password dialog, so the
+# board can be joined to a network with no PC and no serial cable.
+#
+# Runs after the network scripts (S40) so `wifi scan` has a working interface.
+
+DAEMON=/usr/sbin/ble-wifi-setup
+PIDFILE=/var/run/ble-wifi-setup.pid
+
+case "$1" in
+start)
+	# Only if the firmware exposed the BLE pipe (older firmware will not).
+	[ -e /dev/esp-ble ] || exit 0
+	printf 'Starting BLE WiFi setup: '
+	start-stop-daemon -S -q -m -p "$PIDFILE" -b -x "$DAEMON" && echo "OK" || echo "FAIL"
+	;;
+stop)
+	printf 'Stopping BLE WiFi setup: '
+	start-stop-daemon -K -q -p "$PIDFILE"
+	rm -f "$PIDFILE"
+	echo "OK"
+	;;
+restart|reload)
+	"$0" stop
+	sleep 1
+	"$0" start
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+	;;
+esac

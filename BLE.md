@@ -1,0 +1,222 @@
+# WiFi provisioning over BLE
+
+Join the board to a WiFi network from a phone — no PC, no serial cable. The
+board advertises over Bluetooth LE as **`Esp32-Linux`**; connect with any BLE
+serial terminal, send a character, and pick a network from the list.
+
+> **Wait about 30 seconds after power-on before connecting.** The BLE stack
+> comes up long before Linux has finished booting, and connecting during that
+> window is unreliable — the board is found but the connection hangs, because
+> core 0 is still bringing up WiFi. After that it works consistently: six
+> connect / pick / join cycles from a phone all ended online.
+
+## What this is for
+
+Joining the board to a WiFi network when you are away from a PC and have no
+serial cable. The board advertises over Bluetooth LE as **`Esp32-Linux`**; you
+connect from a phone with any BLE serial app, send any character, and get:
+
+```
+=== Linux on ESP32-S3 - WiFi setup ===
+Scanning, please wait...
+
+  1) -50  lock  HomeNetwork
+  2) -72  open  SomeOpenAP
+
+Send the number of the network:
+```
+
+Pick a number; open networks connect straight away, secured ones ask for the
+password; it reports the IP it got.
+
+The ESP32-S3 has **no Bluetooth Classic**, so SPP is not available. This uses
+the Nordic UART Service (NUS) over BLE, which general-purpose BLE serial
+terminal apps speak. Make sure the app is scanning in **BLE** mode: on a
+Bluetooth Classic scan the board will never appear, because the chip has no
+Classic radio at all.
+
+## How it is put together
+
+```
+phone (BLE serial app)
+  └─ BLE / NUS ─> core 0: NimBLE peripheral  (main/ble_prov.c)
+                    └─ byte pipe, if_type ESP_BLE_PROV_IF over the shmem IPC
+                         └─ core 1 Linux: /dev/esp-ble  (drivers/.../esp_ble_prov.c)
+                              └─ ble-wifi-setup daemon runs the dialog
+```
+
+The firmware side is deliberately a **dumb pipe**. The dialog runs on the Linux
+side and calls the existing `wifi` command, because Linux owns the WiFi
+connection — having the firmware join a network on its own would desynchronise
+the driver state.
+
+esp-hosted's `slave_bt.c` HCI passthrough is *not* used: it hands the controller
+to the Linux host for BlueZ, which cannot run on this NOMMU/8MB target.
+
+## Status
+
+**Works** (verified on hardware): Linux boots with the BLE firmware; the board
+advertises as `Esp32-Linux`; a phone connects and the GATT service is
+discovered; `/dev/esp-ble` is created; the daemon starts; the dialog was
+exercised from a phone.
+
+**Verified on hardware**: the whole chain delivers. Text typed on a phone
+arrives on `/dev/esp-ble`, the daemon answers with the network list, and
+selecting one and entering the password brings the STA up and reports the DHCP
+address.
+
+**Not characterised yet**:
+
+- **Connection reliability: measured, 6 of 6 from a phone.** Six connect →
+  dialog → connect-to-WiFi → disconnect cycles all ended online. One of them
+  first answered "no networks" because it was started before WiFi was up, and
+  recovered on the next try. A 6-cycle run from a Linux host (BlueZ) produced 0
+  complete dialogs, while the same board served the phone correctly throughout —
+  that says more about the test host's Bluetooth than about the firmware.
+- Connecting does not show the menu by itself: the firmware never tells Linux
+  that a phone attached, so you must send a character first. Wiring
+  `BLE_GAP_EVENT_CONNECT` to greet automatically is an obvious improvement.
+
+**The BLE link is ready before Linux is — wait ~30 s after power-on before
+connecting.** The firmware starts advertising as soon as its BLE stack syncs,
+well before the kernel has finished booting. Connecting in that window is
+unreliable: the phone finds the board but the connection hangs, because core 0
+is still bringing up WiFi and the NimBLE host task cannot answer service
+discovery in time. After ~30 s everything works consistently.
+
+The dialog side of the race is handled: it waits for `espsta0` and retries the
+scan instead of answering "No networks found" when it is simply early.
+
+Gating advertising on a readiness signal from Linux was tried and reverted: the
+board then never advertised at all (the marker did not arrive, cause not
+established), which is a far worse failure than asking the user to wait. If
+retried, it must fall back to advertising anyway after a timeout so it cannot
+end up silent.
+
+Three firmware defects were fixed while chasing the reliability question. None
+of them was the reason the dialog appeared not to work — that turned out to be
+the test host — but each was real:
+
+- The GATT write callback ran `xQueueSend` with `portMAX_DELAY`. That callback
+  executes in the NimBLE host task, so a full queue would hang the entire BLE
+  stack. It now drops the byte after 50 ms instead.
+- Advertising is re-armed by a periodic callout rather than relying solely on
+  `BLE_GAP_EVENT_DISCONNECT`, so a connection that fails midway cannot leave
+  the peripheral silent.
+- Connection parameters are relaxed on connect (30-50 ms interval, 4 s
+  supervision timeout), since this core also runs WiFi and the IPC to Linux.
+
+## Phone-side quirks (nothing to fix here, but easy to mistake for a bug)
+
+- **If the board shows up as a paired/saved device, it may stop appearing in
+  scans.** BLE GATT does not need pairing, and this board asks for none, so if
+  a phone ever bonded with it, remove/forget it from the Bluetooth settings and
+  scan again.
+- **Apps can hold a stale connection after disconnecting**, and then refuse to
+  reconnect until they are fully closed and reopened. The same thing happens on
+  a Linux host, where the device has to be dropped from the Bluetooth cache
+  between attempts — so this is the host's state, not the board's.
+- **Scanning may need location enabled**, depending on the phone. A scan with
+  it off can simply return nothing, without an error.
+
+## The landmine (read this before changing anything)
+
+The firmware reserves the 4 KB buffer that Linux uses for its exception vectors:
+
+```c
+/* main/linux_boot.c */
+static char IRAM_ATTR space_for_vectors[4096] __attribute__((aligned(4096)));
+```
+
+**The linker chooses that address, and it moves when the firmware's size or
+layout changes.** The kernel has it hard-coded:
+
+```
+CONFIG_VECTORS_ADDR=0x4037f000      # board/espressif/esp32s3/devkit_c1_16m_linux.config
+```
+
+Right now they match because they were aligned by hand. If they ever diverge,
+Linux writes its exception vectors into firmware memory and **dies the moment it
+executes userspace — with no panic, no message, nothing on the console.** The
+kernel boots perfectly and then goes silent at `Run /sbin/init`. This cost a
+long debugging session to find.
+
+Adding NimBLE grew the firmware by ~117 KB and moved the buffer from
+`0x4037c000` to `0x4037f000`, which is exactly how it was discovered.
+
+### This is now handled automatically
+
+`make-images.sh` reads the address out of the firmware ELF and compares it with
+the kernel config. If they differ it does not stop and ask: it rewrites the
+config, rebuilds the kernel, re-checks that the two now agree, and carries on:
+
+```
+    address moved: firmware 0x4037f000, kernel 0x4037c000
+==> realigning the kernel and rebuilding it
+    realigned to 0x4037f000 and kernel rebuilt
+```
+
+So changing the firmware needs no special knowledge and no manual step — the
+address moving is treated as the routine event it is. It still refuses to
+package if the realignment somehow fails, so a non-booting image cannot ship.
+
+To check by hand:
+
+```bash
+xtensa-esp32s3-elf-nm build/network_adapter.elf | grep space_for_vectors
+```
+
+`CONFIG_KERNEL_LOAD_ADDRESS` is coupled the same way to the `linux` partition
+offset (`0x42000000 + offset`), and is not handled automatically — but that one
+only moves if you deliberately edit the partition table.
+
+### Still worth doing
+
+The automation makes the coupling invisible, not absent. Removing it properly
+would mean pinning `space_for_vectors` to a fixed address with a linker section
+so it never moves at all. That is fiddly on this chip because IRAM and DRAM are
+aliases of the same SRAM, so a "free" IRAM address may be in use as heap; the
+reservation has to keep going through the linker. Not required now that the
+sync is automatic.
+
+## Other things worth knowing
+
+- **Never log from `ble_prov.c`.** Once Linux owns the USB-Serial-JTAG console,
+  a `printf` from core 0 blocks forever, which hangs the NimBLE host task and
+  kills GAP event processing — the connection then dies during service
+  discovery. `ESP_LOG*` are compiled out anyway (`LOG_MAXIMUM_LEVEL=1`), which
+  is why they were harmless before.
+- **`/dev/esp-ble` takes a single reader.** The daemon holds it open for its
+  whole lifetime. To watch the raw pipe for debugging, stop the daemon first
+  (`killall ble-wifi-setup`), or the second reader just gets `EBUSY`:
+
+  ```sh
+  killall ble-wifi-setup
+  cat /dev/esp-ble &        # now type on the phone; characters appear here
+  /etc/init.d/S46blewifi start   # remember to put it back
+  ```
+- **The daemon avoids forking.** 8MB and no swap; `wifi scan` alone spawns
+  iw+awk+sort+awk. An earlier version that read the pipe with `dd | tr` in a
+  loop kept those alive across the scan and got OOM-killed. It now opens the
+  device once on fd 3 and uses only shell builtins.
+- **Partition layout moved** to make room for the bigger firmware:
+  `factory` 640K→768K, `linux` 4.5M→4M at `0x140000`, `rootfs` at `0x540000`,
+  `home` 3328K. `etc` stays 448K — 320K (5 erase blocks) is jffs2's bare minimum
+  and was briefly suspected of the boot hang before the real cause was found.
+
+## Building it
+
+`images/` on this branch is deliberately **not** updated: it still holds the
+stable `0.3` binaries from `main`, so nothing here can be flashed by accident.
+Build from source (see DEVELOPMENT.md), then `./make-images.sh`, and mind the
+landmine check above before flashing.
+
+## Files
+
+| Path | What |
+|---|---|
+| `patches/05-firmware-ble-provisioning.patch` | NimBLE NUS peripheral + the pipe, on core 0 |
+| `new-files/board/.../patches/linux/03-kernel-ble-prov.patch` | `/dev/esp-ble` misc device + driver hooks |
+| `new-files/board/.../rootfs_overlay/usr/sbin/ble-wifi-setup` | the provisioning dialog |
+| `new-files/board/.../rootfs_overlay/etc/init.d/S46blewifi` | starts it at boot |
+| `kernel-driver-esp32-ng/esp_ble_prov.c` | readable copy of the kernel driver |
