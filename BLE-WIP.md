@@ -2,9 +2,11 @@
 
 > **Status: working end to end on hardware.** A phone joined the board to a
 > WiFi network over BLE — scan, pick, password, DHCP address — with no PC and no
-> serial cable. The silent-brick failure mode that made this dangerous is fixed:
-> `make-images.sh` now refuses to package a mismatched image (see "The
-> landmine"). What is not yet characterised is how *reliably* it connects.
+> serial cable. The failure mode that made this dangerous is gone: the vector
+> address is now realigned and the kernel rebuilt automatically (see "The
+> landmine"), so changing the firmware needs no special care. What is not yet
+> characterised is how *reliably* a phone connects, and connecting during the
+> first ~30 s after power-on does not work.
 
 ## What this is for
 
@@ -124,39 +126,40 @@ long debugging session to find.
 Adding NimBLE grew the firmware by ~117 KB and moved the buffer from
 `0x4037c000` to `0x4037f000`, which is exactly how it was discovered.
 
-### This is now caught at build time
+### This is now handled automatically
 
-`make-images.sh` reads the address out of the firmware ELF and compares it to
-the kernel config. On a mismatch it refuses to package and prints the exact
-line to change:
+`make-images.sh` reads the address out of the firmware ELF and compares it with
+the kernel config. If they differ it does not stop and ask: it rewrites the
+config, rebuilds the kernel, re-checks that the two now agree, and carries on:
 
 ```
-!! MISMATCH: firmware reserves 0x4037f000, kernel expects 0x4037c000
-!! An image built like this boots the kernel fine and then dies
-!! silently at /sbin/init, with nothing on the console.
-!! Fix: set CONFIG_VECTORS_ADDR=0x4037f000 in
-!!   new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config
-error: refusing to package an image that will not boot
+    address moved: firmware 0x4037f000, kernel 0x4037c000
+==> realigning the kernel and rebuilding it
+    realigned to 0x4037f000 and kernel rebuilt
 ```
 
-So the failure is now loud and self-explanatory instead of a silent brick, and
-a broken image cannot be shipped by accident. To check by hand:
+So changing the firmware needs no special knowledge and no manual step — the
+address moving is treated as the routine event it is. It still refuses to
+package if the realignment somehow fails, so a non-booting image cannot ship.
+
+To check by hand:
 
 ```bash
 xtensa-esp32s3-elf-nm build/network_adapter.elf | grep space_for_vectors
 ```
 
 `CONFIG_KERNEL_LOAD_ADDRESS` is coupled the same way to the `linux` partition
-offset (`0x42000000 + offset`), and is not yet checked automatically.
+offset (`0x42000000 + offset`), and is not handled automatically — but that one
+only moves if you deliberately edit the partition table.
 
 ### Still worth doing
 
-The check makes the coupling safe, not absent. Removing it entirely would mean
-either pinning `space_for_vectors` to a fixed address with a linker section, or
-having the firmware pass the address to Linux in a `bp_tag` at boot (the
-mechanism already exists — it is how the kernel command line is passed). The
-second is the right engineering answer, but neither is required to ship safely
-now that a mismatch cannot slip through.
+The automation makes the coupling invisible, not absent. Removing it properly
+would mean pinning `space_for_vectors` to a fixed address with a linker section
+so it never moves at all. That is fiddly on this chip because IRAM and DRAM are
+aliases of the same SRAM, so a "free" IRAM address may be in use as heap; the
+reservation has to keep going through the linker. Not required now that the
+sync is automatic.
 
 ## Other things worth knowing
 

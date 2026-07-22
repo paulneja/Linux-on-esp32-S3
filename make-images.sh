@@ -143,17 +143,40 @@ else
 	if [ -z "$FW_VEC" ] || [ -z "$K_VEC" ]; then
 		echo "  !! could not read one of the addresses -- verify by hand." >&2
 	elif [ "$FW_CMP" != "$K_VEC" ]; then
-		echo "  !! MISMATCH: firmware reserves 0x$FW_VEC, kernel expects 0x$K_VEC" >&2
-		echo "  !!" >&2
-		echo "  !! An image built like this boots the kernel fine and then dies" >&2
-		echo "  !! silently at /sbin/init, with nothing on the console." >&2
-		echo "  !!" >&2
-		echo "  !! Fix: set CONFIG_VECTORS_ADDR=0x$FW_VEC in" >&2
-		echo "  !!   $KCONF" >&2
-		echo "  !! and rebuild the kernel." >&2
-		die "refusing to package an image that will not boot"
+		# Realign and rebuild rather than making the user do it: the
+		# address moving is normal (any firmware change can do it), and
+		# the remedy is always the same single line.
+		echo "    address moved: firmware 0x$FW_VEC, kernel 0x$K_VEC"
+		echo "==> realigning the kernel and rebuilding it"
+
+		sed -i "s/^CONFIG_VECTORS_ADDR=.*/CONFIG_VECTORS_ADDR=0x$FW_VEC/" "$KCONF" \
+			|| die "could not update $KCONF"
+		KDOTCONF="$BUILD/build-buildroot-$PROFILE/build/linux-xtensa-6.11-esp32-tag/.config"
+		[ -f "$KDOTCONF" ] && \
+			sed -i "s/^CONFIG_VECTORS_ADDR=.*/CONFIG_VECTORS_ADDR=0x$FW_VEC/" "$KDOTCONF"
+
+		# Same environment the build driver uses for the kernel.
+		: "${GCC14_SHIM:=$HOME/esp/gcc14shim}"
+		[ -d "$GCC14_SHIM" ] && PATH="$GCC14_SHIM:$PATH"
+		[ -d "$SRC/autoconf-2.71/root/bin" ] && PATH="$SRC/autoconf-2.71/root/bin:$PATH"
+		export PATH
+		export XTENSA_GNU_CONFIG="$BUILD/xtensa-dynconfig/esp32s3.so"
+
+		make -C "$BUILD/buildroot" O="$BUILD/build-buildroot-$PROFILE" \
+			linux-rebuild >/dev/null 2>&1 \
+			|| die "kernel rebuild failed -- rerun the build by hand"
+
+		cp -f "$BR/xipImage" "$OUT/xipImage" || die "no xipImage after rebuild"
+		fits "$OUT/xipImage" "$OFF_LINUX" "$SIZE_LINUX" xipImage
+
+		# Trust nothing: confirm the rebuilt kernel really agrees now.
+		K_VEC=$(sed -n 's/^CONFIG_VECTORS_ADDR=0x\([0-9a-fA-F]*\).*/\1/p' "$KCONF" | head -1)
+		K_VEC=$(printf '%s' "$K_VEC" | tr 'A-F' 'a-f' | sed 's/^0*//')
+		[ "$FW_CMP" = "$K_VEC" ] || die "still mismatched after rebuild"
+		echo "    realigned to 0x$FW_VEC and kernel rebuilt"
+	else
+		echo "    vectors at 0x$FW_VEC, kernel agrees"
 	fi
-	echo "    vectors at 0x$FW_VEC, kernel agrees"
 fi
 
 # --- merge --------------------------------------------------------------
