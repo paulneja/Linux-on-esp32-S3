@@ -25,12 +25,10 @@ ESP32-S3 (single chip, two Xtensa LX7 cores)
 │
 └── Core 1 — Linux 6.11 (real, native Xtensa binary)
     ├── esp32-ng driver (drivers/net/wireless/espressif/esp32-ng/)
-    │   ├── espsta0 — STA netdev, joins the home WiFi (wpa_supplicant)
-    │   └── espap0  — AP netdev, broadcasts "esp32-linux" (SoftAP,
-    │                 configured directly by Core 0's firmware — no
-    │                 hostapd, see "Why no hostapd" below)
-    ├── netfilter/NAT — MASQUERADE espap0 → espsta0 (via `ap on`)
-    ├── BusyBox userland (telnetd, dropbear/ssh, udhcpd, inetd)
+    │   └── espsta0 — STA netdev, joins the home WiFi (wpa_supplicant).
+    │                 STA only: the AP side is hard-disabled (see below).
+    ├── BusyBox userland (telnetd, dropbear/ssh, inetd) + nano editor
+    ├── wifi — interactive scan/connect helper for the STA uplink
     ├── espctl — GPIO/I2C control from userspace
     └── / (cramfs, read-only, XIP) + /etc and /home (jffs2, writable)
 ```
@@ -44,41 +42,34 @@ this edition exists at all.
 
 1. ROM bootloader → 2nd-stage bootloader → `xipImage` (Linux kernel,
    executes in place from flash, not copied to RAM).
-2. Kernel brings up `espsta0` (STA) first → fires `CMD_INIT_INTERFACE` to
+2. Kernel brings up `espsta0` (STA) → fires `CMD_INIT_INTERFACE` to
    Core 0's firmware → `esp_wifi_set_mode(WIFI_MODE_STA)` +
-   `esp_wifi_start()`.
-3. Kernel brings up `espap0` (AP) second → fires its own
-   `CMD_INIT_INTERFACE` → firmware widens the mode to `WIFI_MODE_APSTA` and
-   **auto-starts the SoftAP** with a fixed SSID/password (see below) — no
-   separate trigger needed.
-4. userspace: `S45inetd` (telnet; ssh only if enabled with `ssh-server on`)
+   `esp_wifi_start()`. The driver never creates an AP interface (see below),
+   so the firmware stays in plain STA mode.
+3. userspace: `S45inetd` (telnet; ssh only if enabled with `ssh-server on`)
    → `wpa_supplicant` on `espsta0` (via `/etc/network/interfaces`, joining the
-   WiFi configured with `wifi connect`). The AP-side setup (address, DHCP
-   server, NAT) no longer runs at boot: it lives in the `ap` command and is
-   off by default.
+   WiFi set with the interactive `wifi` command or `wifi connect "SSID" "PASS"`).
 
-## Why no hostapd (and why the AP beacons even when "off")
+## Why there is no SoftAP (STA only)
 
-The obvious way to drive `espap0`'s `.start_ap` cfg80211 callback is
-`hostapd`. It doesn't build here: `hostapd`'s `os_unix.c` calls `fork()`,
-and this target's C library (`uClibc-ng-fdpic`, built for a NOMMU CPU) does
-not declare `fork()` at all — confirmed by the compiler, not a guess.
-BusyBox's own daemons (`inetd`, `dropbear`, `crond`) work fine because
-BusyBox is written to use `vfork()` on NOMMU targets; `hostapd` upstream
-has no such fallback.
+Earlier versions created a second netdev (`espap0`) and let Core 0's firmware
+run a SoftAP with a fixed SSID/password. It was removed because it never
+worked and actively hurt: the closed WiFi blob beacons as **WEP** instead of
+WPA2, so clients reject it, and — worse — bringing the AP up wedged the
+firmware's wifi task so `CMD_SCAN_REQUEST` never returned, meaning the STA
+could no longer scan or associate.
 
-Instead, the SoftAP (SSID `esp32-linux`, password `linux1234`, both
-hardcoded — see `cmd.c:start_softap_fixed()`) is configured and started
-**directly by Core 0's firmware** the moment the AP netdev initializes,
-with no userspace daemon in the loop at all. The `.start_ap`/`.stop_ap`
-cfg80211 plumbing is still there in the driver (for a future dynamic
-reconfiguration tool), it's just unused today.
-
-This is exactly why the `esp32-linux` SSID still shows up in a scan when
-`ap status` reports off: the beacon is Core 0's, and the `ap` command only
-controls the Linux side (interface address, DHCP server, NAT). The AP is
-broken regardless — the blob beacons as WEP, so clients reject it — which is
-why it ships disabled. See the README.
+So the esp32-ng driver is now hard-forced to **never create `espap0`**
+(`esp_add_network_ifaces()` returns right after adding the STA interface), and
+the `ap` command was deleted. With no AP netdev, the firmware never receives an
+AP init and never beacons — the board is **STA only**: it joins an existing
+network, it does not host one. The `.start_ap`/`.stop_ap` cfg80211 plumbing and
+the firmware's `start_softap_fixed()` still exist, dormant, in case a future
+build wants a working AP — which would need `hostapd`, and `hostapd` doesn't
+build here: its `os_unix.c` calls `fork()`, which this target's NOMMU C library
+(`uClibc-ng-fdpic`) does not declare at all. BusyBox's daemons (`inetd`,
+`dropbear`, `crond`) work only because BusyBox falls back to `vfork()` on NOMMU;
+`hostapd` upstream has no such fallback.
 
 ## Storage layout (devkit-c1-16m profile, 16MB flash / 8MB PSRAM)
 
@@ -89,16 +80,18 @@ why it ships disabled. See the README.
 | `factory` | `0x10000` | 640K | `network_adapter.bin` (Core 0 firmware) |
 | `etc` | `0xb0000` | 448K | jffs2, writable, wear-leveled — `/etc` |
 | `linux` | `0x120000` | 4.5M | `xipImage`, XIP kernel |
-| `rootfs` | `0x5a0000` | 6.5M | `rootfs.cramfs`, read-only root |
-| `home` | `0xc20000` | 3968K | jffs2, writable — `/home` |
+| `rootfs` | `0x5a0000` | 7.5M | `rootfs.cramfs`, read-only root |
+| `home` | `0xd20000` | 2944K | jffs2, writable — `/home` |
 
 The authoritative source of this layout is
 `new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r`. It
 matters more than it looks: the kernel derives the rootfs XIP address from the
 partition offset (`0x42000000 + 0x5a0000`), so flashing `rootfs.cramfs` at the
 wrong offset panics the kernel with "Cannot open root device". `linux` was
-shrunk from 6M and `rootfs` grown to 6.5M to make room for curl and its CA
-bundle.
+shrunk from 6M and `rootfs` grown (to 6.5M for curl and its CA bundle, then to
+7.5M for the nano editor + ncurses) by taking the space from `home`. `rootfs`
+keeps its `0x5a0000` offset so the XIP address is unchanged; only its length
+and `home`'s offset move.
 
 `/` is read-only cramfs by design — no wear on the root filesystem no
 matter how the system is used. Anything that needs to persist (WiFi
@@ -114,9 +107,6 @@ flashed board.
   (`/etc/shadow`, SHA-256). Default password `changeme123` — **must be
   changed** via `passwd` on first login, it's deliberately obvious rather
   than plausible-looking.
-- AP clients (`192.168.4.0/24`) reach the internet via NAT/MASQUERADE
-  through `espsta0`, but the home LAN cannot reach *into* the AP subnet
-  uninvited — standard NAT one-way behavior, not full isolation.
 - No session timeout, no brute-force throttling yet.
 - Telnet is plaintext on the wire; SSH is not. Telnet is on by default for
   convenience on a trusted local network, not because it is recommended
@@ -125,5 +115,5 @@ flashed board.
 ## Known gaps
 
 Recovery mode, OTA, GitHub Actions CI and hardware-in-the-loop testing are all
-either deferred by design or simply not built yet. The SoftAP is present but
-broken (see above). curl's HTTPS support works but is experimental.
+either deferred by design or simply not built yet. There is no SoftAP — the
+board is STA only (see above). curl's HTTPS support works but is experimental.

@@ -76,19 +76,24 @@ index f0ea313..7aa58a3 100644
  #define ESP_AP_NW_IF            1
  
 diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c b/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c
-index 4975c77..fc41939 100644
+index 4975c77..b4f1d7a 100644
 --- a/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c
 +++ b/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c
-@@ -194,6 +194,8 @@ struct wireless_dev *esp_cfg80211_add_iface(struct wiphy *wiphy,
+@@ -194,6 +194,13 @@ struct wireless_dev *esp_cfg80211_add_iface(struct wiphy *wiphy,
  	esp_wdev->esp_dev = esp_dev;
  	esp_wdev->ndev = ndev;
  	esp_wdev->adapter = esp_dev->adapter;
 +	esp_wdev->if_type = (type == NL80211_IFTYPE_AP) ? ESP_AP_IF : ESP_STA_IF;
-+	esp_wdev->if_num = esp_nw_if_num;
++	/* Protocol if_num, not the priv[] slot: the firmware stamps every header
++	 * it sends with if_num 0 and distinguishes interfaces by if_type alone.
++	 * Using esp_nw_if_num here made get_priv_from_payload_header() miss on the
++	 * AP (which lands in slot 1), so its command responses were dropped as
++	 * "Empty priv" and cmd_init_interface timed out. */
++	esp_wdev->if_num = 0;
  	esp_wdev->adapter->priv[esp_nw_if_num] = esp_wdev;
  	/*esp_info("Updated priv[%u] to %px\n",
  	 * esp_nw_if_num, esp_wdev->adapter->priv[esp_nw_if_num]);*/
-@@ -277,6 +279,34 @@ static int esp_cfg80211_scan(struct wiphy *wiphy,
+@@ -277,6 +284,34 @@ static int esp_cfg80211_scan(struct wiphy *wiphy,
  	return cmd_scan_request(priv, request);
  }
  
@@ -123,7 +128,7 @@ index 4975c77..fc41939 100644
  #if 0
  static int esp_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
  							  struct cfg80211_connect_params *sme)
-@@ -604,6 +634,8 @@ static const struct cfg80211_ops esp_cfg80211_ops = {
+@@ -604,6 +639,8 @@ static const struct cfg80211_ops esp_cfg80211_ops = {
  	.change_virtual_intf = esp_cfg80211_change_iface,
  #endif
  	.scan = esp_cfg80211_scan,
@@ -132,7 +137,7 @@ index 4975c77..fc41939 100644
  	/*.connect = esp_cfg80211_connect,*/
  	.disconnect = esp_cfg80211_disconnect,
  	.add_key = esp_cfg80211_add_key,
-@@ -704,7 +736,7 @@ int esp_add_wiphy(struct esp_adapter *adapter)
+@@ -704,7 +741,7 @@ int esp_add_wiphy(struct esp_adapter *adapter)
  
  	set_wiphy_dev(wiphy, esp_dev->dev);
  
@@ -464,22 +469,45 @@ index 393c13b..4892428 100644
  		const u8 *mac_addr, struct key_params *params);
  int cmd_del_key(struct esp_wifi_device *priv, u8 key_index, bool pairwise,
 diff --git a/drivers/net/wireless/espressif/esp32-ng/main.c b/drivers/net/wireless/espressif/esp32-ng/main.c
-index f05a2b1..d1ebfde 100644
+index f05a2b1..b7ca653 100644
 --- a/drivers/net/wireless/espressif/esp32-ng/main.c
 +++ b/drivers/net/wireless/espressif/esp32-ng/main.c
-@@ -469,11 +469,19 @@ static int esp_add_network_ifaces(struct esp_adapter *adapter)
+@@ -27,10 +27,14 @@ static u32 clockspeed = 0;
+ extern u8 ap_bssid[MAC_ADDR_LEN];
+ extern volatile u8 host_sleep;
+ u32 raw_tp_mode = 0;
++static bool ap_iface;
+ 
+ module_param(clockspeed, uint, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+ MODULE_PARM_DESC(clockspeed, "Hosts clock speed in MHz");
+ 
++module_param(ap_iface, bool, 0444);
++MODULE_PARM_DESC(ap_iface, "Create the espap0 SoftAP interface (breaks STA scan)");
++
+ module_param(raw_tp_mode, uint, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+ MODULE_PARM_DESC(raw_tp_mode, "Mode choosed to test raw throughput");
+ 
+@@ -469,11 +473,28 @@ static int esp_add_network_ifaces(struct esp_adapter *adapter)
  	wdev = esp_cfg80211_add_iface(adapter->wiphy, "espsta%d", 1, NL80211_IFTYPE_STATION, NULL);
  	rtnl_unlock();
  
 -	/* Return success if network added successfully */
 -	if (wdev)
--		return 0;
 +	if (!wdev)
 +		return -1;
++
++	/* SoftAP is permanently disabled on this build: the closed WiFi blob
++	 * beacons as WEP (clients reject it) and, worse, bringing the AP up
++	 * wedges the firmware's wifi task so CMD_SCAN_REQUEST never returns and
++	 * the STA can no longer scan or associate. So espap0 is never created:
++	 * upstream esp-hosted is STA-only, the configuration known to work.
++	 * The ap_iface module param is kept below but intentionally ignored
++	 * here -- there is deliberately no way to turn the SoftAP on anymore.
++	 * (Was "if (!ap_iface)"; now hard-forced off.) */
++	if (1)
+ 		return 0;
  
 -	return -1;
-+	/* MVP: statically create the AP interface alongside STA (no dynamic
-+	 * add_virtual_intf support yet -- see esp_cfg80211.c). */
 +	rtnl_lock();
 +	wdev = esp_cfg80211_add_iface(adapter->wiphy, "espap%d", 1, NL80211_IFTYPE_AP, NULL);
 +	rtnl_unlock();

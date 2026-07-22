@@ -40,6 +40,9 @@ BR2_PACKAGE_WPA_SUPPLICANT=y
 # and does not declare it, so hostapd cannot be built here. The SoftAP is
 # started directly by the ESP32 firmware instead (fixed SSID, no hostapd).
 BR2_PACKAGE_IPTABLES=y
+# The classic nano editor replaces busybox vi (disabled in busybox.config).
+# Pulls in ncurses; EDITOR/VISUAL are set to nano in /etc/profile.d/editor.sh.
+BR2_PACKAGE_NANO=y
 # BR2_PACKAGE_URANDOM_SCRIPTS is not set
 # Deliberately obvious "changeme" default (not a plausible-looking fake
 # secure password) so it's unambiguous this MUST be changed via `passwd`

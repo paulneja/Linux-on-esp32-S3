@@ -1,36 +1,17 @@
 #!/bin/sh
 #
-# Reconfigure the STA (home WiFi) uplink without recompiling/reflashing.
-# Always reachable via the fixed esp32-linux AP even if the STA side has
-# never been configured, since the two are independent (see PLAN.md/
-# ARCHITECTURE.md "the AP auto-starts from firmware").
+# Back-compat shim. The real WiFi manager is now `wifi` (interactive scan +
+# picker, open/secured autodetect). This keeps the old scripted form working:
 #
-# Usage: wifi-setup "SSID" "password"
+#   wifi-setup "SSID" "password"   ->   wifi connect "SSID" "password"
+#
+# For the friendly interactive flow just run:  wifi
 #
 
 if [ $# -ne 2 ]; then
 	echo "usage: $0 <ssid> <password>" >&2
+	echo "   or run 'wifi' for the interactive scanner." >&2
 	exit 1
 fi
 
-SSID="$1"
-PASS="$2"
-CONF=/etc/wpa_supplicant.conf
-
-cat > "$CONF" << EOF
-network={
-	ssid="$SSID"
-	psk="$PASS"
-	key_mgmt=WPA-PSK
-	proto=WPA2
-	pairwise=CCMP
-	group=CCMP
-}
-EOF
-chmod 600 "$CONF"
-
-echo "Wrote $CONF for SSID '$SSID'. Restarting STA..."
-killall -q wpa_supplicant 2>/dev/null
-ifdown espsta0 2>/dev/null
-ifup espsta0
-echo "Done. Check with: ip addr show espsta0"
+exec wifi connect "$1" "$2"

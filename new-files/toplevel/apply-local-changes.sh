@@ -22,17 +22,39 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# Host dev tree: native-s3/ is a sibling of this repo's parent directory.
-# Docker image: native-s3/patches and native-s3/new-files are copied in at
-# build time under ./local-changes instead (see Dockerfile).
-if [ -d ../../native-s3 ]; then
-	LOCAL="$(cd ../../native-s3 && pwd)"
-elif [ -d local-changes ]; then
+# Find the checkout of this project (the one holding patches/ and new-files/).
+# Do not hardcode its directory name: it depends on where the user cloned it.
+#   1. $LOCAL_CHANGES, if the caller points us at it explicitly.
+#   2. ./local-changes -- the Docker image copies patches/ and new-files/ there
+#      at build time (see Dockerfile).
+#   3. Otherwise look for a checkout next to, or one level above, this tree.
+has_changes() { [ -d "$1/patches" ] && [ -d "$1/new-files" ]; }
+
+LOCAL=""
+if [ -n "${LOCAL_CHANGES:-}" ]; then
+	has_changes "$LOCAL_CHANGES" || {
+		echo "error: LOCAL_CHANGES=$LOCAL_CHANGES has no patches/ and new-files/" >&2
+		exit 1
+	}
+	LOCAL="$(cd "$LOCAL_CHANGES" && pwd)"
+elif has_changes local-changes; then
 	LOCAL="$(cd local-changes && pwd)"
 else
-	echo "error: neither ../../native-s3 nor ./local-changes found -- need patches/ and new-files/" >&2
+	for d in ../* ../../*; do
+		if has_changes "$d"; then LOCAL="$(cd "$d" && pwd)"; break; fi
+	done
+fi
+
+if [ -z "$LOCAL" ]; then
+	cat >&2 <<-EOF
+	error: cannot find this project's patches/ and new-files/.
+	Clone https://github.com/paulneja/Linux-on-esp32-S3 next to this tree, or
+	point us at an existing checkout:
+	    LOCAL_CHANGES=/path/to/Linux-on-esp32-S3 $0 ${1:-buildroot}
+	EOF
 	exit 1
 fi
+echo ">>> using local changes from: $LOCAL"
 
 case "${1:-}" in
 buildroot)
@@ -53,7 +75,7 @@ esp-hosted)
 	[ -d build/esp-hosted/esp_hosted_ng ] || { echo "error: build/esp-hosted/esp_hosted_ng missing -- clone it first" >&2; exit 1; }
 	echo ">>> esp-hosted firmware: applying AP-support patch + committing locally"
 	echo "    (esp_driver/CMakeLists.txt runs 'git reset --hard' on every cmake invocation;"
-	echo "     a local commit is the only thing that survives that -- see PLAN.md)"
+	echo "     a local commit is the only thing that survives that -- see DEVELOPMENT.md)"
 	cd build/esp-hosted/esp_hosted_ng
 	if git log --oneline -1 | grep -q "local-only, never push"; then
 		echo "    already committed locally -- skipping"
