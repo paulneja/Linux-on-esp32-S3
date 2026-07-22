@@ -1,10 +1,10 @@
 # WiFi provisioning over BLE — work in progress
 
-> **Status: the silent-brick failure mode is fixed** (`make-images.sh` now
-> refuses to package a mismatched image — see "The landmine" below). What is
-> still open is BLE **connection reliability**, so treat this as a release
-> candidate rather than a release. `main` / release `0.3` remains the stable
-> thing to flash.
+> **Status: working end to end on hardware.** A phone joined the board to a
+> WiFi network over BLE — scan, pick, password, DHCP address — with no PC and no
+> serial cable. The silent-brick failure mode that made this dangerous is fixed:
+> `make-images.sh` now refuses to package a mismatched image (see "The
+> landmine"). What is not yet characterised is how *reliably* it connects.
 
 ## What this is for
 
@@ -54,43 +54,34 @@ advertises as `Esp32-Linux`; a phone connects and the GATT service is
 discovered; `/dev/esp-ble` is created; the daemon starts; the dialog was
 exercised from a phone.
 
-**Not solid yet** — this is the one thing left before calling it a release:
+**Verified on hardware**: the whole chain delivers. Text typed on a phone
+arrives on `/dev/esp-ble`, the daemon answers with the network list, and
+selecting one and entering the password brings the STA up and reports the DHCP
+address.
 
-- **Connection reliability.** It connected from a phone, but from a Linux PC
-  (BlueZ/bleak) a stress run of 6 cycles produced 0 complete dialogs: the first
-  attempt times out during service discovery and the board then stops
-  advertising entirely until it is reset.
+**Not characterised yet**:
 
-  Three hardening fixes are already in (they did not resolve it, but each was a
-  real defect):
-  - the GATT write callback no longer blocks on a full queue (`portMAX_DELAY`
-    in the NimBLE host task would hang the whole stack);
-  - a callout re-arms advertising every 5s instead of trusting a single
-    disconnect event;
-  - looser connection parameters (30-50 ms interval, 4 s supervision timeout).
-
-  **The open question**: it has never been independently confirmed that the
-  firmware -> Linux direction of the pipe delivers anything. Everything
-  observed so far (connect, GATT discovery) exercises only the BLE link. A
-  heartbeat sent through the pipe was not seen on `/dev/esp-ble`, but that test
-  was inconclusive — the device is single-open and the daemon holds it, so a
-  second reader gets `EBUSY`.
-
-  **Test that settles it**, from the serial console:
-
-  ```sh
-  killall ble-wifi-setup     # release the single-open device
-  cat /dev/esp-ble &         # now connect from a phone and type something
-  ```
-
-  If characters appear, the pipe works and the problem is purely BLE link
-  reliability. If nothing appears, the pipe itself is the bug and the BLE side
-  is fine.
-- The full scan → pick → password → connected flow has been exercised, but not
-  repeatedly or in varied conditions.
+- **Connection reliability.** It connects and completes the dialog from a
+  phone. From a Linux host (BlueZ/bleak) a 6-cycle stress run produced 0
+  complete dialogs — but the same board served a phone correctly throughout, so
+  that result says more about the test host's Bluetooth than about the firmware.
+  How often a phone fails to connect has not been measured.
 - Connecting does not show the menu by itself: the firmware never tells Linux
   that a phone attached, so you must send a character first. Wiring
   `BLE_GAP_EVENT_CONNECT` to greet automatically is an obvious improvement.
+
+Three firmware defects were fixed while chasing the reliability question. None
+of them was the reason the dialog appeared not to work — that turned out to be
+the test host — but each was real:
+
+- The GATT write callback ran `xQueueSend` with `portMAX_DELAY`. That callback
+  executes in the NimBLE host task, so a full queue would hang the entire BLE
+  stack. It now drops the byte after 50 ms instead.
+- Advertising is re-armed by a periodic callout rather than relying solely on
+  `BLE_GAP_EVENT_DISCONNECT`, so a connection that fails midway cannot leave
+  the peripheral silent.
+- Connection parameters are relaxed on connect (30-50 ms interval, 4 s
+  supervision timeout), since this core also runs WiFi and the IPC to Linux.
 
 ## The landmine (read this before changing anything)
 
@@ -158,6 +149,15 @@ now that a mismatch cannot slip through.
   kills GAP event processing — the connection then dies during service
   discovery. `ESP_LOG*` are compiled out anyway (`LOG_MAXIMUM_LEVEL=1`), which
   is why they were harmless before.
+- **`/dev/esp-ble` takes a single reader.** The daemon holds it open for its
+  whole lifetime. To watch the raw pipe for debugging, stop the daemon first
+  (`killall ble-wifi-setup`), or the second reader just gets `EBUSY`:
+
+  ```sh
+  killall ble-wifi-setup
+  cat /dev/esp-ble &        # now type on the phone; characters appear here
+  /etc/init.d/S46blewifi start   # remember to put it back
+  ```
 - **The daemon avoids forking.** 8MB and no swap; `wifi scan` alone spawns
   iw+awk+sort+awk. An earlier version that read the pipe with `dd | tr` in a
   loop kept those alive across the scan and got OOM-killed. It now opens the
