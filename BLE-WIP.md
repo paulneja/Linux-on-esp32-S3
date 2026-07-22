@@ -1,9 +1,10 @@
 # WiFi provisioning over BLE — work in progress
 
-> **This branch is not release quality. Do not merge it into `main` and do not
-> publish an image built from it.** It works, but it carries a failure mode that
-> bricks the boot silently (see "The landmine" below). `main` / release `0.3` is
-> the stable thing to flash.
+> **Status: the silent-brick failure mode is fixed** (`make-images.sh` now
+> refuses to package a mismatched image — see "The landmine" below). What is
+> still open is BLE **connection reliability**, so treat this as a release
+> candidate rather than a release. `main` / release `0.3` remains the stable
+> thing to flash.
 
 ## What this is for
 
@@ -53,11 +54,14 @@ advertises as `Esp32-Linux`; a phone connects and the GATT service is
 discovered; `/dev/esp-ble` is created; the daemon starts; the dialog was
 exercised from a phone.
 
-**Not solid yet**:
+**Not solid yet** — this is the one thing left before calling it a release:
 
 - **Connection reliability.** Connecting works from a phone, but from a Linux PC
   (BlueZ/bleak) it frequently times out during service discovery, and after a
-  failed attempt advertising does not restart. Root cause not established.
+  failed attempt advertising does not restart. Root cause not established;
+  suspect ATT timeouts from interrupt latency on core 0 while Linux runs on
+  core 1. Worth trying: looser BLE connection parameters, and restarting
+  advertising defensively rather than only on `BLE_GAP_EVENT_DISCONNECT`.
 - The full scan → pick → password → connected flow has been exercised, but not
   repeatedly or in varied conditions.
 - Connecting does not show the menu by itself: the firmware never tells Linux
@@ -89,28 +93,39 @@ long debugging session to find.
 Adding NimBLE grew the firmware by ~117 KB and moved the buffer from
 `0x4037c000` to `0x4037f000`, which is exactly how it was discovered.
 
-**Check after any firmware change:**
+### This is now caught at build time
+
+`make-images.sh` reads the address out of the firmware ELF and compares it to
+the kernel config. On a mismatch it refuses to package and prints the exact
+line to change:
+
+```
+!! MISMATCH: firmware reserves 0x4037f000, kernel expects 0x4037c000
+!! An image built like this boots the kernel fine and then dies
+!! silently at /sbin/init, with nothing on the console.
+!! Fix: set CONFIG_VECTORS_ADDR=0x4037f000 in
+!!   new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config
+error: refusing to package an image that will not boot
+```
+
+So the failure is now loud and self-explanatory instead of a silent brick, and
+a broken image cannot be shipped by accident. To check by hand:
 
 ```bash
 xtensa-esp32s3-elf-nm build/network_adapter.elf | grep space_for_vectors
-# must equal CONFIG_VECTORS_ADDR in devkit_c1_16m_linux.config
 ```
 
 `CONFIG_KERNEL_LOAD_ADDRESS` is coupled the same way to the `linux` partition
-offset (`0x42000000 + offset`).
+offset (`0x42000000 + offset`), and is not yet checked automatically.
 
-### What has to happen before this is mergeable
+### Still worth doing
 
-Break that coupling. In order of preference:
-
-1. **Pin `space_for_vectors` to a fixed address** with a linker section, so it
-   stops moving.
-2. **Have the firmware pass the address to Linux** in a `bp_tag` at boot — the
-   mechanism already exists (it is how the kernel command line is passed), so
-   the two would self-synchronise.
-3. At minimum, a **build-time check** that fails loudly on a mismatch.
-
-Option 2 is the right engineering answer.
+The check makes the coupling safe, not absent. Removing it entirely would mean
+either pinning `space_for_vectors` to a fixed address with a linker section, or
+having the firmware pass the address to Linux in a `bp_tag` at boot (the
+mechanism already exists — it is how the kernel command line is passed). The
+second is the right engineering answer, but neither is required to ship safely
+now that a mismatch cannot slip through.
 
 ## Other things worth knowing
 
