@@ -56,12 +56,36 @@ exercised from a phone.
 
 **Not solid yet** — this is the one thing left before calling it a release:
 
-- **Connection reliability.** Connecting works from a phone, but from a Linux PC
-  (BlueZ/bleak) it frequently times out during service discovery, and after a
-  failed attempt advertising does not restart. Root cause not established;
-  suspect ATT timeouts from interrupt latency on core 0 while Linux runs on
-  core 1. Worth trying: looser BLE connection parameters, and restarting
-  advertising defensively rather than only on `BLE_GAP_EVENT_DISCONNECT`.
+- **Connection reliability.** It connected from a phone, but from a Linux PC
+  (BlueZ/bleak) a stress run of 6 cycles produced 0 complete dialogs: the first
+  attempt times out during service discovery and the board then stops
+  advertising entirely until it is reset.
+
+  Three hardening fixes are already in (they did not resolve it, but each was a
+  real defect):
+  - the GATT write callback no longer blocks on a full queue (`portMAX_DELAY`
+    in the NimBLE host task would hang the whole stack);
+  - a callout re-arms advertising every 5s instead of trusting a single
+    disconnect event;
+  - looser connection parameters (30-50 ms interval, 4 s supervision timeout).
+
+  **The open question**: it has never been independently confirmed that the
+  firmware -> Linux direction of the pipe delivers anything. Everything
+  observed so far (connect, GATT discovery) exercises only the BLE link. A
+  heartbeat sent through the pipe was not seen on `/dev/esp-ble`, but that test
+  was inconclusive — the device is single-open and the daemon holds it, so a
+  second reader gets `EBUSY`.
+
+  **Test that settles it**, from the serial console:
+
+  ```sh
+  killall ble-wifi-setup     # release the single-open device
+  cat /dev/esp-ble &         # now connect from a phone and type something
+  ```
+
+  If characters appear, the pipe works and the problem is purely BLE link
+  reliability. If nothing appears, the pipe itself is the bug and the BLE side
+  is fine.
 - The full scan → pick → password → connected flow has been exercised, but not
   repeatedly or in varied conditions.
 - Connecting does not show the menu by itself: the firmware never tells Linux
