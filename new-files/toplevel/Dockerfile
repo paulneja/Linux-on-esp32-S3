@@ -15,10 +15,16 @@
 # the kernel and the firmware. Results land in the mounted build/ directory.
 FROM debian:12
 
+# cpio, file and bzip2 are buildroot's, not crosstool-NG's: buildroot checks
+# for them in support/dependencies/ and aborts with "You must install 'cpio'"
+# hours into the build, after the whole toolchain has already been compiled.
+# debian:12 ships perl/tar/find/xargs/which/cmp/gzip already; these three it
+# does not.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    autoconf automake bash bc bison build-essential cmake flex gawk git \
-    gperf help2man libncurses-dev libtool libtool-bin libusb-1.0-0 \
-    python3 python3-venv rsync texinfo unzip wget ca-certificates patch \
+    autoconf automake bash bc bison build-essential bzip2 cmake cpio file \
+    flex gawk git gperf help2man libncurses-dev libtool libtool-bin \
+    libusb-1.0-0 python3 python3-venv rsync texinfo unzip wget \
+    ca-certificates patch \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /work
