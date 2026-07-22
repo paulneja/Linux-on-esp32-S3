@@ -29,6 +29,17 @@ CR=$(printf '\r')
 # phone sent while the device was closed.
 exec 3<> "$DEV" || exit 1
 
+# The firmware advertises as soon as its BLE stack syncs, which is before
+# Linux has finished booting. Connecting in that window is unreliable: core 0
+# is still bringing up WiFi. Give it a moment to settle rather than answering
+# a phone we cannot serve yet.
+n=0
+while [ ! -e "/sys/class/net/$IFACE" ]; do
+	n=$((n + 1))
+	[ "$n" -gt 60 ] && break
+	sleep 1
+done
+
 say() {
 	printf '%s\r\n' "$1" >&3
 }
