@@ -110,6 +110,75 @@ if strings "$OUT/etc.jffs2" | grep -qE '^[[:space:]]*psk="'; then
 fi
 echo "    clean"
 
+# --- sanity: Linux's exception vectors must land in the firmware's hole ---
+# The firmware reserves 4K of IRAM for Linux's exception vectors:
+#
+#   static char IRAM_ATTR space_for_vectors[4096];   (main/linux_boot.c)
+#
+# The linker picks that address, so it MOVES whenever the firmware's size or
+# layout changes. The kernel has it hard-coded in CONFIG_VECTORS_ADDR. If the
+# two drift apart, Linux writes its vectors over firmware memory and dies the
+# instant it executes userspace -- no panic, no console output, the boot just
+# stops dead at "Run /sbin/init". Adding the BLE stack grew the firmware by
+# ~117K and moved it from 0x4037c000 to 0x4037f000, which is exactly how this
+# was found, after a long hunt. Never ship that silently again: check it here.
+echo "==> checking Linux vector address against the firmware"
+KCONF="$REPO/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config"
+FW_ELF="$NA/build/network_adapter.elf"
+NM=$(command -v xtensa-esp32s3-elf-nm 2>/dev/null || \
+     ls /home/*/.espressif/tools/xtensa-esp32s3-elf/*/xtensa-esp32s3-elf/bin/xtensa-esp32s3-elf-nm 2>/dev/null | head -1)
+
+if [ -z "$NM" ] || [ ! -f "$FW_ELF" ]; then
+	echo "  !! cannot verify (no xtensa nm, or firmware ELF missing)." >&2
+	echo "  !! Check by hand that space_for_vectors in $FW_ELF" >&2
+	echo "  !! equals CONFIG_VECTORS_ADDR in $KCONF" >&2
+else
+	FW_VEC=$("$NM" "$FW_ELF" | awk '/ space_for_vectors$/ {print $1}' | head -1)
+	K_VEC=$(sed -n 's/^CONFIG_VECTORS_ADDR=0x\([0-9a-fA-F]*\).*/\1/p' "$KCONF" | head -1)
+	# normalise: nm prints lowercase hex without 0x, kconfig may use either case
+	FW_VEC=$(printf '%s' "$FW_VEC" | tr 'A-F' 'a-f')
+	K_VEC=$(printf '%s' "$K_VEC" | tr 'A-F' 'a-f' | sed 's/^0*//')
+	FW_CMP=$(printf '%s' "$FW_VEC" | sed 's/^0*//')
+
+	if [ -z "$FW_VEC" ] || [ -z "$K_VEC" ]; then
+		echo "  !! could not read one of the addresses -- verify by hand." >&2
+	elif [ "$FW_CMP" != "$K_VEC" ]; then
+		# Realign and rebuild rather than making the user do it: the
+		# address moving is normal (any firmware change can do it), and
+		# the remedy is always the same single line.
+		echo "    address moved: firmware 0x$FW_VEC, kernel 0x$K_VEC"
+		echo "==> realigning the kernel and rebuilding it"
+
+		sed -i "s/^CONFIG_VECTORS_ADDR=.*/CONFIG_VECTORS_ADDR=0x$FW_VEC/" "$KCONF" \
+			|| die "could not update $KCONF"
+		KDOTCONF="$BUILD/build-buildroot-$PROFILE/build/linux-xtensa-6.11-esp32-tag/.config"
+		[ -f "$KDOTCONF" ] && \
+			sed -i "s/^CONFIG_VECTORS_ADDR=.*/CONFIG_VECTORS_ADDR=0x$FW_VEC/" "$KDOTCONF"
+
+		# Same environment the build driver uses for the kernel.
+		: "${GCC14_SHIM:=$HOME/esp/gcc14shim}"
+		[ -d "$GCC14_SHIM" ] && PATH="$GCC14_SHIM:$PATH"
+		[ -d "$SRC/autoconf-2.71/root/bin" ] && PATH="$SRC/autoconf-2.71/root/bin:$PATH"
+		export PATH
+		export XTENSA_GNU_CONFIG="$BUILD/xtensa-dynconfig/esp32s3.so"
+
+		make -C "$BUILD/buildroot" O="$BUILD/build-buildroot-$PROFILE" \
+			linux-rebuild >/dev/null 2>&1 \
+			|| die "kernel rebuild failed -- rerun the build by hand"
+
+		cp -f "$BR/xipImage" "$OUT/xipImage" || die "no xipImage after rebuild"
+		fits "$OUT/xipImage" "$OFF_LINUX" "$SIZE_LINUX" xipImage
+
+		# Trust nothing: confirm the rebuilt kernel really agrees now.
+		K_VEC=$(sed -n 's/^CONFIG_VECTORS_ADDR=0x\([0-9a-fA-F]*\).*/\1/p' "$KCONF" | head -1)
+		K_VEC=$(printf '%s' "$K_VEC" | tr 'A-F' 'a-f' | sed 's/^0*//')
+		[ "$FW_CMP" = "$K_VEC" ] || die "still mismatched after rebuild"
+		echo "    realigned to 0x$FW_VEC and kernel rebuilt"
+	else
+		echo "    vectors at 0x$FW_VEC, kernel agrees"
+	fi
+fi
+
 # --- merge --------------------------------------------------------------
 echo "==> merging into linux-esp32s3-native-full.bin"
 # shellcheck disable=SC2086

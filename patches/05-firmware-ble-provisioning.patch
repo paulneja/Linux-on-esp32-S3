@@ -1,0 +1,527 @@
+diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/CMakeLists.txt b/esp_hosted_ng/esp/esp_driver/network_adapter/main/CMakeLists.txt
+index a46af63..6b19b1d 100644
+--- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/CMakeLists.txt
++++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-set(COMPONENT_SRCS "app_main.c" "slave_bt.c" "cmd.c" "stats.c" "linux_boot.c" "linux_ipc.c" "linux_flash.c")
++set(COMPONENT_SRCS "app_main.c" "slave_bt.c" "cmd.c" "stats.c" "linux_boot.c" "linux_ipc.c" "linux_flash.c" "ble_prov.c")
+ set(COMPONENT_ADD_INCLUDEDIRS "./include")
+ 
+ if(CONFIG_IDF_TARGET_ESP32S3)
+diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c
+index e72c55a..797421d 100644
+--- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c
++++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c
+@@ -48,6 +48,9 @@
+ 
+ #include "slave_bt.c"
+ #include "stats.h"
++#ifdef CONFIG_BT_ENABLED
++#include "ble_prov.h"
++#endif
+ #include "linux_ipc.h"
+ 
+ static const char TAG[] = "FW_MAIN";
+@@ -102,6 +105,7 @@ uint8_t ap_mac[MAC_ADDR_LEN] = {0};
+ extern void wake_host();
+ #endif
+ 
++
+ uint8_t get_capabilities(void)
+ {
+ 	uint8_t cap = 0;
+@@ -526,6 +530,13 @@ void process_rx_pkt(interface_buffer_handle_t *buf_handle)
+ 		else if (buf_handle->if_type == ESP_TEST_IF) {
+ 			debug_update_raw_tp_rx_count(payload_len);
+ 		}
++#ifdef CONFIG_BT_ENABLED
++		else if (buf_handle->if_type == ESP_BLE_PROV_IF) {
++			/* Linux is talking to the phone over the BLE link
++			 * (the WiFi provisioning menu). See ble_prov.c. */
++			ble_prov_from_linux(payload, payload_len);
++		}
++#endif
+ 	}
+ 	/* Free buffer handle */
+ 	if (buf_handle->free_buf_handle && buf_handle->priv_buffer_handle) {
+@@ -648,7 +659,6 @@ void app_main()
+ 	}
+ 
+ #ifdef CONFIG_BT_ENABLED
+-	initialise_bluetooth();
+ 
+ 	ret = esp_read_mac(mac, ESP_MAC_BT);
+ 	if (ret) {
+@@ -683,6 +693,18 @@ void app_main()
+ 		assert(to_host_queue[prio_q_idx] != NULL);
+ 	}
+ 
++#ifdef CONFIG_BT_ENABLED
++	/* NOT initialise_bluetooth(): that is esp-hosted's HCI passthrough,
++	 * which hands the controller to the Linux host for BlueZ -- unusable on
++	 * this NOMMU/8MB target. Keep the controller here and run a NimBLE
++	 * peripheral instead, so a phone can join the board to WiFi with no PC.
++	 *
++	 * Started only now, after to_host_queue exists: the BLE link can take a
++	 * write as soon as it advertises, and that write goes straight into
++	 * those queues. */
++	ble_prov_init();
++#endif
++
+ 	assert(xTaskCreate(recv_task , "recv_task" , TASK_DEFAULT_STACK_SIZE , NULL , TASK_DEFAULT_PRIO, NULL) == pdTRUE);
+ 	assert(xTaskCreate(send_task , "send_task" , TASK_DEFAULT_STACK_SIZE, NULL , TASK_DEFAULT_PRIO , NULL) == pdTRUE);
+ 
+diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/ble_prov.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/ble_prov.c
+new file mode 100644
+index 0000000..88b1776
+--- /dev/null
++++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/ble_prov.c
+@@ -0,0 +1,333 @@
++// SPDX-License-Identifier: Apache-2.0
++/*
++ * BLE provisioning link for Linux-on-ESP32-S3.
++ *
++ * Runs a NimBLE peripheral advertising as "Esp32-Linux" exposing the Nordic
++ * UART Service (NUS), the de-facto "serial over BLE" profile that phone apps
++ * (Serial Bluetooth Terminal, nRF Connect, ...) speak. The ESP32-S3 has no
++ * Bluetooth Classic, so SPP is not an option -- NUS over BLE is.
++ *
++ * Purpose: let the board be joined to a WiFi network from a phone, with no PC
++ * and no serial cable. This file is only the transport (a byte pipe); the
++ * provisioning dialog itself (scan, pick a network, ask for the password)
++ * lives on the Linux side, which is what owns the WiFi connection.
++ *
++ * Do NOT log from this file. Once Linux owns the USB-Serial-JTAG console,
++ * a printf from core 0 blocks forever, which hangs the NimBLE host task and
++ * kills GAP event processing -- the connection then dies during service
++ * discovery. ESP_LOG* are compiled out here anyway (LOG_MAXIMUM_LEVEL=1).
++ *
++ * Note this deliberately does NOT use esp-hosted's slave_bt.c HCI passthrough:
++ * that hands the controller to the Linux host for BlueZ, which cannot run on
++ * this NOMMU/8MB target. Here the controller stays with NimBLE on core 0.
++ */
++
++/* sdkconfig.h first: ESP-IDF does not force-include it, and the guard below
++ * needs CONFIG_BT_ENABLED to be defined or this whole file compiles to
++ * nothing (which is exactly how ble_prov_init ended up undefined once). */
++#include "sdkconfig.h"
++
++#ifdef CONFIG_BT_ENABLED
++
++#include <string.h>
++#include <stdbool.h>
++#include "esp_log.h"
++#include <stdio.h>
++#include "nvs_flash.h"
++
++#include "nimble/nimble_port.h"
++#include "nimble/nimble_port_freertos.h"
++#include "host/ble_hs.h"
++#include "host/util/util.h"
++#include "services/gap/ble_svc_gap.h"
++#include "services/gatt/ble_svc_gatt.h"
++#include "nimble/nimble_npl.h"
++
++#include "interface.h"
++#include "adapter.h"
++#include "ble_prov.h"
++
++/* Owned by app_main: the queues that carry packets up to Linux. */
++extern QueueHandle_t to_host_queue[MAX_PRIORITY_QUEUES];
++
++static const char *TAG = "BLE_PROV";
++
++#define BLE_PROV_DEVICE_NAME "Esp32-Linux"
++
++/* Nordic UART Service UUIDs (128-bit, NimBLE wants them little-endian). */
++/* 6E400001-B5A3-F393-E0A9-E50E24DCCA9E */
++static const ble_uuid128_t nus_svc_uuid =
++	BLE_UUID128_INIT(0x9e, 0xca, 0xdc, 0x24, 0x0e, 0xe5, 0xa9, 0xe0,
++			 0x93, 0xf3, 0xa3, 0xb5, 0x01, 0x00, 0x40, 0x6e);
++/* 6E400002-... : RX, phone -> board (write) */
++static const ble_uuid128_t nus_rx_uuid =
++	BLE_UUID128_INIT(0x9e, 0xca, 0xdc, 0x24, 0x0e, 0xe5, 0xa9, 0xe0,
++			 0x93, 0xf3, 0xa3, 0xb5, 0x02, 0x00, 0x40, 0x6e);
++/* 6E400003-... : TX, board -> phone (notify) */
++static const ble_uuid128_t nus_tx_uuid =
++	BLE_UUID128_INIT(0x9e, 0xca, 0xdc, 0x24, 0x0e, 0xe5, 0xa9, 0xe0,
++			 0x93, 0xf3, 0xa3, 0xb5, 0x03, 0x00, 0x40, 0x6e);
++
++static uint8_t own_addr_type;
++static uint16_t conn_handle = BLE_HS_CONN_HANDLE_NONE;
++static uint16_t tx_val_handle;
++
++static void start_advertising(void);
++
++/* Advertising must never stay off. A connection attempt that fails midway can
++ * leave the peripheral silent -- the disconnect event is the only thing that
++ * would restart it, and if that event is missed the board simply disappears
++ * until it is power-cycled. This re-arms it periodically instead of trusting a
++ * single event. */
++static struct ble_npl_callout adv_watchdog;
++
++static void ensure_advertising(void)
++{
++	if (conn_handle == BLE_HS_CONN_HANDLE_NONE && !ble_gap_adv_active())
++		start_advertising();
++}
++
++static void adv_watchdog_cb(struct ble_npl_event *ev)
++{
++	ensure_advertising();
++	ble_npl_callout_reset(&adv_watchdog, ble_npl_time_ms_to_ticks32(5000));
++}
++
++/* --- sending: board -> phone -------------------------------------------- */
++int ble_prov_send(const char *data, int len)
++{
++	struct os_mbuf *om;
++
++	if (conn_handle == BLE_HS_CONN_HANDLE_NONE || !tx_val_handle)
++		return -1;
++
++	om = ble_hs_mbuf_from_flat(data, len);
++	if (!om)
++		return -1;
++
++	return ble_gatts_notify_custom(conn_handle, tx_val_handle, om);
++}
++
++/* --- receiving: phone -> board ------------------------------------------ */
++static int nus_access_cb(uint16_t c_handle, uint16_t attr_handle,
++			 struct ble_gatt_access_ctxt *ctxt, void *arg)
++{
++	uint16_t len;
++	char buf[256];
++
++	if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR)
++		return BLE_ATT_ERR_UNLIKELY;
++
++	len = OS_MBUF_PKTLEN(ctxt->om);
++	if (len >= sizeof(buf))
++		len = sizeof(buf) - 1;
++
++	if (ble_hs_mbuf_to_flat(ctxt->om, buf, len, &len) != 0)
++		return BLE_ATT_ERR_UNLIKELY;
++	buf[len] = '\0';
++
++
++	/* Hand the bytes to Linux, which runs the actual provisioning dialog
++	 * (it owns the WiFi connection, so the scan and the join must happen
++	 * there). This side is only a pipe. */
++	ble_prov_to_linux(buf, len);
++
++	return 0;
++}
++
++/* --- the pipe: BLE <-> Linux -------------------------------------------- */
++int ble_prov_to_linux(const char *data, int len)
++{
++	interface_buffer_handle_t buf_handle;
++	uint8_t *buf;
++
++	/* app_main creates these later than this file is initialised; a phone
++	 * that writes before then would otherwise assert inside xQueueSend. */
++	if (!to_host_queue[PRIO_Q_MID])
++		return -1;
++
++	buf = malloc(len);
++	if (!buf) {
++		return -1;
++	}
++	memcpy(buf, data, len);
++
++	memset(&buf_handle, 0, sizeof(buf_handle));
++	buf_handle.if_type = ESP_BLE_PROV_IF;
++	buf_handle.if_num = 0;
++	buf_handle.payload_len = len;
++	buf_handle.payload = buf;
++	buf_handle.wlan_buf_handle = buf;
++	buf_handle.free_buf_handle = free;
++
++	/* NEVER block here. This runs in the NimBLE host task (GATT write
++	 * callback); waiting on a full queue hangs the entire BLE stack --
++	 * no GAP events, advertising never restarts, and the board vanishes
++	 * until it is power-cycled. Dropping a keystroke is the cheap failure;
++	 * losing Bluetooth is not. */
++	if (xQueueSend(to_host_queue[PRIO_Q_MID], &buf_handle,
++		       pdMS_TO_TICKS(50)) != pdTRUE) {
++		free(buf);
++		return -1;
++	}
++
++	return 0;
++}
++
++/* Called from app_main's RX dispatch when Linux sends us bytes destined for
++ * the phone (the menu, prompts, results). */
++void ble_prov_from_linux(const uint8_t *payload, uint16_t len)
++{
++	/* Nothing connected: the bytes are simply dropped. Cannot log here,
++	 * see the note at the top of this file. */
++	(void)ble_prov_send((const char *)payload, len);
++}
++
++static const struct ble_gatt_svc_def gatt_svcs[] = {
++	{
++		.type = BLE_GATT_SVC_TYPE_PRIMARY,
++		.uuid = &nus_svc_uuid.u,
++		.characteristics = (struct ble_gatt_chr_def[]) {
++			{
++				.uuid = &nus_rx_uuid.u,
++				.access_cb = nus_access_cb,
++				.flags = BLE_GATT_CHR_F_WRITE |
++					 BLE_GATT_CHR_F_WRITE_NO_RSP,
++			}, {
++				.uuid = &nus_tx_uuid.u,
++				.access_cb = nus_access_cb,
++				.val_handle = &tx_val_handle,
++				.flags = BLE_GATT_CHR_F_NOTIFY,
++			}, {
++				0,
++			}
++		},
++	},
++	{
++		0,
++	},
++};
++
++/* --- connection lifecycle ----------------------------------------------- */
++static int gap_event_cb(struct ble_gap_event *event, void *arg)
++{
++
++	switch (event->type) {
++	case BLE_GAP_EVENT_CONNECT:
++		if (event->connect.status == 0) {
++			struct ble_gap_upd_params p = {
++				.itvl_min = 24,			/* 30 ms */
++				.itvl_max = 40,			/* 50 ms */
++				.latency = 0,
++				.supervision_timeout = 400,	/* 4 s */
++			};
++
++			conn_handle = event->connect.conn_handle;
++			/* Give the link plenty of slack: this core is also
++			 * running WiFi and the IPC to Linux, so a tight
++			 * interval makes service discovery time out. */
++			ble_gap_update_params(conn_handle, &p);
++		} else {
++			ensure_advertising();
++		}
++		break;
++
++	case BLE_GAP_EVENT_DISCONNECT:
++		conn_handle = BLE_HS_CONN_HANDLE_NONE;
++		ensure_advertising();
++		break;
++
++	case BLE_GAP_EVENT_ADV_COMPLETE:
++		ensure_advertising();
++		break;
++
++	default:
++		break;
++	}
++
++	return 0;
++}
++
++static void start_advertising(void)
++{
++	struct ble_gap_adv_params adv_params;
++	struct ble_hs_adv_fields fields;
++	const char *name = ble_svc_gap_device_name();
++	int rc;
++
++	memset(&fields, 0, sizeof(fields));
++	fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
++	fields.name = (uint8_t *)name;
++	fields.name_len = strlen(name);
++	fields.name_is_complete = 1;
++
++	rc = ble_gap_adv_set_fields(&fields);
++	if (rc) {
++		return;
++	}
++
++	memset(&adv_params, 0, sizeof(adv_params));
++	adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
++	adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
++
++	rc = ble_gap_adv_start(own_addr_type, NULL, BLE_HS_FOREVER,
++			       &adv_params, gap_event_cb, NULL);
++	(void)rc;
++}
++
++static void on_sync(void)
++{
++	if (ble_hs_util_ensure_addr(0) != 0 ||
++	    ble_hs_id_infer_auto(0, &own_addr_type) != 0) {
++		return;
++	}
++	start_advertising();
++
++	ble_npl_callout_init(&adv_watchdog, nimble_port_get_dflt_eventq(),
++			     adv_watchdog_cb, NULL);
++	ble_npl_callout_reset(&adv_watchdog, ble_npl_time_ms_to_ticks32(5000));
++}
++
++static void on_reset(int reason)
++{
++}
++
++static void host_task(void *param)
++{
++	nimble_port_run();
++	nimble_port_freertos_deinit();
++}
++
++esp_err_t ble_prov_init(void)
++{
++	int rc;
++
++	rc = nimble_port_init();
++	if (rc != ESP_OK) {
++		return rc;
++	}
++
++	ble_hs_cfg.sync_cb = on_sync;
++	ble_hs_cfg.reset_cb = on_reset;
++
++	ble_svc_gap_init();
++	ble_svc_gatt_init();
++
++	rc = ble_gatts_count_cfg(gatt_svcs);
++	if (rc) {
++		return ESP_FAIL;
++	}
++	rc = ble_gatts_add_svcs(gatt_svcs);
++	if (rc) {
++		return ESP_FAIL;
++	}
++
++	rc = ble_svc_gap_device_name_set(BLE_PROV_DEVICE_NAME);
++	(void)rc;
++
++	nimble_port_freertos_init(host_task);
++
++	return ESP_OK;
++}
++
++#endif /* CONFIG_BT_ENABLED */
+diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h b/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h
+index 6c817ac..fb313ec 100644
+--- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h
++++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h
+@@ -56,6 +56,11 @@ enum ESP_INTERFACE_TYPE {
+ 	ESP_HCI_IF,
+ 	ESP_INTERNAL_IF,
+ 	ESP_TEST_IF,
++	/* Byte pipe between the BLE provisioning link (ble_prov.c, core 0) and
++	 * Linux, which exposes it as /dev/esp-ble. Appended so the existing
++	 * values keep their numbering -- this enum is shared with the host
++	 * driver and both sides must agree. */
++	ESP_BLE_PROV_IF,
+ 	ESP_MAX_IF,
+ };
+ 
+diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/ble_prov.h b/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/ble_prov.h
+new file mode 100644
+index 0000000..db958af
+--- /dev/null
++++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/ble_prov.h
+@@ -0,0 +1,26 @@
++// SPDX-License-Identifier: Apache-2.0
++/*
++ * BLE provisioning link (Nordic UART Service over BLE) — see ble_prov.c.
++ */
++
++#ifndef __BLE_PROV_H__
++#define __BLE_PROV_H__
++
++#include <stdint.h>
++#include "esp_err.h"
++
++/* Start the NimBLE peripheral advertising as "Esp32-Linux". */
++esp_err_t ble_prov_init(void);
++
++/* Send bytes to the connected phone (notify on the NUS TX characteristic).
++ * Returns 0 on success, negative if nothing is connected. */
++int ble_prov_send(const char *data, int len);
++
++/* Pipe a chunk received from the phone up to Linux (ESP_BLE_PROV_IF). */
++int ble_prov_to_linux(const char *data, int len);
++
++/* Deliver a chunk coming down from Linux to the phone. Called from the
++ * app_main RX dispatch. */
++void ble_prov_from_linux(const uint8_t *payload, uint16_t len);
++
++#endif /* __BLE_PROV_H__ */
+diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c
+index e19c62a..2e619d9 100644
+--- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c
++++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c
+@@ -6,6 +6,7 @@
+ #include "linux_ll.h"
+ #include "hal/cache_hal.h"
+ #include "hal/mmu_ll.h"
++#include "esp_log.h"
+ 
+ static uint32_t first_free_mmu = ~0;
+ 
+@@ -26,6 +27,15 @@ void init_linux_mmap(void)
+ 			abort();
+ 		}
+ 	}
++	/* How far the firmware's own flash mappings reach decides which MMU
++	 * entries are left for Linux (identity-mapped above). Log it: if this
++	 * ever grows past the entries Linux needs for its XIP kernel/rootfs,
++	 * Linux gets the wrong flash pages. */
++	printf("MMU: first_free_mmu=%u (firmware uses entries 0..%u)\n",
++	       (unsigned)first_free_mmu, (unsigned)first_free_mmu - 1);
++	printf("MMU: kernel e0x14=0x%04x rootfs e0x54=0x%04x\n",
++	       (unsigned)dst[0x14], (unsigned)dst[0x54]);
++
+ #ifdef CONFIG_LINUX_PSRAM_8M
+ 	for (i = 0x100; i < 0x180; ++i) {
+ 		dst[i] = 0x4000;
+diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/partition_table.esp32s3.16m8r b/esp_hosted_ng/esp/esp_driver/network_adapter/partition_table.esp32s3.16m8r
+index b5cc56b..5ba67f6 100644
+--- a/esp_hosted_ng/esp/esp_driver/network_adapter/partition_table.esp32s3.16m8r
++++ b/esp_hosted_ng/esp/esp_driver/network_adapter/partition_table.esp32s3.16m8r
+@@ -1,8 +1,8 @@
+ ## Label          type  ST       Offset      Length
+ nvs,              data, nvs,     0x0000a000, 0x00005000
+ phy_init,         data, phy,     0x0000f000, 0x00001000
+-factory,          app,  factory, 0x00010000, 0x000a0000
+-etc,              0x40, 0x1,     0x000b0000, 0x00070000
+-linux,            0x40, 0x0,     0x00120000, 0x00480000
+-rootfs,           0x40, 0x1,     0x005a0000, 0x00680000
+-home,             0x40, 0x1,     0x00c20000, 0x003e0000
++factory,          app,  factory, 0x00010000, 0x000c0000
++etc,              0x40, 0x1,     0x000d0000, 0x00070000
++linux,            0x40, 0x0,     0x00140000, 0x00400000
++rootfs,           0x40, 0x1,     0x00540000, 0x00780000
++home,             0x40, 0x1,     0x00cc0000, 0x00340000
+diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3.16m8r b/esp_hosted_ng/esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3.16m8r
+index 8d5581c..3de3243 100644
+--- a/esp_hosted_ng/esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3.16m8r
++++ b/esp_hosted_ng/esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3.16m8r
+@@ -538,7 +538,15 @@ CONFIG_APPTRACE_LOCK_ENABLE=y
+ #
+ # Bluetooth
+ #
+-# CONFIG_BT_ENABLED is not set
++CONFIG_BT_ENABLED=y
++# CONFIG_BT_BLUEDROID_ENABLED is not set
++CONFIG_BT_NIMBLE_ENABLED=y
++CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y
++CONFIG_BT_NIMBLE_ROLE_BROADCASTER=y
++# CONFIG_BT_NIMBLE_ROLE_CENTRAL is not set
++# CONFIG_BT_NIMBLE_ROLE_OBSERVER is not set
++CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
++CONFIG_BT_NIMBLE_SVC_GAP_DEVICE_NAME="Esp32-Linux"
+ # end of Bluetooth
+ 
+ #
