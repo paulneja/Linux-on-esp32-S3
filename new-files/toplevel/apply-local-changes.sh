@@ -61,10 +61,22 @@ buildroot)
 	[ -d build/buildroot ] || { echo "error: build/buildroot missing -- clone it first" >&2; exit 1; }
 	echo ">>> buildroot: applying tracked-file changes"
 	cd build/buildroot
+	# "already applied" and "does not apply" are NOT the same thing, and
+	# treating them alike once cost a whole silent bad build: the patch
+	# carried a binary file git apply cannot reconstruct, so it failed on
+	# every fresh clone, got skipped as if it were already applied, and the
+	# image shipped without /etc/fstab, inetd.conf, S05home or the libcurl
+	# fix -- with the build reporting success. Tell them apart, and stop.
 	if git apply --check "$LOCAL/patches/03-buildroot-tracked-changes.patch" 2>/dev/null; then
 		git apply "$LOCAL/patches/03-buildroot-tracked-changes.patch"
+	elif git apply --check --reverse "$LOCAL/patches/03-buildroot-tracked-changes.patch" 2>/dev/null; then
+		echo "    already applied -- skipping"
 	else
-		echo "    (already applied or diverged -- skipping, verify manually if unexpected)"
+		echo "error: 03-buildroot-tracked-changes.patch does not apply and is" >&2
+		echo "       not already applied. Building on would silently produce an" >&2
+		echo "       incomplete image. Details:" >&2
+		git apply --check "$LOCAL/patches/03-buildroot-tracked-changes.patch" >&2 || true
+		exit 1
 	fi
 	cd ../..
 	echo ">>> buildroot: copying new files (board profile, espctl, init scripts)"
