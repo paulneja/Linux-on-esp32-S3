@@ -77,16 +77,39 @@ connect_and_report() {
 do_dialog() {
 	say ""
 	say "=== Linux on ESP32-S3 - WiFi setup ==="
+
+	# The BLE link comes up before Linux has finished booting, so a phone
+	# that connects straight away can land here before the WiFi interface
+	# exists. Wait for it instead of reporting "no networks", which looks
+	# like a failure when it is only a race.
+	_n=0
+	while [ ! -e "/sys/class/net/$IFACE" ]; do
+		[ "$_n" = 0 ] && say "WiFi is still starting up, hold on..."
+		_n=$((_n + 1))
+		if [ "$_n" -gt 30 ]; then
+			say "WiFi interface never appeared. Send anything to retry."
+			return
+		fi
+		sleep 1
+	done
+
 	say "Scanning, please wait..."
 
 	# Run the scan on its own, with nothing else of ours alive, so the
-	# pipeline it spawns has the memory it needs.
-	wifi scan > "$LIST" 2>/dev/null
-
-	if [ ! -s "$LIST" ]; then
-		say "No networks found. Send anything to retry."
-		return
-	fi
+	# pipeline it spawns has the memory it needs. Retry a couple of times:
+	# the radio can need a moment more even once the interface is there.
+	_try=0
+	while :; do
+		wifi scan > "$LIST" 2>/dev/null
+		[ -s "$LIST" ] && break
+		_try=$((_try + 1))
+		if [ "$_try" -ge 3 ]; then
+			say "No networks found. Send anything to retry."
+			return
+		fi
+		say "Nothing yet, scanning again..."
+		sleep 3
+	done
 
 	say ""
 	_i=0

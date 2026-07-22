@@ -70,6 +70,14 @@ address.
   that a phone attached, so you must send a character first. Wiring
   `BLE_GAP_EVENT_CONNECT` to greet automatically is an obvious improvement.
 
+**The BLE link is ready before Linux is.** The firmware starts advertising as
+soon as its queues exist, well before the kernel has finished booting, so a
+phone can connect and send a character while `espsta0` does not yet exist. That
+used to answer "No networks found", which reads as a failure when it is only a
+race. The daemon now waits for the interface to appear (up to 30 s, telling the
+user it is still starting) and retries the scan a few times, so connecting
+early just means waiting a moment rather than getting a wrong answer.
+
 Three firmware defects were fixed while chasing the reliability question. None
 of them was the reason the dialog appeared not to work — that turned out to be
 the test host — but each was real:
