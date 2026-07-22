@@ -1,12 +1,14 @@
-# WiFi provisioning over BLE — work in progress
+# WiFi provisioning over BLE
 
-> **Status: working end to end on hardware.** A phone joined the board to a
-> WiFi network over BLE — scan, pick, password, DHCP address — with no PC and no
-> serial cable. The failure mode that made this dangerous is gone: the vector
-> address is now realigned and the kernel rebuilt automatically (see "The
-> landmine"), so changing the firmware needs no special care. What is not yet
-> characterised is how *reliably* a phone connects, and connecting during the
-> first ~30 s after power-on does not work.
+Join the board to a WiFi network from a phone — no PC, no serial cable. The
+board advertises over Bluetooth LE as **`Esp32-Linux`**; connect with any BLE
+serial terminal, send a character, and pick a network from the list.
+
+> **Wait about 30 seconds after power-on before connecting.** The BLE stack
+> comes up long before Linux has finished booting, and connecting during that
+> window is unreliable — the board is found but the connection hangs, because
+> core 0 is still bringing up WiFi. After that it works consistently: six
+> connect / pick / join cycles from a phone all ended online.
 
 ## What this is for
 

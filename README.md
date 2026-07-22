@@ -75,6 +75,9 @@ command can be killed by the OOM killer — wait a few seconds and retry.
 - Serial console and **telnet** (on by default).
 - **STA WiFi** with real internet access — run `wifi` for an interactive
   scan-and-pick, or `wifi connect "SSID" "PASS"` non-interactively.
+- **WiFi setup over Bluetooth** — the board advertises as `Esp32-Linux`; connect
+  from a phone with any BLE serial terminal and pick a network, no PC and no
+  cable needed. Wait ~30 s after power-on before connecting. See **[BLE.md](BLE.md)**.
 - **nano** as the editor (the busybox `vi` applet is disabled; `vi` is a
   symlink to `nano`).
 - **Hardware RSA accelerator** — `rsa-esp32s3` in the Crypto API, with a
@@ -116,7 +119,8 @@ byte for byte the one published in the releases.
 
 See **[DEVELOPMENT.md](DEVELOPMENT.md)** for the build, the patch system, the
 packaging step and the reproducibility caveats. See **[ARCHITECTURE.md](ARCHITECTURE.md)** for how two
-operating systems share one chip, the boot flow and the flash layout.
+operating systems share one chip, the boot flow and the flash layout. See
+**[BLE.md](BLE.md)** for the Bluetooth provisioning link.
 
 ## Constraints worth knowing
 
