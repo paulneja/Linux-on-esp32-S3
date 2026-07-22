@@ -73,10 +73,10 @@ index e72c55a..797421d 100644
  
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/ble_prov.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/ble_prov.c
 new file mode 100644
-index 0000000..84497e5
+index 0000000..f32a1b4
 --- /dev/null
 +++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/ble_prov.c
-@@ -0,0 +1,292 @@
+@@ -0,0 +1,332 @@
 +// SPDX-License-Identifier: Apache-2.0
 +/*
 + * BLE provisioning link for Linux-on-ESP32-S3.
@@ -119,6 +119,7 @@ index 0000000..84497e5
 +#include "host/util/util.h"
 +#include "services/gap/ble_svc_gap.h"
 +#include "services/gatt/ble_svc_gatt.h"
++#include "nimble/nimble_npl.h"
 +
 +#include "interface.h"
 +#include "adapter.h"
@@ -150,6 +151,25 @@ index 0000000..84497e5
 +static uint16_t tx_val_handle;
 +
 +static void start_advertising(void);
++
++/* Advertising must never stay off. A connection attempt that fails midway can
++ * leave the peripheral silent -- the disconnect event is the only thing that
++ * would restart it, and if that event is missed the board simply disappears
++ * until it is power-cycled. This re-arms it periodically instead of trusting a
++ * single event. */
++static struct ble_npl_callout adv_watchdog;
++
++static void ensure_advertising(void)
++{
++	if (conn_handle == BLE_HS_CONN_HANDLE_NONE && !ble_gap_adv_active())
++		start_advertising();
++}
++
++static void adv_watchdog_cb(struct ble_npl_event *ev)
++{
++	ensure_advertising();
++	ble_npl_callout_reset(&adv_watchdog, ble_npl_time_ms_to_ticks32(5000));
++}
 +
 +/* --- sending: board -> phone -------------------------------------------- */
 +int ble_prov_send(const char *data, int len)
@@ -218,8 +238,13 @@ index 0000000..84497e5
 +	buf_handle.wlan_buf_handle = buf;
 +	buf_handle.free_buf_handle = free;
 +
++	/* NEVER block here. This runs in the NimBLE host task (GATT write
++	 * callback); waiting on a full queue hangs the entire BLE stack --
++	 * no GAP events, advertising never restarts, and the board vanishes
++	 * until it is power-cycled. Dropping a keystroke is the cheap failure;
++	 * losing Bluetooth is not. */
 +	if (xQueueSend(to_host_queue[PRIO_Q_MID], &buf_handle,
-+		       portMAX_DELAY) != pdTRUE) {
++		       pdMS_TO_TICKS(50)) != pdTRUE) {
 +		free(buf);
 +		return -1;
 +	}
@@ -268,19 +293,30 @@ index 0000000..84497e5
 +	switch (event->type) {
 +	case BLE_GAP_EVENT_CONNECT:
 +		if (event->connect.status == 0) {
++			struct ble_gap_upd_params p = {
++				.itvl_min = 24,			/* 30 ms */
++				.itvl_max = 40,			/* 50 ms */
++				.latency = 0,
++				.supervision_timeout = 400,	/* 4 s */
++			};
++
 +			conn_handle = event->connect.conn_handle;
++			/* Give the link plenty of slack: this core is also
++			 * running WiFi and the IPC to Linux, so a tight
++			 * interval makes service discovery time out. */
++			ble_gap_update_params(conn_handle, &p);
 +		} else {
-+			start_advertising();
++			ensure_advertising();
 +		}
 +		break;
 +
 +	case BLE_GAP_EVENT_DISCONNECT:
 +		conn_handle = BLE_HS_CONN_HANDLE_NONE;
-+		start_advertising();
++		ensure_advertising();
 +		break;
 +
 +	case BLE_GAP_EVENT_ADV_COMPLETE:
-+		start_advertising();
++		ensure_advertising();
 +		break;
 +
 +	default:
@@ -324,6 +360,10 @@ index 0000000..84497e5
 +		return;
 +	}
 +	start_advertising();
++
++	ble_npl_callout_init(&adv_watchdog, nimble_port_get_dflt_eventq(),
++			     adv_watchdog_cb, NULL);
++	ble_npl_callout_reset(&adv_watchdog, ble_npl_time_ms_to_ticks32(5000));
 +}
 +
 +static void on_reset(int reason)
