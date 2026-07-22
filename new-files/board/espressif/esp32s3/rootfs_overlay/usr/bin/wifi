@@ -1,0 +1,183 @@
+#!/bin/sh
+#
+# wifi -- friendly WiFi manager for the STA (home) uplink.
+#
+#   wifi                     interactive: scan, list networks numbered, pick one.
+#                            Open networks connect straight away; secured ones
+#                            ask for the password.
+#   wifi scan                just list the networks in range.
+#   wifi connect "SSID"           connect to an open network (no password).
+#   wifi connect "SSID" "PASS"    connect to a WPA2-PSK network.
+#   wifi status              show the current connection / IP.
+#   wifi disconnect          bring the STA link down.
+#
+# The choice persists in /etc/wpa_supplicant.conf (writable jffs2), so it
+# survives a reboot. The AP side does not exist on this build (STA only).
+
+IFACE=espsta0
+CONF=/etc/wpa_supplicant.conf
+TAB=$(printf '\t')
+
+# --- scanning -----------------------------------------------------------
+# Emit one line per network:  <signal>\t<SEC|OPEN>\t<SSID>
+# Prefer wpa_cli when wpa_supplicant is already managing the interface;
+# otherwise fall back to a direct iw scan (works on a fresh, unconfigured
+# board where wpa_supplicant is not running yet).
+raw_scan() {
+	ip link set "$IFACE" up 2>/dev/null
+
+	if wpa_cli -i "$IFACE" ping 2>/dev/null | grep -q PONG; then
+		wpa_cli -i "$IFACE" scan >/dev/null 2>&1
+		sleep 3
+		wpa_cli -i "$IFACE" scan_results 2>/dev/null | awk -F"$TAB" '
+			NR == 1 { next }                       # header row
+			NF >= 5 {
+				sig = $3; flags = $4; ssid = $5
+				if (ssid == "") next
+				sec = (flags ~ /WPA|WEP|PSK/) ? "SEC" : "OPEN"
+				print sig "\t" sec "\t" ssid
+			}'
+	else
+		iw dev "$IFACE" scan 2>/dev/null | awk '
+			function flush() {
+				if (ssid != "") print sig "\t" sec "\t" ssid
+				ssid = ""; sec = "OPEN"; sig = "-100"
+			}
+			/^BSS / { flush() }
+			/signal:/ { sig = $2 + 0 }
+			/^\tSSID: / { s = $0; sub(/^\tSSID: /, "", s); ssid = s }
+			/RSN:|WPA:/ { sec = "SEC" }
+			END { flush() }'
+	fi
+}
+
+# Deduplicate by SSID (keep the strongest signal) and sort strongest first.
+scan_list() {
+	raw_scan | sort -t"$TAB" -k1,1 -rn | awk -F"$TAB" '!seen[$3]++'
+}
+
+# --- connecting ---------------------------------------------------------
+write_conf_open() {
+	cat > "$CONF" <<EOF
+network={
+	ssid="$1"
+	key_mgmt=NONE
+}
+EOF
+	chmod 600 "$CONF"
+}
+
+write_conf_psk() {
+	cat > "$CONF" <<EOF
+network={
+	ssid="$1"
+	psk="$2"
+	key_mgmt=WPA-PSK
+	proto=WPA2
+	pairwise=CCMP
+	group=CCMP
+}
+EOF
+	chmod 600 "$CONF"
+}
+
+apply_conf() {
+	echo "Connecting to '$1'..."
+	killall -q wpa_supplicant 2>/dev/null
+	ifdown "$IFACE" 2>/dev/null
+	ifup "$IFACE"
+	echo "Done. Check with: wifi status"
+}
+
+connect() {
+	SSID="$1"
+	if [ -z "$SSID" ]; then
+		echo "usage: wifi connect \"SSID\" [password]" >&2
+		return 1
+	fi
+	if [ -n "$2" ]; then
+		write_conf_psk "$SSID" "$2"
+	else
+		write_conf_open "$SSID"
+	fi
+	apply_conf "$SSID"
+}
+
+# --- interactive picker -------------------------------------------------
+interactive() {
+	echo "Scanning for WiFi networks on $IFACE ..."
+	TMP=$(mktemp 2>/dev/null || echo /tmp/.wifi-scan.$$)
+	scan_list > "$TMP"
+
+	if [ ! -s "$TMP" ]; then
+		echo "No networks found. Is the STA interface working? Try: ip link set $IFACE up"
+		rm -f "$TMP"
+		return 1
+	fi
+
+	echo
+	echo "  #   SIGNAL  SECURITY  SSID"
+	echo "  --  ------  --------  ----------------------------"
+	i=0
+	while IFS="$TAB" read -r sig sec ssid; do
+		i=$((i + 1))
+		if [ "$sec" = "OPEN" ]; then lock="open"; else lock="locked"; fi
+		printf "  %2d  %5s   %-8s  %s\n" "$i" "$sig" "$lock" "$ssid"
+	done < "$TMP"
+	echo
+
+	printf "Pick a network number (or Enter to cancel): "
+	read -r choice
+	if [ -z "$choice" ]; then
+		echo "Cancelled."
+		rm -f "$TMP"
+		return 0
+	fi
+
+	# Extract the chosen line.
+	line=$(sed -n "${choice}p" "$TMP" 2>/dev/null)
+	rm -f "$TMP"
+	if [ -z "$line" ]; then
+		echo "Invalid choice." >&2
+		return 1
+	fi
+	sec=$(printf '%s' "$line" | cut -f2)
+	ssid=$(printf '%s' "$line" | cut -f3-)
+
+	if [ "$sec" = "OPEN" ]; then
+		echo "'$ssid' is an open network -- connecting directly."
+		connect "$ssid"
+	else
+		printf "Password for '%s': " "$ssid"
+		stty -echo 2>/dev/null
+		read -r pass
+		stty echo 2>/dev/null
+		printf "\n"
+		if [ -z "$pass" ]; then
+			echo "No password entered -- aborting." >&2
+			return 1
+		fi
+		connect "$ssid" "$pass"
+	fi
+}
+
+# --- status -------------------------------------------------------------
+status() {
+	if iw dev "$IFACE" link 2>/dev/null | grep -q "Connected to"; then
+		iw dev "$IFACE" link 2>/dev/null | grep -E "Connected to|SSID|signal"
+	else
+		echo "Not associated."
+	fi
+	ip addr show "$IFACE" 2>/dev/null | grep -E "inet " || echo "No IP address."
+}
+
+# --- dispatch -----------------------------------------------------------
+case "${1:-}" in
+"")             interactive ;;
+scan|list)      scan_list | awk -F"$TAB" '{printf "  %5s  %-6s  %s\n", $1, ($2=="OPEN"?"open":"lock"), $3}' ;;
+connect)        shift; connect "$@" ;;
+status)         status ;;
+disconnect|off) killall -q wpa_supplicant 2>/dev/null; ifdown "$IFACE" 2>/dev/null; echo "STA link down." ;;
+-h|--help|help) sed -n '3,17p' "$0" | sed 's/^#\{0,1\} \{0,1\}//' ;;
+*)              echo "usage: wifi [scan|connect \"SSID\" [pass]|status|disconnect]" >&2; exit 1 ;;
+esac

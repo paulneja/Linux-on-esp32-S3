@@ -1,16 +1,20 @@
 diff --git a/rebuild-esp32s3-linux-wifi.sh b/rebuild-esp32s3-linux-wifi.sh
-index a04c363..f8d5cbf 100755
+index a04c363..36cd2c3 100755
 --- a/rebuild-esp32s3-linux-wifi.sh
 +++ b/rebuild-esp32s3-linux-wifi.sh
-@@ -16,6 +16,19 @@
+@@ -16,6 +16,23 @@
  
  SET_BAUDRATE='-b 2000000'
  
-+# This machine's default host GCC is 16.x, whose C23 default breaks the old
-+# companion-lib configure scripts (GMP 6.2.1 fails with "too many arguments to
-+# function 'g'; expected 0"). Force the gcc-14 shim (C17/gnu17 default) as the
-+# host compiler for the whole toolchain build.
-+export PATH=/home/paulneja/esp/gcc14shim:$PATH
++# If the host's default GCC is too new (15/16.x default to C23), the old
++# companion-lib configure scripts break: GMP 6.2.1 fails with "too many
++# arguments to function 'g'; expected 0". The workaround is a directory with
++# gcc/g++ symlinks pointing at a gcc-14 (C17/gnu17 default), put first in PATH
++# for the whole toolchain build. Set GCC14_SHIM to that directory, or create
++# ~/esp/gcc14shim; on a host whose GCC is already old enough, skip it.
++# The Docker image avoids this entirely (Debian 12 ships a suitable GCC).
++: "${GCC14_SHIM:=$HOME/esp/gcc14shim}"
++[ -d "$GCC14_SHIM" ] && export PATH="$GCC14_SHIM:$PATH"
 +
 +# This machine's CMake is also newer than these old buildroot host-tool
 +# packages expect (e.g. host-lzo's CMakeLists.txt requires a `cmake_minimum_
@@ -22,7 +26,23 @@ index a04c363..f8d5cbf 100755
  CTNG_VER=xtensa-fdpic
  CTNG_CONFIG=xtensa-esp32s3-linux-uclibcfdpic
  BUILDROOT_VER=xtensa-2024.08-fdpic
-@@ -137,18 +150,16 @@ if [ -n "$reconfigure_boot" ] ; then
+@@ -104,6 +121,7 @@ else
+ 	git pull
+ 	popd
+ fi
++[ -x ../apply-local-changes.sh ] && ../apply-local-changes.sh buildroot
+ if [ ! -d build-buildroot-$BUILDROOT_CONFIG ] ; then
+ 	nice make -C buildroot O=`pwd`/build-buildroot-$BUILDROOT_CONFIG ${BUILDROOT_CONFIG}_defconfig || die "Could not apply buildroot config ${BUILDROOT_CONFIG}_defconfig"
+ 	buildroot/utils/config --file build-buildroot-$BUILDROOT_CONFIG/.config --set-str TOOLCHAIN_EXTERNAL_PATH `pwd`/crosstool-NG/builds/xtensa-esp32s3-linux-uclibcfdpic
+@@ -125,6 +143,7 @@ nice make -C buildroot O=`pwd`/build-buildroot-$BUILDROOT_CONFIG
+ # bootloader
+ #
+ [ -d esp-hosted ] || git clone https://github.com/jcmvbkbc/esp-hosted -b $ESP_HOSTED_VER
++[ -x ../apply-local-changes.sh ] && ../apply-local-changes.sh esp-hosted
+ pushd esp-hosted/esp_hosted_ng/esp/esp_driver
+ cmake .
+ cd esp-idf
+@@ -137,18 +156,16 @@ if [ -n "$reconfigure_boot" ] ; then
  	cp sdkconfig $ESP_HOSTED_CONFIG
  fi
  idf.py build

@@ -18,44 +18,134 @@ script calls it right after each clone, so a clean build reproduces the shipped
 images. The sections below explain how that is wired and how to redo it by hand
 if the script is ever lost.
 
-## Reproducible build: what it really means
+## With Docker (recommended)
 
-`refs/esp32-linux-build/Dockerfile` builds a reproducible Debian 12 image, and
-**as of today it also reproduces this project's changes**, not just the
-jcmvbkbc upstream. Before today that was NOT true: the `.dockerignore` excluded
-`build/` (where all the changes lived) and nothing re-applied the patches after
-a clean clone, so a fresh `docker run` would have built the original project,
-with no AP, no NAT, no espctl.
-
-The fix: `refs/esp32-linux-build/rebuild-esp32s3-linux-wifi.sh` now calls
-`apply-local-changes.sh buildroot` right after the buildroot clone, and
-`apply-local-changes.sh esp-hosted` right after the esp-hosted clone — in both
-cases before the first build of that part. That script looks for the patches in
-`../../native-s3` (local checkout) or in `./local-changes` (which the
-Dockerfile copies there from `native-s3/patches` and `native-s3/new-files`).
-
-**Verified today, end to end, against fresh independent clones** (not against
-the already-patched working tree):
-- `git apply` of the buildroot patch onto a fresh `git clone` of
-  `jcmvbkbc/buildroot -b xtensa-2024.08-fdpic` → applies cleanly.
-- `git apply` of the firmware patch onto a fresh `git clone` of
-  `jcmvbkbc/esp-hosted -b ipc-5.1.1` → applies cleanly, local commit is
-  created correctly.
-- `patch -p1` of the kernel patch onto a fresh `git clone` of
-  `jcmvbkbc/linux-xtensa -b xtensa-6.11-esp32-tag` → applies cleanly.
-- The three steps above also run **inside the freshly built Docker container**
-  (`docker run --rm --entrypoint bash ...`), not just on the host.
-
-What is **not** verified: the full build (`make`, hours) running end to end
-inside the container. That was never attempted for time reasons — the image was
-built and tested, and the clone+patch flow was proven to work for real inside
-it, but not the full kernel/rootfs compilation in there.
+Debian 12 is used deliberately: its GCC and CMake are old enough not to trip
+the "host tools too new" failures a rolling-release distro hits. From the root
+of this repo:
 
 ```bash
-cd /home/paulneja/Arduino/esp-32/LINUX   # project root, not refs/esp32-linux-build
-docker build -f refs/esp32-linux-build/Dockerfile -t linux-on-esp32s3-native .
-docker run --rm -v $(pwd)/build-output:/work/build linux-on-esp32s3-native
+docker build -f new-files/toplevel/Dockerfile -t linux-on-esp32s3 .
+docker run --rm -v $(pwd)/build-output:/work/esp32-linux-build/build \
+    linux-on-esp32s3
 ```
+
+The image clones jcmvbkbc's `esp32-linux-build`, patches it with
+`patches/00-...`, and drops `apply-local-changes.sh` plus the 16MB board
+profile next to it. The run then fetches crosstool-NG, buildroot, esp-hosted
+and the kernel, and builds everything into the mounted `build-output/`. It
+takes hours; the toolchain alone is most of it.
+
+**Verified**: the image builds, patch 00 applies to a fresh upstream clone
+inside it, and `apply-local-changes.sh` resolves its patches there. **Not
+verified**: the full multi-hour compile running to completion inside the
+container — the shipped images were built natively, not in Docker.
+
+## Without Docker
+
+The host needs a working build environment (autoconf, automake, bison, flex,
+cmake, rsync, texinfo, ...) and a GCC that is not too new. If the host's GCC
+defaults to C23 (15/16.x), GMP's configure breaks; the wrapper works around it
+by putting a directory of gcc-14 symlinks first in `PATH` — set `GCC14_SHIM` to
+it, or create `~/esp/gcc14shim`. On an older host, skip that.
+
+```bash
+git clone https://github.com/paulneja/Linux-on-esp32-S3
+git clone https://github.com/jcmvbkbc/esp32-linux-build
+cd esp32-linux-build
+patch -p1 < ../Linux-on-esp32-S3/patches/00-esp32-linux-build.patch
+cp ../Linux-on-esp32-S3/new-files/toplevel/apply-local-changes.sh \
+   ../Linux-on-esp32-S3/new-files/toplevel/devkit-c1-16m.conf .
+./rebuild-esp32s3-linux-wifi.sh -c devkit-c1-16m.conf
+```
+
+Images land in `build/build-buildroot-esp32s3_devkit_c1_16m/images/` and in the
+firmware's build directory. `flash.sh --parts` in this repo documents which
+image goes at which offset.
+
+## Packaging the images
+
+The build driver compiles everything but stops there — it does not gather the
+results or package them. `make-images.sh` closes that gap:
+
+```bash
+./make-images.sh /path/to/esp32-linux-build
+```
+
+It collects the six binaries into `images/`, checks each one fits its
+partition, refuses to package an `etc.jffs2` that has a `psk=` line in it, and
+merges everything into `images/linux-esp32s3-native-full.bin` for offset `0x0`.
+
+Two things it does deliberately, both learned the hard way:
+
+- **It regenerates `partition-table.bin` from the CSV**, never copying the one
+  the firmware build emits — that one comes from an older CSV that puts rootfs
+  at the wrong offset, and since the kernel derives the rootfs XIP address from
+  the partition table, booting it panics with "Cannot open root device".
+- **It refuses images carrying WiFi credentials.** buildroot's `target/` is
+  incremental, and a stale `target/etc/wpa_supplicant.conf` left over from a
+  manual test once got baked into `etc.jffs2` and shipped. WiFi belongs at
+  runtime (`wifi connect`), never in the image.
+
+Running it against the tree that produced the published release reproduces
+`linux-esp32s3-native-full.bin` byte for byte (same sha256).
+
+## Reproducibility caveats
+
+Worth knowing before trusting a rebuild to match:
+
+- **The upstream trees are tracked by branch, not by pinned commit.** The build
+  driver clones `jcmvbkbc/buildroot -b xtensa-2024.08-fdpic`,
+  `esp-hosted -b ipc-5.1.1` and the kernel tag the same way. If upstream moves,
+  a rebuild can produce different output, or a patch here can stop applying.
+  That is upstream's design, not something this repo overrides.
+- **The full compile has not been run end to end from scratch.** The patch flow
+  and the container build are verified; the multi-hour toolchain + kernel +
+  rootfs build completing inside Docker is not. The published images were built
+  natively.
+- **GitHub's source ZIP drops the executable bit.** Git stores it correctly
+  (`100755`), so a `git clone` is fine; if you downloaded the ZIP, run
+  `bash flash.sh` or `chmod +x *.sh` first.
+
+## How the pieces fit
+
+The build driver (`rebuild-esp32s3-linux-wifi.sh`) is **upstream's**, not ours:
+it clones crosstool-NG, buildroot, esp-hosted and the kernel, and builds them.
+Left alone it would build jcmvbkbc's project, not this one.
+
+`patches/00-esp32-linux-build.patch` is what changes that. Besides the
+host-tool workarounds, it adds two lines — one after the buildroot clone, one
+after the esp-hosted clone:
+
+```sh
+[ -x ../apply-local-changes.sh ] && ../apply-local-changes.sh buildroot
+[ -x ../apply-local-changes.sh ] && ../apply-local-changes.sh esp-hosted
+```
+
+Those two lines are the hinge of the whole thing. Without them the build
+silently produces the upstream project — it does not fail, it just builds
+something else. `apply-local-changes.sh` then applies
+`patches/03-buildroot-tracked-changes.patch`, copies `new-files/board` and
+`new-files/configs` into buildroot, applies the firmware patch and commits it
+locally (the firmware's own CMakeLists runs `git reset --hard` on every `cmake`
+invocation, so a local commit is the only thing that survives).
+
+It finds this repo's `patches/` and `new-files/` by looking for `$LOCAL_CHANGES`,
+then `./local-changes` (what the Dockerfile sets up), then any directory beside
+or above it that has both — so the checkout's directory name does not matter.
+
+The kernel patches are **not** applied by that script: they are wired into
+buildroot itself via `BR2_LINUX_KERNEL_PATCH` in
+`configs/esp32s3_devkit_c1_16m_defconfig`, pointing at
+`board/espressif/esp32s3/patches/linux/`. Buildroot re-applies them after every
+kernel extraction, including ones triggered mid-session — see below for why
+that matters.
+
+**Verified against fresh independent clones** (not against an already-patched
+tree): the buildroot patch applies to a fresh `jcmvbkbc/buildroot
+-b xtensa-2024.08-fdpic`, the firmware patch to a fresh `jcmvbkbc/esp-hosted
+-b ipc-5.1.1`, and both kernel patches to a fresh `jcmvbkbc/linux-xtensa
+-b xtensa-6.11-esp32-tag`.
 
 ### The kernel driver: a special case, already solved more robustly
 
@@ -64,10 +154,10 @@ in the kernel repo (`git status` shows it as `??`), so a `git reset --hard`
 does not touch it — but a full re-extraction of the kernel
 (`make linux-dirclean && make linux-rebuild`, or any clean rebuild of the
 profile) does overwrite it with the pristine version, without any warning.
-**This actually happened today**: the `xipImage` that was in `images/` had been
-built with the driver reverted (no `espap0`, no `start_ap`/`stop_ap`) — the
-firmware did have the SSID/password flashed, but the kernel never created the
-AP interface, so the SoftAP would never have come up on the board.
+**This actually happened once**: an `xipImage` in `images/` had been built with
+the esp32-ng driver reverted to its pristine upstream version — the local
+changes were silently missing, so the shipped kernel did not match the patch
+this repo carries.
 
 Fix (does not rely on "don't touch that folder"):
 `configs/esp32s3_devkit_c1_16m_defconfig` now has
@@ -101,14 +191,13 @@ cleanly with `patch -p1 --dry-run`.
 
 ## What's here
 
-- `patches/00-esp32-linux-build.patch` — changes to the wrapper script
-  (`rebuild-esp32s3-linux-wifi.sh`): GCC-14 shim fix,
-  `CMAKE_POLICY_VERSION_MINIMUM` fix, hostapd disabled. **Note**: the real
-  wrapper in `refs/esp32-linux-build/` also has the two lines that call
-  `apply-local-changes.sh` (added today), which this older patch does not
-  include — if the wrapper is rebuilt from scratch, add those two lines by hand
-  (see `rebuild-esp32s3-linux-wifi.sh` itself as reference) or regenerate the
-  patch with `git diff` if the wrapper becomes a git repo again.
+- `patches/00-esp32-linux-build.patch` — changes to upstream's build driver
+  `rebuild-esp32s3-linux-wifi.sh`: the two `apply-local-changes.sh` calls that
+  make the build reproduce this project (see "How the pieces fit"), the
+  optional gcc-14 shim and `CMAKE_POLICY_VERSION_MINIMUM` host-tool
+  workarounds, and hostapd disabled. Verified to apply with `patch -p1` to a
+  fresh clone of `jcmvbkbc/esp32-linux-build`, both on a host and inside the
+  Docker image.
 - `patches/01-kernel-esp32ng-ap-support.patch` — a real diff (493 lines)
   against a pristine `jcmvbkbc/linux-xtensa -b xtensa-6.11-esp32-tag`. Applied
   automatically via `BR2_LINUX_KERNEL_PATCH` (see above) — no manual
@@ -134,41 +223,47 @@ cleanly with `patch -p1 --dry-run`.
   overlapped each other and are no longer maintained. Applied automatically by
   `apply-local-changes.sh buildroot`.
 - `kernel-driver-esp32-ng/` — a complete reference/human-readable copy of
-  `drivers/net/wireless/espressif/esp32-ng/` with AP support; the patch above is
-  what is actually used in the automated flow, this is a readable backup.
+  `drivers/net/wireless/espressif/esp32-ng/` (AP plumbing present but
+  hard-disabled, STA only); the patch above is what is actually used in the
+  automated flow, this is a readable backup.
 - `new-files/` — an exact mirror of what has to be copied: `board/` and
   `configs/` go over `build/buildroot/` (automatic via
   `apply-local-changes.sh buildroot`); `esp-hosted/network_adapter/*.16m8r`
   (partition table + sdkconfig for the 16 MB profile, new files the firmware
   patch does not cover since it is a `git diff` of only `main/`) go over
   `build/esp-hosted/esp_hosted_ng/esp/esp_driver/network_adapter/` (automatic
-  via `apply-local-changes.sh esp-hosted`); `toplevel/` is reference only
-  (`devkit-c1-16m.conf`, `Dockerfile`, `.dockerignore` — the real ones live in
-  `refs/esp32-linux-build/` and at the project root).
+  via `apply-local-changes.sh esp-hosted`); `toplevel/` holds the pieces that go
+  next to upstream's build driver — `apply-local-changes.sh` and
+  `devkit-c1-16m.conf` (upstream only ships an 8MB profile) — plus the
+  `Dockerfile` and `.dockerignore`.
 
-## How to restore manually (if `apply-local-changes.sh` is not available)
+## Applying the changes by hand
 
-Normally not needed — `rebuild-esp32s3-linux-wifi.sh` calls the script itself.
-This is only for the emergency case where that script is also lost:
+Normally not needed — the build driver calls `apply-local-changes.sh` itself.
+This is the equivalent by hand, from inside the `esp32-linux-build` clone, with
+`$REPO` pointing at a checkout of this repository:
 
 ```bash
-cd refs/esp32-linux-build
-git apply native-s3/patches/00-esp32-linux-build.patch   # if needed
+REPO=/path/to/Linux-on-esp32-S3
+
+patch -p1 < "$REPO/patches/00-esp32-linux-build.patch"   # if not applied yet
 
 cd build/buildroot
-git apply ../../../native-s3/patches/03-buildroot-tracked-changes.patch
-cp -a ../../../native-s3/new-files/board/* board/
-cp -a ../../../native-s3/new-files/configs/* configs/
+git apply "$REPO/patches/03-buildroot-tracked-changes.patch"
+cp -a "$REPO"/new-files/board/* board/
+cp -a "$REPO"/new-files/configs/* configs/
 cd ../..
 
 cd build/esp-hosted/esp_hosted_ng
-git apply ../../../native-s3/patches/02-firmware-network-adapter-ap-support.patch
-git add esp/esp_driver/network_adapter/main/
+git apply "$REPO/patches/02-firmware-network-adapter-ap-support.patch"
+cp "$REPO"/new-files/esp-hosted/network_adapter/*.16m8r \
+   esp/esp_driver/network_adapter/
+git add esp/esp_driver/network_adapter/
 git -c user.email="local@backup" -c user.name="local-backup" \
   commit -m "AP support + 16m8r profile files (local-only, never push)"
 cd ../../..
 
-cp native-s3/new-files/toplevel/devkit-c1-16m.conf .
+cp "$REPO/new-files/toplevel/devkit-c1-16m.conf" .
 ```
 
 The kernel driver applies itself via `BR2_LINUX_KERNEL_PATCH` once the defconfig
@@ -178,9 +273,10 @@ above is in place — no additional manual step is required.
 fully erased ESP32-S3 (N16R8) and it boots to a login prompt, the RSA
 accelerator passes its 512- and 2048-bit self-tests, the rootfs mounts from
 flash via XIP, and telnet comes up. Working: serial console, telnet, STA WiFi
-with internet, hardware RSA, Lua, an opt-in BusyBox httpd, and curl (HTTP
-solid, HTTPS with real certificate verification but experimental — see above).
-Not working: the SoftAP (WEP beacon, see above).
+with internet (the interactive `wifi` command scans and connects), hardware
+RSA, the nano editor, Lua, an opt-in BusyBox httpd, and curl (HTTP solid,
+HTTPS with real certificate verification but experimental — see above). The
+board is STA only — there is no SoftAP.
 
 The patch/clone flow is reproducible and was verified against fresh clones, and
 the Docker image builds; what was never run end to end is the *full* multi-hour

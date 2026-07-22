@@ -1,0 +1,4 @@
+# The prebuilt images are large and are not needed to build from source.
+images/
+build-output/
+.git/

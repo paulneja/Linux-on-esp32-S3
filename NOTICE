@@ -20,7 +20,8 @@ component below remains additionally available under its own original license.
    This repository ships patches against that tree, not the tree itself:
 
      new-files/board/espressif/esp32s3/patches/linux/
-       01-kernel-esp32ng-ap-support.patch   — AP support in the esp32-ng driver
+       01-kernel-esp32ng-ap-support.patch   — esp32-ng driver (AP plumbing,
+                                              hard-disabled; the board is STA only)
        02-kernel-esp32s3-rsa-crypto.patch   — drivers/crypto/esp32s3_rsa.c
 
    Both are derivative works of the Linux kernel and are therefore licensed
@@ -29,7 +30,8 @@ component below remains additionally available under its own original license.
    upstream tree above plus these patches.
 
    kernel-driver-esp32-ng/ is a readable reference copy of the in-tree
-   esp32-ng driver with AP support (same GPL-2.0 terms as the kernel).
+   esp32-ng driver (AP plumbing present but hard-disabled; STA only — same
+   GPL-2.0 terms as the kernel).
 
 ================================================================================
 2. Buildroot  —  builds the toolchain, kernel and root filesystem
@@ -73,6 +75,8 @@ component below remains additionally available under its own original license.
      Lua            — MIT            https://lua.org
      curl / libcurl — curl license   https://curl.se
      Mbed TLS       — Apache-2.0     https://github.com/Mbed-TLS/mbedtls
+     GNU nano       — GPLv3-or-later https://nano-editor.org
+     ncurses        — X11/MIT-style  https://invisible-island.net/ncurses/
 
    These are separate programs aggregated on the same filesystem image, each
    distributed under its own license. Corresponding source is available from

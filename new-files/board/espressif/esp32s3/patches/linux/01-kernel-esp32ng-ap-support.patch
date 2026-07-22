@@ -496,15 +496,15 @@ index f05a2b1..b7ca653 100644
 +	if (!wdev)
 +		return -1;
 +
-+	/* MVP: statically create the AP interface alongside STA (no dynamic
-+	 * add_virtual_intf support yet -- see esp_cfg80211.c).
-+	 *
-+	 * Off by default: bringing the SoftAP up leaves the firmware's wifi task
-+	 * in a state where CMD_SCAN_REQUEST never returns a response, so the STA
-+	 * cannot scan and therefore cannot associate. Upstream esp-hosted is
-+	 * STA-only, which is the configuration known to work. Pass
-+	 * esp32_wifi.ap_iface=1 on the kernel command line to create it anyway. */
-+	if (!ap_iface)
++	/* SoftAP is permanently disabled on this build: the closed WiFi blob
++	 * beacons as WEP (clients reject it) and, worse, bringing the AP up
++	 * wedges the firmware's wifi task so CMD_SCAN_REQUEST never returns and
++	 * the STA can no longer scan or associate. So espap0 is never created:
++	 * upstream esp-hosted is STA-only, the configuration known to work.
++	 * The ap_iface module param is kept below but intentionally ignored
++	 * here -- there is deliberately no way to turn the SoftAP on anymore.
++	 * (Was "if (!ap_iface)"; now hard-forced off.) */
++	if (1)
  		return 0;
  
 -	return -1;
