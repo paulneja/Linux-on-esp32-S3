@@ -28,8 +28,10 @@ Pick a number; open networks connect straight away, secured ones ask for the
 password; it reports the IP it got.
 
 The ESP32-S3 has **no Bluetooth Classic**, so SPP is not available. This uses
-the Nordic UART Service (NUS) over BLE, which phone serial apps speak
-(Serial Bluetooth Terminal in *BLE* mode, nRF Connect, LightBlue).
+the Nordic UART Service (NUS) over BLE, which general-purpose BLE serial
+terminal apps speak. Make sure the app is scanning in **BLE** mode: on a
+Bluetooth Classic scan the board will never appear, because the chip has no
+Classic radio at all.
 
 ## How it is put together
 
@@ -63,11 +65,12 @@ address.
 
 **Not characterised yet**:
 
-- **Connection reliability.** It connects and completes the dialog from a
-  phone. From a Linux host (BlueZ/bleak) a 6-cycle stress run produced 0
-  complete dialogs — but the same board served a phone correctly throughout, so
-  that result says more about the test host's Bluetooth than about the firmware.
-  How often a phone fails to connect has not been measured.
+- **Connection reliability: measured, 6 of 6 from a phone.** Six connect →
+  dialog → connect-to-WiFi → disconnect cycles all ended online. One of them
+  first answered "no networks" because it was started before WiFi was up, and
+  recovered on the next try. A 6-cycle run from a Linux host (BlueZ) produced 0
+  complete dialogs, while the same board served the phone correctly throughout —
+  that says more about the test host's Bluetooth than about the firmware.
 - Connecting does not show the menu by itself: the firmware never tells Linux
   that a phone attached, so you must send a character first. Wiring
   `BLE_GAP_EVENT_CONNECT` to greet automatically is an obvious improvement.
@@ -100,6 +103,19 @@ the test host — but each was real:
   the peripheral silent.
 - Connection parameters are relaxed on connect (30-50 ms interval, 4 s
   supervision timeout), since this core also runs WiFi and the IPC to Linux.
+
+## Phone-side quirks (nothing to fix here, but easy to mistake for a bug)
+
+- **If the board shows up as a paired/saved device, it may stop appearing in
+  scans.** BLE GATT does not need pairing, and this board asks for none, so if
+  a phone ever bonded with it, remove/forget it from the Bluetooth settings and
+  scan again.
+- **Apps can hold a stale connection after disconnecting**, and then refuse to
+  reconnect until they are fully closed and reopened. The same thing happens on
+  a Linux host, where the device has to be dropped from the Bluetooth cache
+  between attempts — so this is the host's state, not the board's.
+- **Scanning may need location enabled**, depending on the phone. A scan with
+  it off can simply return nothing, without an error.
 
 ## The landmine (read this before changing anything)
 
