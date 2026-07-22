@@ -73,10 +73,10 @@ index e72c55a..797421d 100644
  
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/ble_prov.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/ble_prov.c
 new file mode 100644
-index 0000000..f32a1b4
+index 0000000..88b1776
 --- /dev/null
 +++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/ble_prov.c
-@@ -0,0 +1,332 @@
+@@ -0,0 +1,333 @@
 +// SPDX-License-Identifier: Apache-2.0
 +/*
 + * BLE provisioning link for Linux-on-ESP32-S3.
@@ -109,6 +109,7 @@ index 0000000..f32a1b4
 +#ifdef CONFIG_BT_ENABLED
 +
 +#include <string.h>
++#include <stdbool.h>
 +#include "esp_log.h"
 +#include <stdio.h>
 +#include "nvs_flash.h"
