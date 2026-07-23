@@ -117,10 +117,16 @@ Once a build finishes, `./make-images.sh /path/to/esp32-linux-build` collects
 the results into `images/` and merges them into the single flashable image —
 byte for byte the one published in the releases.
 
-See **[DEVELOPMENT.md](DEVELOPMENT.md)** for the build, the patch system, the
-packaging step and the reproducibility caveats. See **[ARCHITECTURE.md](ARCHITECTURE.md)** for how two
-operating systems share one chip, the boot flow and the flash layout. See
-**[BLE.md](BLE.md)** for the Bluetooth provisioning link.
+## Documentation
+
+| | |
+|---|---|
+| **[ARCHITECTURE.md](ARCHITECTURE.md)** | How two operating systems share one chip, the boot flow, the flash layout |
+| **[DEVELOPMENT.md](DEVELOPMENT.md)** | Building from source, the patch system, packaging, reproducibility caveats |
+| **[BLE.md](BLE.md)** | The Bluetooth provisioning link |
+| **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** | Symptoms seen on hardware, and what caused them |
+| **[SECURITY.md](SECURITY.md)** | What a flashed board exposes — read this before putting one on a network |
+| **[CHANGELOG.md](CHANGELOG.md)** | What changed in each release |
 
 ## Constraints worth knowing
 

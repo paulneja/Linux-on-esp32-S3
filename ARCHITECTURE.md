@@ -20,15 +20,20 @@ under ESP-IDF/FreeRTOS, so Linux can't own it directly. The solution
 ESP32-S3 (single chip, two Xtensa LX7 cores)
 │
 ├── Core 0 — ESP-IDF / FreeRTOS ("network_adapter" app)
-│   └── Owns the WiFi radio (closed blob) directly.
-│       Talks to Core 1 over shared memory (shmem IPC).
+│   ├── Owns the WiFi radio (closed blob) directly.
+│   │   Talks to Core 1 over shared memory (shmem IPC).
+│   └── NimBLE peripheral — advertises as "Esp32-Linux" (Nordic UART
+│       Service). A byte pipe only: it never drives the WiFi radio itself.
 │
 └── Core 1 — Linux 6.11 (real, native Xtensa binary)
     ├── esp32-ng driver (drivers/net/wireless/espressif/esp32-ng/)
-    │   └── espsta0 — STA netdev, joins the home WiFi (wpa_supplicant).
-    │                 STA only: the AP side is hard-disabled (see below).
+    │   ├── espsta0 — STA netdev, joins the home WiFi (wpa_supplicant).
+    │   │             STA only: the AP side is hard-disabled (see below).
+    │   └── /dev/esp-ble — the other end of the BLE pipe (single reader)
     ├── BusyBox userland (telnetd, dropbear/ssh, inetd) + nano editor
     ├── wifi — interactive scan/connect helper for the STA uplink
+    ├── ble-wifi-setup — runs the provisioning dialog over /dev/esp-ble,
+    │                    through the same `wifi` command (see BLE.md)
     ├── espctl — GPIO/I2C control from userspace
     └── / (cramfs, read-only, XIP) + /etc and /home (jffs2, writable)
 ```
@@ -49,6 +54,13 @@ this edition exists at all.
 3. userspace: `S45inetd` (telnet; ssh only if enabled with `ssh-server on`)
    → `wpa_supplicant` on `espsta0` (via `/etc/network/interfaces`, joining the
    WiFi set with the interactive `wifi` command or `wifi connect "SSID" "PASS"`).
+   With no network chosen yet there is no `/etc/wpa_supplicant.conf`, so
+   `wpa_supplicant` exits and the step reports `FAIL` — that is the expected
+   state of a freshly flashed board, not a fault.
+4. `S46blewifi` starts `ble-wifi-setup` if the firmware exposed `/dev/esp-ble`,
+   so the board can be joined to a network from a phone with no PC and no
+   cable. Core 0 has been advertising since long before this point, which is
+   why connecting in the first ~30 s is unreliable (see BLE.md).
 
 ## Why there is no SoftAP (STA only)
 
@@ -77,21 +89,31 @@ build here: its `os_unix.c` calls `fork()`, which this target's NOMMU C library
 |---|---|---|---|
 | `nvs` | `0xa000` | 20K | ESP-IDF NVS (unused by Linux) |
 | `phy_init` | `0xf000` | 4K | WiFi PHY calibration data |
-| `factory` | `0x10000` | 640K | `network_adapter.bin` (Core 0 firmware) |
-| `etc` | `0xb0000` | 448K | jffs2, writable, wear-leveled — `/etc` |
-| `linux` | `0x120000` | 4.5M | `xipImage`, XIP kernel |
-| `rootfs` | `0x5a0000` | 7.5M | `rootfs.cramfs`, read-only root |
-| `home` | `0xd20000` | 2944K | jffs2, writable — `/home` |
+| `factory` | `0x10000` | 768K | `network_adapter.bin` (Core 0 firmware) |
+| `etc` | `0xd0000` | 448K | jffs2, writable, wear-leveled — `/etc` |
+| `linux` | `0x140000` | 4M | `xipImage`, XIP kernel |
+| `rootfs` | `0x540000` | 7.5M | `rootfs.cramfs`, read-only root |
+| `home` | `0xcc0000` | 3.25M | jffs2, writable — `/home` |
 
 The authoritative source of this layout is
-`new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r`. It
-matters more than it looks: the kernel derives the rootfs XIP address from the
-partition offset (`0x42000000 + 0x5a0000`), so flashing `rootfs.cramfs` at the
-wrong offset panics the kernel with "Cannot open root device". `linux` was
-shrunk from 6M and `rootfs` grown (to 6.5M for curl and its CA bundle, then to
-7.5M for the nano editor + ncurses) by taking the space from `home`. `rootfs`
-keeps its `0x5a0000` offset so the XIP address is unchanged; only its length
-and `home`'s offset move.
+`new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r`, and this
+table is a copy of it — if the two disagree, the CSV is right. It matters more
+than it looks: the kernel derives the rootfs XIP address from the partition
+offset (`0x42000000 + 0x540000`), so flashing `rootfs.cramfs` at the wrong
+offset panics the kernel with "Cannot open root device". A booting board prints
+both, which is the quickest way to check this table against reality:
+
+```
+0x000000540000-0x000000cc0000 : "rootfs"
+cramfs: checking physical address 0x42540000 for linear cramfs image
+```
+
+The layout has been recut several times — `rootfs` grown for curl and its CA
+bundle, then again for nano and ncurses; `factory` grown for the BLE stack;
+`linux` and `home` shrunk to pay for it. Moving `rootfs` means the kernel's XIP
+address moves with it, and moving `linux` means `CONFIG_KERNEL_LOAD_ADDRESS`
+(`0x42000000 +` the `linux` offset) has to move too, or the board boot-loops in
+the bootloader before Linux prints anything.
 
 `/` is read-only cramfs by design — no wear on the root filesystem no
 matter how the system is used. Anything that needs to persist (WiFi
