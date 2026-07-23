@@ -108,6 +108,18 @@ if strings "$OUT/etc.jffs2" | grep -qE '^[[:space:]]*psk="'; then
 	echo "  !! and rebuild: WiFi is meant to be set at runtime with 'wifi connect'." >&2
 	die "refusing to package an image with credentials in it"
 fi
+# The opposite failure, and the one that actually shipped: buildroot's
+# wpa_supplicant package installs its own /etc/wpa_supplicant.conf holding a
+# network block with no ssid and key_mgmt=NONE. That matches any open network,
+# so the board joins whatever unencrypted AP is in range on its own. It has no
+# psk line, so the check above waves it through. no-open-wifi.sh removes it at
+# post-build; this is the backstop for when that does not run.
+if strings "$OUT/etc.jffs2" | grep -qE '^[[:space:]]*key_mgmt=NONE'; then
+	echo "  !! etc.jffs2 has a key_mgmt=NONE network block -- this image would" >&2
+	echo "  !! join any open WiFi by itself. no-open-wifi.sh should have removed" >&2
+	echo "  !! /etc/wpa_supplicant.conf; check BR2_ROOTFS_POST_BUILD_SCRIPT." >&2
+	die "refusing to package an image that auto-joins open networks"
+fi
 echo "    clean"
 
 # --- sanity: Linux's exception vectors must land in the firmware's hole ---

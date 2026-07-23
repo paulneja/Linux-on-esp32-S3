@@ -16,7 +16,9 @@ BR2_ROOTFS_OVERLAY="board/espressif/esp32s3/rootfs_overlay"
 # applied (it stamps the root password hash in), so an overlay copy of passwd
 # would be overwritten. Leaving it out of this line is not a cosmetic loss --
 # root lands in /root, on the read-only cramfs, instead of the writable jffs2.
-BR2_ROOTFS_POST_BUILD_SCRIPT="board/espressif/esp32s3/trim-libs.sh board/espressif/esp32s3/setup-home.sh"
+# no-open-wifi.sh deletes the default wpa_supplicant.conf the buildroot
+# package installs; it matches any open network and joins one on its own.
+BR2_ROOTFS_POST_BUILD_SCRIPT="board/espressif/esp32s3/trim-libs.sh board/espressif/esp32s3/setup-home.sh board/espressif/esp32s3/no-open-wifi.sh"
 BR2_ROOTFS_POST_FAKEROOT_SCRIPT="board/espressif/esp32s3/mkfs-etc.sh"
 BR2_ROOTFS_POST_IMAGE_SCRIPT="board/espressif/esp32s3/post-build.sh"
 BR2_LINUX_KERNEL=y
