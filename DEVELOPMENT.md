@@ -36,10 +36,13 @@ profile next to it. The run then fetches crosstool-NG, buildroot, esp-hosted
 and the kernel, and builds everything into the mounted `build-output/`. It
 takes hours; the toolchain alone is most of it.
 
-**Verified**: the image builds, patch 00 applies to a fresh upstream clone
-inside it, and `apply-local-changes.sh` resolves its patches there. **Not
-verified**: the full multi-hour compile running to completion inside the
-container — the shipped images were built natively, not in Docker.
+**Verified**, end to end: a clean clone of this repo, built in this container,
+runs to completion, and the images it produces boot on the hardware. That is the
+whole path — nothing from a local working tree in the middle of it, which is
+exactly what four earlier failures had been hiding in (incidents 4-7 below).
+
+The images shipped with the releases were built natively rather than in Docker,
+so they are not bit-identical to a container build; they are the same sources.
 
 ## Without Docker
 
