@@ -99,10 +99,11 @@ Worth knowing before trusting a rebuild to match:
   `esp-hosted -b ipc-5.1.1` and the kernel tag the same way. If upstream moves,
   a rebuild can produce different output, or a patch here can stop applying.
   That is upstream's design, not something this repo overrides.
-- **The full compile has not been run end to end from scratch.** The patch flow
-  and the container build are verified; the multi-hour toolchain + kernel +
-  rootfs build completing inside Docker is not. The published images were built
-  natively.
+- **A full from-scratch build has now been run end to end, and the result boots
+  on hardware.** It took four fixes to get there (incidents 4-7 below): the
+  container was missing `cpio`, one patch was being discarded in silence, and
+  both the firmware patch and the defconfig had drifted behind the tree the
+  published images were built from. Nothing built before those is comparable.
 - **GitHub's source ZIP drops the executable bit.** Git stores it correctly
   (`100755`), so a `git clone` is fine; if you downloaded the ZIP, run
   `bash flash.sh` or `chmod +x *.sh` first.
@@ -188,6 +189,41 @@ cleanly with `patch -p1 --dry-run`.
    anyway (it compiles fine without AP too). It was discovered while auditing
    the Docker build's reproducibility, not through a visible failure. Fix:
    `BR2_LINUX_KERNEL_PATCH`, see above.
+4. **Container, incident 4**: buildroot needs `cpio`, and the Dockerfile never
+   installed it. It is checked in `support/dependencies/`, i.e. *after*
+   crosstool-NG has compiled the entire toolchain, so the build died hours in,
+   at its most expensive point. `file` and `bzip2` were missing for the same
+   reason. Fix: install them.
+5. **Patches, incident 5** (the dangerous one):
+   `03-buildroot-tracked-changes.patch` carried a compiled binary recorded as
+   `Binary files ... differ` with an abbreviated index. `git apply` cannot
+   reconstruct that, and it is atomic, so the patch was rejected **in full** on
+   every fresh clone — and `apply-local-changes.sh` read "does not apply" as
+   "already applied" and carried on. The build reported success while producing
+   an image with no `/etc/fstab`, no `inetd.conf` and no `S05home`. Fix: drop
+   from the patch everything `new-files/` already ships, and make the two cases
+   distinguishable — a reverse check for "already applied", a hard error for
+   anything else.
+6. **Firmware, incident 6**: a from-scratch build reached the MMC host and
+   stopped dead — no panic, no output. The kernel's RSA driver opens with an
+   unbounded `while (readl(rsa + RSA_QUERY_CLEAN) != 1)`, waiting on a clock it
+   deliberately never enables: the firmware hands the block over with
+   `periph_module_enable(PERIPH_RSA_MODULE)`. That line,
+   `CONFIG_MBEDTLS_HARDWARE_MPI=n`, the entire BLE link (patch 05 existed;
+   nothing ever applied it) and a one-symbol ESP-IDF change were all in the
+   working tree and in no patch here. Fix: regenerate the firmware patch
+   straight from that tree, and verify the reconstruction byte for byte.
+   **The wait loop still has no timeout.**
+7. **Config, incident 7**: two things the released image had only by accident of
+   a hand-edited, incremental `target/`. `setup-home.sh` was missing from
+   `BR2_ROOTFS_POST_BUILD_SCRIPT`, so root landed in `/root`, on the read-only
+   cramfs, instead of the writable jffs2. And buildroot's wpa_supplicant package
+   installs its own `/etc/wpa_supplicant.conf`: a network block with no ssid and
+   `key_mgmt=NONE`, which matches **any** open network — a clean build joined a
+   carrier hotspot by itself. `make-images.sh` waved it through because its check
+   looked only for `psk=`, and an open-network block has no credentials in it at
+   all. Fix: `no-open-wifi.sh` at post-build, and a second check in
+   `make-images.sh`.
 
 ## What's here
 
@@ -284,6 +320,7 @@ RSA, the nano editor, Lua, an opt-in BusyBox httpd, and curl (HTTP solid,
 HTTPS with real certificate verification but experimental — see above). The
 board is STA only — there is no SoftAP.
 
-The patch/clone flow is reproducible and was verified against fresh clones, and
-the Docker image builds; what was never run end to end is the *full* multi-hour
-compile inside the container.
+The patch/clone flow is reproducible against fresh clones, and the full
+multi-hour compile has been run inside the container with the result booting on
+hardware. That first claim was made here once before it was true; it is not
+being made again without a booting board behind it.
