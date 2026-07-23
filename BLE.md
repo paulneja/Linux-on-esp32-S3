@@ -215,7 +215,7 @@ landmine check above before flashing.
 
 | Path | What |
 |---|---|
-| `patches/05-firmware-ble-provisioning.patch` | NimBLE NUS peripheral + the pipe, on core 0 |
+| `patches/02-firmware-network-adapter.patch` | NimBLE NUS peripheral + the pipe, on core 0 |
 | `new-files/board/.../patches/linux/03-kernel-ble-prov.patch` | `/dev/esp-ble` misc device + driver hooks |
 | `new-files/board/.../rootfs_overlay/usr/sbin/ble-wifi-setup` | the provisioning dialog |
 | `new-files/board/.../rootfs_overlay/etc/init.d/S46blewifi` | starts it at boot |
