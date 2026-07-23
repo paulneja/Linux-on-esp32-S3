@@ -1,0 +1,13 @@
+diff --git a/components/wpa_supplicant/esp_supplicant/src/esp_wpa_main.c b/components/wpa_supplicant/esp_supplicant/src/esp_wpa_main.c
+index ea562edc..51f45b8f 100644
+--- a/components/wpa_supplicant/esp_supplicant/src/esp_wpa_main.c
++++ b/components/wpa_supplicant/esp_supplicant/src/esp_wpa_main.c
+@@ -295,7 +295,7 @@ static int check_n_add_wps_sta(struct hostapd_data *hapd, struct sta_info *sta_i
+ }
+ #endif
+ 
+-static bool hostap_sta_join(void **sta, u8 *bssid, u8 *wpa_ie, u8 wpa_ie_len,u8 *rsnxe, u8 rsnxe_len, bool *pmf_enable, int subtype)
++bool hostap_sta_join(void **sta, u8 *bssid, u8 *wpa_ie, u8 wpa_ie_len,u8 *rsnxe, u8 rsnxe_len, bool *pmf_enable, int subtype)
+ {
+     struct sta_info *sta_info = NULL;
+     struct hostapd_data *hapd = hostapd_get_hapd_data();

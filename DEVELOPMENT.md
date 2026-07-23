@@ -211,10 +211,15 @@ cleanly with `patch -p1 --dry-run`.
   that the shipped `xipImage` was built from.
 - `flash.sh` — flashes a bare board from `images/` with nothing but `esptool`
   (see "Flash directly" above).
-- `patches/02-firmware-network-adapter-ap-support.patch` — changes to the
-  ESP32 firmware
-  (`esp-hosted/esp_hosted_ng/esp/esp_driver/network_adapter/main/`). Applied
-  automatically by `apply-local-changes.sh esp-hosted`.
+- `patches/02-firmware-network-adapter.patch` — every change to the ESP32
+  firmware (`esp-hosted/esp_hosted_ng/esp/esp_driver/network_adapter/`): the
+  SoftAP authenticator, the BLE provisioning link, and the handover of the RSA
+  accelerator to Linux. Generated straight from the tree the shipped image was
+  built from, so it reproduces it byte for byte. Applied automatically by
+  `apply-local-changes.sh esp-hosted`.
+- `patches/06-idf-hostap-sta-join.patch` — one symbol unhidden in the vendored
+  ESP-IDF so the SoftAP path links. Applied to the `esp-idf` submodule by the
+  same script.
 - `patches/03-buildroot-tracked-changes.patch` — a single consolidated
   `git diff` of all tracked files modified under `build/buildroot/`
   (busybox.config, inetd.conf, wpa_supplicant.conf.example, both defconfigs).
@@ -255,12 +260,13 @@ cp -a "$REPO"/new-files/configs/* configs/
 cd ../..
 
 cd build/esp-hosted/esp_hosted_ng
-git apply "$REPO/patches/02-firmware-network-adapter-ap-support.patch"
+git apply "$REPO/patches/02-firmware-network-adapter.patch"
 cp "$REPO"/new-files/esp-hosted/network_adapter/*.16m8r \
    esp/esp_driver/network_adapter/
 git add esp/esp_driver/network_adapter/
 git -c user.email="local@backup" -c user.name="local-backup" \
-  commit -m "AP support + 16m8r profile files (local-only, never push)"
+  commit -m "network_adapter: this project's firmware (local-only, never push)"
+git -C esp/esp_driver/esp-idf apply "$REPO/patches/06-idf-hostap-sta-join.patch"
 cd ../../..
 
 cp "$REPO/new-files/toplevel/devkit-c1-16m.conf" .

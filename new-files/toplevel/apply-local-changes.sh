@@ -85,22 +85,45 @@ buildroot)
 	;;
 esp-hosted)
 	[ -d build/esp-hosted/esp_hosted_ng ] || { echo "error: build/esp-hosted/esp_hosted_ng missing -- clone it first" >&2; exit 1; }
-	echo ">>> esp-hosted firmware: applying AP-support patch + committing locally"
+	echo ">>> esp-hosted firmware: applying the firmware patch + committing locally"
 	echo "    (esp_driver/CMakeLists.txt runs 'git reset --hard' on every cmake invocation;"
 	echo "     a local commit is the only thing that survives that -- see DEVELOPMENT.md)"
 	cd build/esp-hosted/esp_hosted_ng
 	if git log --oneline -1 | grep -q "local-only, never push"; then
 		echo "    already committed locally -- skipping"
 	else
-		git apply "$LOCAL/patches/02-firmware-network-adapter-ap-support.patch"
+		git apply "$LOCAL/patches/02-firmware-network-adapter.patch"
 		cp "$LOCAL/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r" \
 			"$LOCAL/new-files/esp-hosted/network_adapter/sdkconfig.defaults.esp32s3.16m8r" \
 			esp/esp_driver/network_adapter/
+		# sdkconfig.defaults.esp32s3 (no .16m8r) is patched too and does not
+		# live under main/, so it needs its own entry here or the commit
+		# drops it and cmake's reset --hard then reverts it.
 		git add esp/esp_driver/network_adapter/main/ \
+			esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3 \
 			esp/esp_driver/network_adapter/partition_table.esp32s3.16m8r \
 			esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3.16m8r
 		git -c user.email="local@backup" -c user.name="local-backup" \
-			commit -m "AP support + 16m8r profile files (local-only, never push)"
+			commit -m "network_adapter: this project's firmware (local-only, never push)"
+	fi
+
+	# The vendored ESP-IDF needs one symbol unhidden for the SoftAP path to
+	# link. cmake initialises this submodule itself, but only later, so do it
+	# here -- the same command it runs, so its run becomes a no-op.
+	echo ">>> esp-hosted: patching the vendored ESP-IDF"
+	IDF=esp/esp_driver/esp-idf
+	if [ ! -e "$IDF/.git" ]; then
+		echo "    fetching the esp-idf submodule"
+		git submodule update --init --depth=1 "$IDF" >/dev/null
+	fi
+	if git -C "$IDF" apply --check "$LOCAL/patches/06-idf-hostap-sta-join.patch" 2>/dev/null; then
+		git -C "$IDF" apply "$LOCAL/patches/06-idf-hostap-sta-join.patch"
+		echo "    applied"
+	elif git -C "$IDF" apply --check --reverse "$LOCAL/patches/06-idf-hostap-sta-join.patch" 2>/dev/null; then
+		echo "    already applied -- skipping"
+	else
+		echo "error: 06-idf-hostap-sta-join.patch neither applies nor is applied." >&2
+		exit 1
 	fi
 	;;
 *)
