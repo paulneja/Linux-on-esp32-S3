@@ -11,7 +11,12 @@ BR2_OPTIMIZE_S=y
 BR2_SSP_NONE=y
 BR2_RELRO_NONE=y
 BR2_ROOTFS_OVERLAY="board/espressif/esp32s3/rootfs_overlay"
-BR2_ROOTFS_POST_BUILD_SCRIPT="board/espressif/esp32s3/trim-libs.sh"
+# setup-home.sh repoints root's home at /home/root. It has to run here, not
+# from the overlay: buildroot regenerates /etc/passwd after the overlay is
+# applied (it stamps the root password hash in), so an overlay copy of passwd
+# would be overwritten. Leaving it out of this line is not a cosmetic loss --
+# root lands in /root, on the read-only cramfs, instead of the writable jffs2.
+BR2_ROOTFS_POST_BUILD_SCRIPT="board/espressif/esp32s3/trim-libs.sh board/espressif/esp32s3/setup-home.sh"
 BR2_ROOTFS_POST_FAKEROOT_SCRIPT="board/espressif/esp32s3/mkfs-etc.sh"
 BR2_ROOTFS_POST_IMAGE_SCRIPT="board/espressif/esp32s3/post-build.sh"
 BR2_LINUX_KERNEL=y
