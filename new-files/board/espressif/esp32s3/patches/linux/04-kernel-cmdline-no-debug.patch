@@ -1,0 +1,21 @@
+Drop 'debug' from the kernel command line.
+
+The DTS ships bootargs with 'debug', which raises the console loglevel and
+makes the kernel print far more than it needs to. On this board the console
+is a 115200 serial line, and that extra output is transmitted byte by byte,
+so it costs real boot time for messages nobody reads on a normal boot.
+
+Removing just the word leaves everything else (earlycon, console, root)
+exactly as it was.
+
+--- a/arch/xtensa/boot/dts/esp32s3.dtsi
++++ b/arch/xtensa/boot/dts/esp32s3.dtsi
+@@ -8,7 +8,7 @@
+ 	interrupt-parent = <&pic>;
+ 
+ 	chosen {
+-		bootargs = "earlycon=esp32s3uart,mmio32,0x60000000,115200n8,40000000 console=ttyS0,115200n8 debug rw root=mtd:rootfs no_hash_pointers ";
++		bootargs = "earlycon=esp32s3uart,mmio32,0x60000000,115200n8,40000000 console=ttyS0,115200n8 rw root=mtd:rootfs no_hash_pointers ";
+ 	};
+ 
+ 	aliases {
