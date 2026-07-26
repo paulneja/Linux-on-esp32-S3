@@ -9,7 +9,7 @@ index a46af63..6b19b1d 100644
  
  if(CONFIG_IDF_TARGET_ESP32S3)
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c
-index e7f35ad..797421d 100644
+index e7f35ad..042f3f2 100644
 --- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c
 +++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c
 @@ -43,9 +43,14 @@
@@ -35,24 +35,7 @@ index e7f35ad..797421d 100644
  uint8_t get_capabilities(void)
  {
  	uint8_t cap = 0;
-@@ -461,6 +467,16 @@ void process_priv_commamd(uint8_t if_type, uint8_t *payload, uint16_t payload_le
- 			process_raw_tp(if_type, payload, payload_len);
- 			break;
- 
-+		case CMD_AP_START:
-+			ESP_LOGI(TAG, "AP start request\n");
-+			process_ap_start(if_type, payload, payload_len);
-+			break;
-+
-+		case CMD_AP_STOP:
-+			ESP_LOGI(TAG, "AP stop request\n");
-+			process_ap_stop(if_type, payload, payload_len);
-+			break;
-+
- 		default:
- 			ESP_LOGI(TAG, "Unsupported cmd[0x%x] received\n", header->cmd_code);
- 			break;
-@@ -514,6 +530,13 @@ void process_rx_pkt(interface_buffer_handle_t *buf_handle)
+@@ -514,6 +520,13 @@ void process_rx_pkt(interface_buffer_handle_t *buf_handle)
  		else if (buf_handle->if_type == ESP_TEST_IF) {
  			debug_update_raw_tp_rx_count(payload_len);
  		}
@@ -66,7 +49,7 @@ index e7f35ad..797421d 100644
  	}
  	/* Free buffer handle */
  	if (buf_handle->free_buf_handle && buf_handle->priv_buffer_handle) {
-@@ -636,7 +659,6 @@ void app_main()
+@@ -636,7 +649,6 @@ void app_main()
  	}
  
  #ifdef CONFIG_BT_ENABLED
@@ -74,7 +57,7 @@ index e7f35ad..797421d 100644
  
  	ret = esp_read_mac(mac, ESP_MAC_BT);
  	if (ret) {
-@@ -671,6 +693,18 @@ void app_main()
+@@ -671,6 +683,18 @@ void app_main()
  		assert(to_host_queue[prio_q_idx] != NULL);
  	}
  
@@ -93,7 +76,7 @@ index e7f35ad..797421d 100644
  	assert(xTaskCreate(recv_task , "recv_task" , TASK_DEFAULT_STACK_SIZE , NULL , TASK_DEFAULT_PRIO, NULL) == pdTRUE);
  	assert(xTaskCreate(send_task , "send_task" , TASK_DEFAULT_STACK_SIZE, NULL , TASK_DEFAULT_PRIO , NULL) == pdTRUE);
  
-@@ -682,6 +716,14 @@ void app_main()
+@@ -682,6 +706,14 @@ void app_main()
  
  	ESP_LOGI(TAG,"Initial set up done");
  
@@ -448,419 +431,38 @@ index 0000000..88b1776
 +
 +#endif /* CONFIG_BT_ENABLED */
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/cmd.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/cmd.c
-index 68001e1..700a973 100644
+index 68001e1..fcda53f 100644
 --- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/cmd.c
 +++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/cmd.c
-@@ -59,6 +59,7 @@ extern volatile uint8_t station_connected;
- extern volatile uint8_t association_ongoing;
- 
- volatile uint8_t sta_init_flag;
-+static bool event_loop_ready;
- 
- static struct wpa_funcs wpa_cb;
- static esp_event_handler_instance_t instance_any_id;
-@@ -70,6 +71,29 @@ esp_err_t esp_wifi_register_mgmt_frame_internal(uint32_t type, uint32_t subtype)
- int esp_wifi_register_wpa_cb_internal(struct wpa_funcs *cb);
+@@ -71,6 +71,18 @@ int esp_wifi_register_wpa_cb_internal(struct wpa_funcs *cb);
  int esp_wifi_unregister_wpa_cb_internal(void);
  extern esp_err_t wlan_sta_rx_callback(void *buffer, uint16_t len, void *eb);
-+extern esp_err_t wlan_ap_rx_callback(void *buffer, uint16_t len, void *eb);
-+extern void esp_update_ap_mac(void);
-+extern volatile uint8_t softap_started;
-+
-+/* AP-side WPA authenticator from ESP-IDF's wpa_supplicant component; no public
-+ * header exports these, matching how the STA hooks above are declared. */
-+extern void *hostap_init(void);
-+extern bool hostap_deinit(void *data);
-+extern bool wpa_ap_remove(u8 *bssid);
-+extern uint8_t *wpa_ap_get_wpa_ie(uint8_t *ie_len);
-+extern bool wpa_ap_rx_eapol(void *hapd_data, void *sm_data, u8 *data, size_t data_len);
-+extern void wpa_ap_get_peer_spp_msg(void *sm_data, bool *spp_cap, bool *spp_req);
-+
-+/* Entries esp_supplicant_init() fills in that this file then wipes. Declared
-+ * here because their headers live inside the wpa_supplicant component and are
-+ * not on this app's include path. */
-+extern int wpa_sm_set_ap_rsnxe(const uint8_t *ie, size_t len);
-+extern void esp_wifi_register_wpa3_ap_cb(struct wpa_funcs *wpa_cb);
-+/* Reached when a client associates. static in esp_wpa_main.c upstream; the
-+ * vendored IDF has that static removed (patch in the tree) so we can complete
-+ * the table -- with it NULL the blob faults on the first association. */
-+extern bool hostap_sta_join(void **sta, u8 *bssid, u8 *wpa_ie, u8 wpa_ie_len,
-+			    u8 *rsnxe, u8 rsnxe_len, bool *pmf_enable, int subtype);
  
++/* STA-side entry that esp_supplicant_init() fills in and the memset of wpa_cb
++ * below then wipes, so it has to be put back by hand. Declared here because
++ * its header lives inside the wpa_supplicant component and is not on this
++ * app's include path.
++ *
++ * Despite sitting next to the AP callbacks upstream, this one is the
++ * supplicant's (wpa_sm_set_ap_rsnxe lives in rsn_supp/wpa.c): it records the
++ * RSNXE the *access point* advertised. Leaving it NULL makes the wifi blob log
++ * "null wpa_sta_ap_set_rsnxe" on every association -- harmless for WPA2-PSK,
++ * but it scribbles over the serial console, and WPA3/SAE-H2E does need it. */
++extern int wpa_sm_set_ap_rsnxe(const uint8_t *ie, size_t len);
++
  extern int wpa_parse_wpa_ie(const u8 *wpa_ie, size_t wpa_ie_len, wifi_wpa_ie_t *data);
  static inline void WPA_PUT_LE16(u8 *a, u16 val)
-@@ -464,6 +488,29 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
- 		handle_scan_event();
- 		break;
- 
-+	case WIFI_EVENT_AP_START:
-+		ESP_LOGI(TAG, "Wifi SoftAP started\n");
-+		break;
-+
-+	case WIFI_EVENT_AP_STOP:
-+		ESP_LOGI(TAG, "Wifi SoftAP stopped\n");
-+		break;
-+
-+	case WIFI_EVENT_AP_STACONNECTED:
-+		if (event_data) {
-+			wifi_event_ap_staconnected_t *ev = (wifi_event_ap_staconnected_t *) event_data;
-+			ESP_LOGI(TAG, "Station "MACSTR" joined the SoftAP, AID=%d\n",
-+					MAC2STR(ev->mac), ev->aid);
-+		}
-+		break;
-+
-+	case WIFI_EVENT_AP_STADISCONNECTED:
-+		if (event_data) {
-+			wifi_event_ap_stadisconnected_t *ev = (wifi_event_ap_stadisconnected_t *) event_data;
-+			ESP_LOGI(TAG, "Station "MACSTR" left the SoftAP\n", MAC2STR(ev->mac));
-+		}
-+		break;
-+
- 	default:
- 		ESP_LOGI(TAG, "Unregistered event: %ld\n", event_id);
- 	}
-@@ -672,6 +719,13 @@ esp_err_t initialise_wifi(void)
- 		return result;
- 	}
- 
-+	/* Keep wifi config in RAM. esp-hosted-fg does this and its SoftAP beacons
-+	 * WPA2; NG never did, leaving storage at the default FLASH while NVS is
-+	 * disabled (nvs_enable = 0 above), so esp_wifi_set_config(WIFI_IF_AP) could
-+	 * not fully commit the AP profile -- the privacy bit reached the beacon but
-+	 * the RSN element did not, and clients read the network as WEP. */
-+	esp_wifi_set_storage(WIFI_STORAGE_RAM);
-+
- 	esp_wifi_set_debug_log();
- 
- 	/* Register callback functions with wifi driver */
-@@ -692,11 +746,46 @@ esp_err_t initialise_wifi(void)
+ {
+@@ -691,6 +703,7 @@ esp_err_t initialise_wifi(void)
+ 	wpa_cb.wpa3_parse_sae_msg = rx_sae_msg;
  	wpa_cb.wpa_config_done = config_done;
  	wpa_cb.wpa_config_parse_string  = wpa_config_parse_string;
++	wpa_cb.wpa_sta_set_ap_rsnxe = wpa_sm_set_ap_rsnxe;
  
-+	wpa_cb.wpa_ap_init             = hostap_init;
-+	wpa_cb.wpa_ap_deinit           = hostap_deinit;
-+	wpa_cb.wpa_ap_remove           = wpa_ap_remove;
-+	wpa_cb.wpa_ap_get_wpa_ie       = wpa_ap_get_wpa_ie;
-+	wpa_cb.wpa_ap_rx_eapol         = wpa_ap_rx_eapol;
-+	wpa_cb.wpa_ap_get_peer_spp_msg = wpa_ap_get_peer_spp_msg;
-+	wpa_cb.wpa_ap_join             = hostap_sta_join;
-+	wpa_cb.wpa_sta_set_ap_rsnxe    = wpa_sm_set_ap_rsnxe;
-+	esp_wifi_register_wpa3_ap_cb(&wpa_cb);
-+
  	esp_wifi_register_wpa_cb_internal(&wpa_cb);
  
-+	/* Register for wifi events before starting, so STA_START/AP_START are not
-+	 * missed. Moved here from process_init_interface because, following fg,
-+	 * wifi is now started once at boot rather than lazily per interface. */
-+	if (!event_loop_ready) {
-+		ESP_ERROR_CHECK(esp_event_loop_create_default());
-+		ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
-+					ESP_EVENT_ANY_ID,
-+					&wifi_event_handler,
-+					NULL,
-+					&instance_any_id));
-+		event_loop_ready = true;
-+	}
-+
- 	result = esp_wifi_set_mode(WIFI_MODE_NULL);
- 	if (result) {
- 		ESP_LOGE(TAG, "Failed to set wifi mode\n");
-+		return result;
-+	}
-+
-+	/* Start wifi once, in NULL mode, exactly as esp-hosted-fg does at boot.
-+	 * Interfaces then come up by changing mode and setting config on this
-+	 * already-running stack -- never by stopping and restarting it. That is
-+	 * what lets the AP beacon carry WPA2: fg's SoftAP works this way, and every
-+	 * NG attempt that added the AP to a lazily-started or restarted stack left
-+	 * the beacon without its RSN element (clients saw WEP). */
-+	result = esp_wifi_start();
-+	if (result) {
-+		ESP_LOGE(TAG, "Failed to start wifi\n");
- 	}
- 
- 	return result;
-@@ -800,6 +889,156 @@ DONE:
- 	return ret;
- }
- 
-+int process_ap_start(uint8_t if_type, uint8_t *payload, uint16_t payload_len)
-+{
-+	struct command_header *header;
-+	interface_buffer_handle_t buf_handle = {0};
-+	esp_err_t ret = ESP_OK;
-+	uint8_t cmd_status = CMD_RESPONSE_SUCCESS;
-+	struct cmd_ap_start *cmd;
-+	wifi_config_t wifi_config = {0};
-+	wifi_mode_t mode = WIFI_MODE_NULL;
-+
-+	cmd = (struct cmd_ap_start *) payload;
-+
-+	if (!cmd->ssid_len || cmd->ssid_len > 32) {
-+		ESP_LOGE(TAG, "AP start: invalid ssid_len=%u\n", cmd->ssid_len);
-+		cmd_status = CMD_RESPONSE_FAIL;
-+		goto RESPOND;
-+	}
-+
-+	memcpy(wifi_config.ap.ssid, cmd->ssid, cmd->ssid_len);
-+	wifi_config.ap.ssid_len = cmd->ssid_len;
-+	wifi_config.ap.channel = cmd->channel ? cmd->channel : 1;
-+	wifi_config.ap.authmode = cmd->authmode;
-+	wifi_config.ap.ssid_hidden = cmd->ssid_hidden;
-+	wifi_config.ap.max_connection = cmd->max_connection ? cmd->max_connection : 4;
-+	wifi_config.ap.beacon_interval = 100;
-+	if (cmd->authmode != WIFI_AUTH_OPEN)
-+		strlcpy((char *) wifi_config.ap.password, cmd->password,
-+				sizeof(wifi_config.ap.password));
-+
-+	/* Wifi is already started by the STA interface's CMD_INIT_INTERFACE;
-+	 * just widen the mode to APSTA so both coexist. */
-+	ret = esp_wifi_get_mode(&mode);
-+	if (ret == ESP_OK && mode != WIFI_MODE_APSTA) {
-+		ret = esp_wifi_set_mode(WIFI_MODE_APSTA);
-+		if (ret) {
-+			ESP_LOGE(TAG, "AP start: failed to set APSTA mode, ret=0x%x\n", ret);
-+			cmd_status = CMD_RESPONSE_FAIL;
-+			goto RESPOND;
-+		}
-+	}
-+
-+	ret = esp_wifi_set_config(WIFI_IF_AP, &wifi_config);
-+	if (ret) {
-+		ESP_LOGE(TAG, "AP start: esp_wifi_set_config failed, ret=0x%x\n", ret);
-+		cmd_status = CMD_RESPONSE_FAIL;
-+		goto RESPOND;
-+	}
-+
-+	esp_update_ap_mac();
-+
-+	ret = esp_wifi_internal_reg_rxcb(ESP_IF_WIFI_AP, (wifi_rxcb_t) wlan_ap_rx_callback);
-+	if (ret) {
-+		ESP_LOGE(TAG, "AP start: failed to register AP rx callback, ret=0x%x\n", ret);
-+		cmd_status = CMD_RESPONSE_FAIL;
-+		goto RESPOND;
-+	}
-+
-+	softap_started = 1;
-+	ESP_LOGI(TAG, "SoftAP configured: ssid_len=%u channel=%u authmode=%u\n",
-+			cmd->ssid_len, wifi_config.ap.channel, cmd->authmode);
-+
-+RESPOND:
-+	buf_handle.if_type = if_type;
-+	buf_handle.if_num = 0;
-+	buf_handle.payload_len = sizeof(struct command_header);
-+	buf_handle.pkt_type = PACKET_TYPE_COMMAND_RESPONSE;
-+
-+	buf_handle.payload = heap_caps_malloc(buf_handle.payload_len, MALLOC_CAP_DMA);
-+	assert(buf_handle.payload);
-+	memset(buf_handle.payload, 0, buf_handle.payload_len);
-+
-+	header = (struct command_header *) buf_handle.payload;
-+	header->cmd_code = CMD_AP_START;
-+	header->len = 0;
-+	header->cmd_status = cmd_status;
-+
-+	buf_handle.priv_buffer_handle = buf_handle.payload;
-+	buf_handle.free_buf_handle = free;
-+
-+	ret = send_command_response(&buf_handle);
-+	if (ret != pdTRUE) {
-+		ESP_LOGE(TAG, "Slave -> Host: Failed to send command response\n");
-+		goto DONE;
-+	}
-+
-+	return ESP_OK;
-+
-+DONE:
-+	if (buf_handle.payload) {
-+		free(buf_handle.payload);
-+		buf_handle.payload = NULL;
-+	}
-+
-+	return ret;
-+}
-+
-+int process_ap_stop(uint8_t if_type, uint8_t *payload, uint16_t payload_len)
-+{
-+	struct command_header *header;
-+	interface_buffer_handle_t buf_handle = {0};
-+	esp_err_t ret = ESP_OK;
-+	uint8_t cmd_status = CMD_RESPONSE_SUCCESS;
-+	wifi_mode_t mode = WIFI_MODE_NULL;
-+
-+	softap_started = 0;
-+
-+	ret = esp_wifi_get_mode(&mode);
-+	if (ret == ESP_OK && (mode == WIFI_MODE_APSTA || mode == WIFI_MODE_AP)) {
-+		wifi_mode_t new_mode = (mode == WIFI_MODE_APSTA) ? WIFI_MODE_STA : WIFI_MODE_NULL;
-+		ret = esp_wifi_set_mode(new_mode);
-+		if (ret) {
-+			ESP_LOGE(TAG, "AP stop: failed to change wifi mode, ret=0x%x\n", ret);
-+			cmd_status = CMD_RESPONSE_FAIL;
-+		}
-+	}
-+
-+	buf_handle.if_type = if_type;
-+	buf_handle.if_num = 0;
-+	buf_handle.payload_len = sizeof(struct command_header);
-+	buf_handle.pkt_type = PACKET_TYPE_COMMAND_RESPONSE;
-+
-+	buf_handle.payload = heap_caps_malloc(buf_handle.payload_len, MALLOC_CAP_DMA);
-+	assert(buf_handle.payload);
-+	memset(buf_handle.payload, 0, buf_handle.payload_len);
-+
-+	header = (struct command_header *) buf_handle.payload;
-+	header->cmd_code = CMD_AP_STOP;
-+	header->len = 0;
-+	header->cmd_status = cmd_status;
-+
-+	buf_handle.priv_buffer_handle = buf_handle.payload;
-+	buf_handle.free_buf_handle = free;
-+
-+	ret = send_command_response(&buf_handle);
-+	if (ret != pdTRUE) {
-+		ESP_LOGE(TAG, "Slave -> Host: Failed to send command response\n");
-+		goto DONE;
-+	}
-+
-+	return ESP_OK;
-+
-+DONE:
-+	if (buf_handle.payload) {
-+		free(buf_handle.payload);
-+		buf_handle.payload = NULL;
-+	}
-+
-+	return ret;
-+}
-+
- int process_set_mcast_mac_list(uint8_t if_type, uint8_t *payload, uint16_t payload_len)
- {
- 	struct command_header *header;
-@@ -1426,6 +1665,57 @@ DONE:
- 	return ret;
- }
- 
-+/* SoftAP with a fixed SSID/password, started automatically once the AP
-+ * interface initializes -- there is no userspace daemon to trigger it
-+ * dynamically (hostapd needs real fork(), unavailable on this NOMMU libc).
-+ *
-+ * Split in two around esp_wifi_start(): the beacon's RSN element is built from
-+ * the config when the interface starts, and the rx callback can only attach to
-+ * an interface that is already running. */
-+static esp_err_t configure_softap_fixed(void)
-+{
-+	static const char ssid[] = "esp32-linux";
-+	static const char password[] = "linux1234";
-+	wifi_config_t wifi_config = {0};
-+	esp_err_t ret;
-+
-+	memcpy(wifi_config.ap.ssid, ssid, sizeof(ssid) - 1);
-+	wifi_config.ap.ssid_len = sizeof(ssid) - 1;
-+	wifi_config.ap.channel = 6;
-+	wifi_config.ap.authmode = WIFI_AUTH_WPA2_PSK;
-+	wifi_config.ap.pairwise_cipher = WIFI_CIPHER_TYPE_CCMP;
-+	wifi_config.ap.max_connection = 4;
-+	wifi_config.ap.beacon_interval = 100;
-+	strlcpy((char *) wifi_config.ap.password, password, sizeof(wifi_config.ap.password));
-+
-+	ret = esp_wifi_set_config(WIFI_IF_AP, &wifi_config);
-+	if (ret) {
-+		ESP_LOGE(TAG, "SoftAP: esp_wifi_set_config failed, ret=0x%x\n", ret);
-+		return ret;
-+	}
-+
-+	ESP_LOGI(TAG, "SoftAP '%s' configured on channel %u\n", ssid, wifi_config.ap.channel);
-+	return ESP_OK;
-+}
-+
-+static esp_err_t attach_softap_rx(void)
-+{
-+	esp_err_t ret;
-+
-+	esp_update_ap_mac();
-+
-+	ret = esp_wifi_internal_reg_rxcb(ESP_IF_WIFI_AP, (wifi_rxcb_t) wlan_ap_rx_callback);
-+	if (ret) {
-+		ESP_LOGE(TAG, "SoftAP: failed to register AP rx callback, ret=0x%x\n", ret);
-+		return ret;
-+	}
-+
-+	softap_started = 1;
-+
-+	ESP_LOGI(TAG, "SoftAP rx path attached\n");
-+	return ESP_OK;
-+}
-+
- int process_init_interface(uint8_t if_type, uint8_t *payload, uint16_t payload_len)
- {
- 	struct command_header *header;
-@@ -1433,27 +1723,29 @@ int process_init_interface(uint8_t if_type, uint8_t *payload, uint16_t payload_l
- 	esp_err_t ret = ESP_OK;
- 	wifi_mode_t mode = 0;
- 
--	if (!sta_init_flag) {
-+	/* Wifi is already started (initialise_wifi did it once at boot, fg-style).
-+	 * Interfaces come up by changing mode and setting config on the running
-+	 * stack -- no start, no stop, no restart. This is the pattern fg uses and
-+	 * the one under which its SoftAP beacons WPA2. */
-+	ret = esp_wifi_get_mode(&mode);
-+	if (ret) {
-+		ESP_LOGE(TAG,"Failed to get wifi mode");
-+		goto DONE;
-+	}
- 
--		/* Register to get events from wifi driver */
--		ESP_ERROR_CHECK(esp_event_loop_create_default());
--		ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
--					ESP_EVENT_ANY_ID,
--					&wifi_event_handler,
--					NULL,
--					&instance_any_id));
-+	if (if_type == ESP_STA_IF) {
-+		mode |= WIFI_MODE_STA;
- 
--		ret = esp_wifi_get_mode(&mode);
-+		ret = esp_wifi_set_mode(mode);
- 		if (ret) {
--			ESP_LOGE(TAG,"Failed to get wifi mode");
-+			ESP_LOGE(TAG, "Failed to set wifi mode\n");
- 			goto DONE;
- 		}
--
--		if (if_type == ESP_STA_IF) {
--			mode |= WIFI_MODE_STA;
--		} else {
--			mode |= WIFI_MODE_AP;
--		}
-+	} else {
-+		/* Add the AP to the running stack: gain the AP mode bit, then set the
-+		 * AP config. set_config on a running AP interface is what builds the
-+		 * beacon, so the RSN element is present from the first beacon. */
-+		mode |= WIFI_MODE_AP;
- 
- 		ret = esp_wifi_set_mode(mode);
- 		if (ret) {
-@@ -1461,9 +1753,15 @@ int process_init_interface(uint8_t if_type, uint8_t *payload, uint16_t payload_l
- 			goto DONE;
- 		}
- 
--		ret = esp_wifi_start();
-+		ret = configure_softap_fixed();
-+		if (ret) {
-+			ESP_LOGE(TAG, "Failed to configure SoftAP\n");
-+			goto DONE;
-+		}
-+
-+		ret = attach_softap_rx();
- 		if (ret) {
--			ESP_LOGE(TAG, "Failed to start wifi\n");
-+			ESP_LOGE(TAG, "Failed to attach SoftAP rx\n");
- 			goto DONE;
- 		}
- 	}
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h b/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h
-index ed95897..fb313ec 100644
+index ed95897..e29e650 100644
 --- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h
 +++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h
 @@ -56,6 +56,11 @@ enum ESP_INTERFACE_TYPE {
@@ -875,64 +477,6 @@ index ed95897..fb313ec 100644
  	ESP_MAX_IF,
  };
  
-@@ -124,6 +129,8 @@ enum COMMAND_CODE {
- 	CMD_SET_REG_DOMAIN,
- 	CMD_RAW_TP_ESP_TO_HOST,
- 	CMD_RAW_TP_HOST_TO_ESP,
-+	CMD_AP_START,
-+	CMD_AP_STOP,
- 	CMD_MAX,
- };
- 
-@@ -133,6 +140,8 @@ enum EVENT_CODE {
- 	EVENT_STA_DISCONNECT,
- 	EVENT_AUTH_RX,
- 	EVENT_ASSOC_RX,
-+	EVENT_AP_STACONNECTED,
-+	EVENT_AP_STADISCONNECTED,
- };
- 
- enum COMMAND_RESPONSE_TYPE {
-@@ -205,6 +214,18 @@ struct cmd_sta_disconnect {
- 	uint8_t    pad[2];
- } __packed;
- 
-+struct cmd_ap_start {
-+	struct     command_header header;
-+	char       ssid[MAX_SSID_LEN+1];
-+	uint8_t    ssid_len;
-+	uint8_t    ssid_hidden;
-+	uint8_t    channel;
-+	uint8_t    authmode;
-+	uint8_t    max_connection;
-+	char       password[64+1];
-+	uint8_t    pad[2];
-+} __packed;
-+
- struct cmd_set_ip_addr {
- 	struct command_header header;
- 	uint32_t ip;
-@@ -299,6 +320,20 @@ struct disconnect_event {
- 	uint8_t    reason;
- } __packed;
- 
-+struct ap_sta_connected_event {
-+	struct     event_header header;
-+	uint8_t    mac[MAC_ADDR_LEN];
-+	uint8_t    aid;
-+	uint8_t    pad[1];
-+} __packed;
-+
-+struct ap_sta_disconnected_event {
-+	struct     event_header header;
-+	uint8_t    mac[MAC_ADDR_LEN];
-+	uint8_t    reason;
-+	uint8_t    pad[1];
-+} __packed;
-+
- struct esp_internal_bootup_event {
- 	struct     event_header header;
- 	uint8_t    len;
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/ble_prov.h b/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/ble_prov.h
 new file mode 100644
 index 0000000..db958af
@@ -965,19 +509,6 @@ index 0000000..db958af
 +void ble_prov_from_linux(const uint8_t *payload, uint16_t len);
 +
 +#endif /* __BLE_PROV_H__ */
-diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/cmd.h b/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/cmd.h
-index cb3cabc..f24c651 100644
---- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/cmd.h
-+++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/cmd.h
-@@ -50,6 +50,8 @@ int process_set_mcast_mac_list(uint8_t if_type, uint8_t *payload, uint16_t paylo
- int process_tx_power(uint8_t if_type, uint8_t *payload, uint16_t payload_len, uint8_t cmd_code);
- int process_reg_set(uint8_t if_type, uint8_t *payload, uint16_t payload_len);
- int process_reg_get(uint8_t if_type, uint8_t *payload, uint16_t payload_len);
-+int process_ap_start(uint8_t if_type, uint8_t *payload, uint16_t payload_len);
-+int process_ap_stop(uint8_t if_type, uint8_t *payload, uint16_t payload_len);
- 
- esp_err_t initialise_wifi(void);
- 
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c
 index e19c62a..2e619d9 100644
 --- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c

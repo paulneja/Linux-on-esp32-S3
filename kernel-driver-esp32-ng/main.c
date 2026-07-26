@@ -27,13 +27,9 @@ static u32 clockspeed = 0;
 extern u8 ap_bssid[MAC_ADDR_LEN];
 extern volatile u8 host_sleep;
 u32 raw_tp_mode = 0;
-static bool ap_iface;
 
 module_param(clockspeed, uint, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 MODULE_PARM_DESC(clockspeed, "Hosts clock speed in MHz");
-
-module_param(ap_iface, bool, 0444);
-MODULE_PARM_DESC(ap_iface, "Create the espap0 SoftAP interface (breaks STA scan)");
 
 module_param(raw_tp_mode, uint, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 MODULE_PARM_DESC(raw_tp_mode, "Mode choosed to test raw throughput");
@@ -473,28 +469,11 @@ static int esp_add_network_ifaces(struct esp_adapter *adapter)
 	wdev = esp_cfg80211_add_iface(adapter->wiphy, "espsta%d", 1, NL80211_IFTYPE_STATION, NULL);
 	rtnl_unlock();
 
-	if (!wdev)
-		return -1;
-
-	/* SoftAP is permanently disabled on this build: the closed WiFi blob
-	 * beacons as WEP (clients reject it) and, worse, bringing the AP up
-	 * wedges the firmware's wifi task so CMD_SCAN_REQUEST never returns and
-	 * the STA can no longer scan or associate. So espap0 is never created:
-	 * upstream esp-hosted is STA-only, the configuration known to work.
-	 * The ap_iface module param is kept below but intentionally ignored
-	 * here -- there is deliberately no way to turn the SoftAP on anymore.
-	 * (Was "if (!ap_iface)"; now hard-forced off.) */
-	if (1)
+	/* Return success if network added successfully */
+	if (wdev)
 		return 0;
 
-	rtnl_lock();
-	wdev = esp_cfg80211_add_iface(adapter->wiphy, "espap%d", 1, NL80211_IFTYPE_AP, NULL);
-	rtnl_unlock();
-
-	if (!wdev)
-		esp_info("Failed to create espap interface (AP mode unavailable)\n");
-
-	return 0;
+	return -1;
 }
 
 int esp_init_raw_tp(struct esp_adapter *adapter)
@@ -508,6 +487,11 @@ int esp_add_card(struct esp_adapter *adapter)
 	RET_ON_FAIL(esp_commands_setup(adapter));
 	RET_ON_FAIL(esp_add_wiphy(adapter));
 	RET_ON_FAIL(esp_add_network_ifaces(adapter));
+
+	/* BLE provisioning pipe (/dev/esp-ble). Unconditional: it does not
+	 * depend on the esp-hosted BT/HCI capabilities -- the BLE stack runs
+	 * on the ESP side, this is only the byte pipe to userspace. */
+	esp_ble_prov_init(adapter);
 
 	return 0;
 }
@@ -600,6 +584,7 @@ int esp_remove_card(struct esp_adapter *adapter)
 	esp_stop_network_ifaces(adapter);
 #ifdef CONFIG_ESP32_BT
 	/* BT may have been initialized after fw bootup event, deinit it */
+	esp_ble_prov_deinit();
 	esp_deinit_bt(adapter);
 #endif
 	esp_commands_teardown(adapter);
@@ -810,6 +795,12 @@ static void process_rx_packet(struct esp_adapter *adapter, struct sk_buff *skb)
 			dev_kfree_skb_any(skb);
 		}
 
+	} else if (payload_header->if_type == ESP_BLE_PROV_IF) {
+		/* Bytes typed by a phone on the BLE link; hand them to
+		 * /dev/esp-ble for the provisioning daemon. The payload header
+		 * was already pulled above -- do not pull it again. */
+		esp_ble_prov_rx(skb);
+		return;
 	} else if (payload_header->if_type == ESP_TEST_IF) {
 #if TEST_RAW_TP
 		if (raw_tp_mode != 0) {

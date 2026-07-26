@@ -80,6 +80,13 @@ buildroot)
 	fi
 	cd ../..
 	echo ">>> buildroot: copying new files (board profile, espctl, init scripts)"
+	# rsync without --delete leaves behind files new-files/ no longer ships.
+	# For the kernel patch directory that is not cosmetic: a patch deleted
+	# here would stay in the buildroot tree and keep being applied, and a
+	# renamed one would be applied twice, under both names. Clear it so it
+	# ends up matching new-files/ exactly. (--delete on board/ as a whole is
+	# not an option -- it would wipe buildroot's own board/* profiles.)
+	rm -rf build/buildroot/board/espressif/esp32s3/patches
 	rsync -a "$LOCAL/new-files/board/" build/buildroot/board/
 	rsync -a "$LOCAL/new-files/configs/" build/buildroot/configs/
 	;;
@@ -107,24 +114,9 @@ esp-hosted)
 			commit -m "network_adapter: this project's firmware (local-only, never push)"
 	fi
 
-	# The vendored ESP-IDF needs one symbol unhidden for the SoftAP path to
-	# link. cmake initialises this submodule itself, but only later, so do it
-	# here -- the same command it runs, so its run becomes a no-op.
-	echo ">>> esp-hosted: patching the vendored ESP-IDF"
-	IDF=esp/esp_driver/esp-idf
-	if [ ! -e "$IDF/.git" ]; then
-		echo "    fetching the esp-idf submodule"
-		git submodule update --init --depth=1 "$IDF" >/dev/null
-	fi
-	if git -C "$IDF" apply --check "$LOCAL/patches/06-idf-hostap-sta-join.patch" 2>/dev/null; then
-		git -C "$IDF" apply "$LOCAL/patches/06-idf-hostap-sta-join.patch"
-		echo "    applied"
-	elif git -C "$IDF" apply --check --reverse "$LOCAL/patches/06-idf-hostap-sta-join.patch" 2>/dev/null; then
-		echo "    already applied -- skipping"
-	else
-		echo "error: 06-idf-hostap-sta-join.patch neither applies nor is applied." >&2
-		exit 1
-	fi
+	# The vendored ESP-IDF is used as-is. It used to need one symbol unhidden
+	# (hostap_sta_join) so the SoftAP's authenticator could link; the SoftAP is
+	# gone, so the submodule is left untouched and cmake initialises it itself.
 	;;
 *)
 	echo "usage: $0 buildroot|esp-hosted" >&2
