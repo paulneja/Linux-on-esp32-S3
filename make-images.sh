@@ -58,7 +58,12 @@ mkdir -p "$OUT"
 # and the kernel derives the rootfs XIP address from the partition table, so
 # booting it panics with "Cannot open root device".
 CSV="$REPO/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r"
-GEN=$(find "$BUILD" -path '*partition_table/gen_esp32part.py' -print -quit 2>/dev/null) \
+# The trailing slash matters: BUILD can be a symlink (a packaged tree pointing
+# at the real build output), and find does not traverse a symlink handed to it
+# as a starting point. The slash resolves that one path. Not -L, which follows
+# every symlink in the tree: buildroot's host/usr -> . loop then makes find
+# exit non-zero even after a successful match, firing the die below.
+GEN=$(find "$BUILD/" -path '*partition_table/gen_esp32part.py' -print -quit 2>/dev/null) \
 	|| die "gen_esp32part.py not found under $BUILD"
 [ -n "$GEN" ] || die "gen_esp32part.py not found under $BUILD"
 echo "==> partition table (from $(basename "$CSV"))"
