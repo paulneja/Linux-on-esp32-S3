@@ -194,13 +194,6 @@ struct wireless_dev *esp_cfg80211_add_iface(struct wiphy *wiphy,
 	esp_wdev->esp_dev = esp_dev;
 	esp_wdev->ndev = ndev;
 	esp_wdev->adapter = esp_dev->adapter;
-	esp_wdev->if_type = (type == NL80211_IFTYPE_AP) ? ESP_AP_IF : ESP_STA_IF;
-	/* Protocol if_num, not the priv[] slot: the firmware stamps every header
-	 * it sends with if_num 0 and distinguishes interfaces by if_type alone.
-	 * Using esp_nw_if_num here made get_priv_from_payload_header() miss on the
-	 * AP (which lands in slot 1), so its command responses were dropped as
-	 * "Empty priv" and cmd_init_interface timed out. */
-	esp_wdev->if_num = 0;
 	esp_wdev->adapter->priv[esp_nw_if_num] = esp_wdev;
 	/*esp_info("Updated priv[%u] to %px\n",
 	 * esp_nw_if_num, esp_wdev->adapter->priv[esp_nw_if_num]);*/
@@ -282,34 +275,6 @@ static int esp_cfg80211_scan(struct wiphy *wiphy,
 	}
 
 	return cmd_scan_request(priv, request);
-}
-
-static int esp_cfg80211_start_ap(struct wiphy *wiphy, struct net_device *dev,
-		struct cfg80211_ap_settings *settings)
-{
-	struct esp_wifi_device *priv = netdev_priv(dev);
-
-	esp_dbg("\n");
-	if (!priv) {
-		esp_err("Empty priv\n");
-		return -EINVAL;
-	}
-
-	return cmd_ap_start(priv, settings);
-}
-
-static int esp_cfg80211_stop_ap(struct wiphy *wiphy, struct net_device *dev,
-		unsigned int link_id)
-{
-	struct esp_wifi_device *priv = netdev_priv(dev);
-
-	esp_dbg("\n");
-	if (!priv) {
-		esp_err("Empty priv\n");
-		return -EINVAL;
-	}
-
-	return cmd_ap_stop(priv);
 }
 
 #if 0
@@ -639,8 +604,6 @@ static const struct cfg80211_ops esp_cfg80211_ops = {
 	.change_virtual_intf = esp_cfg80211_change_iface,
 #endif
 	.scan = esp_cfg80211_scan,
-	.start_ap = esp_cfg80211_start_ap,
-	.stop_ap = esp_cfg80211_stop_ap,
 	/*.connect = esp_cfg80211_connect,*/
 	.disconnect = esp_cfg80211_disconnect,
 	.add_key = esp_cfg80211_add_key,
@@ -741,7 +704,7 @@ int esp_add_wiphy(struct esp_adapter *adapter)
 
 	set_wiphy_dev(wiphy, esp_dev->dev);
 
-	wiphy->interface_modes = BIT(NL80211_IFTYPE_STATION) | BIT(NL80211_IFTYPE_AP);
+	wiphy->interface_modes = BIT(NL80211_IFTYPE_STATION);
 	wiphy->bands[NL80211_BAND_2GHZ] = &esp_wifi_bands;
 
 	/* Initialize cipher suits */

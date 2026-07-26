@@ -239,8 +239,6 @@ static int wait_and_decode_cmd_resp(struct esp_wifi_device *priv,
 	case CMD_SET_REG_DOMAIN:
 	case CMD_RAW_TP_ESP_TO_HOST:
 	case CMD_RAW_TP_HOST_TO_ESP:
-	case CMD_AP_START:
-	case CMD_AP_STOP:
 		/* intentional fallthrough */
 		if (ret == 0)
 			ret = decode_common_resp(cmd_node);
@@ -412,7 +410,7 @@ static void destroy_cmd_wq(struct esp_adapter *adapter)
 	}
 }
 
-struct command_node *prepare_command_request(struct esp_adapter *adapter, u8 cmd_code, u16 len, u8 if_type)
+struct command_node *prepare_command_request(struct esp_adapter *adapter, u8 cmd_code, u16 len)
 {
 	struct command_header *cmd;
 	struct esp_payload_header *payload_header;
@@ -446,7 +444,7 @@ struct command_node *prepare_command_request(struct esp_adapter *adapter, u8 cmd
 	payload_header = (struct esp_payload_header *)skb_put(node->cmd_skb, len);
 	memset(payload_header, 0, len);
 
-	payload_header->if_type = if_type;
+	payload_header->if_type = ESP_STA_IF;
 	payload_header->len = cpu_to_le16(len - sizeof(struct esp_payload_header));
 	payload_header->offset = cpu_to_le16(sizeof(struct esp_payload_header));
 	payload_header->packet_type = PACKET_TYPE_COMMAND_REQUEST;
@@ -694,7 +692,8 @@ int cmd_set_mcast_mac_list(struct esp_wifi_device *priv, struct multicast_list *
 	if (test_bit(ESP_CLEANUP_IN_PROGRESS, &priv->adapter->state_flags))
 		return 0;
 
-	cmd_node = prepare_command_request(priv->adapter, CMD_SET_MCAST_MAC_ADDR, sizeof(struct cmd_set_mcast_mac_addr), priv->if_type);
+	cmd_node = prepare_command_request(priv->adapter, CMD_SET_MCAST_MAC_ADDR,
+			sizeof(struct cmd_set_mcast_mac_addr));
 
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");
@@ -728,7 +727,8 @@ int cmd_set_ip_address(struct esp_wifi_device *priv, u32 ip)
 	if (test_bit(ESP_CLEANUP_IN_PROGRESS, &priv->adapter->state_flags))
 		return 0;
 
-	cmd_node = prepare_command_request(priv->adapter, CMD_SET_IP_ADDR, sizeof(struct cmd_set_ip_addr), priv->if_type);
+	cmd_node = prepare_command_request(priv->adapter, CMD_SET_IP_ADDR,
+			sizeof(struct cmd_set_ip_addr));
 
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");
@@ -761,7 +761,8 @@ int cmd_disconnect_request(struct esp_wifi_device *priv, u16 reason_code)
 	if (test_bit(ESP_CLEANUP_IN_PROGRESS, &priv->adapter->state_flags))
 		return 0;
 
-	cmd_node = prepare_command_request(priv->adapter, CMD_STA_DISCONNECT, sizeof(struct cmd_sta_disconnect), priv->if_type);
+	cmd_node = prepare_command_request(priv->adapter, CMD_STA_DISCONNECT,
+			sizeof(struct cmd_sta_disconnect));
 
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");
@@ -807,7 +808,7 @@ int cmd_connect_request(struct esp_wifi_device *priv,
 
 	cmd_len = sizeof(struct cmd_sta_connect) + params->ie_len;
 
-	cmd_node = prepare_command_request(adapter, CMD_STA_CONNECT, cmd_len, priv->if_type);
+	cmd_node = prepare_command_request(adapter, CMD_STA_CONNECT, cmd_len);
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");
 		return -ENOMEM;
@@ -895,7 +896,7 @@ int cmd_assoc_request(struct esp_wifi_device *priv,
 
 	cmd_len = sizeof(struct cmd_sta_assoc) + req->ie_len;
 
-	cmd_node = prepare_command_request(adapter, CMD_STA_ASSOC, cmd_len, priv->if_type);
+	cmd_node = prepare_command_request(adapter, CMD_STA_ASSOC, cmd_len);
 
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");
@@ -962,7 +963,7 @@ int cmd_auth_request(struct esp_wifi_device *priv,
 
 	cmd_len = sizeof(struct cmd_sta_auth) + req->auth_data_len;
 
-	cmd_node = prepare_command_request(adapter, CMD_STA_AUTH, cmd_len, priv->if_type);
+	cmd_node = prepare_command_request(adapter, CMD_STA_AUTH, cmd_len);
 
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");
@@ -1033,7 +1034,7 @@ int cmd_set_default_key(struct esp_wifi_device *priv, u8 key_index)
 	cmd_len = sizeof(struct cmd_key_operation);
 
 	/* get new cmd node */
-	cmd_node = prepare_command_request(priv->adapter, CMD_SET_DEFAULT_KEY, cmd_len, priv->if_type);
+	cmd_node = prepare_command_request(priv->adapter, CMD_SET_DEFAULT_KEY, cmd_len);
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");
 		return -ENOMEM;
@@ -1086,7 +1087,7 @@ int cmd_del_key(struct esp_wifi_device *priv, u8 key_index, bool pairwise,
 	cmd_len = sizeof(struct cmd_key_operation);
 
 	/* get new cmd node */
-	cmd_node = prepare_command_request(priv->adapter, CMD_DEL_KEY, cmd_len, priv->if_type);
+	cmd_node = prepare_command_request(priv->adapter, CMD_DEL_KEY, cmd_len);
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");
 		return -ENOMEM;
@@ -1165,7 +1166,7 @@ int cmd_add_key(struct esp_wifi_device *priv, u8 key_index, bool pairwise,
 
 	cmd_len = sizeof(struct cmd_key_operation);
 
-	cmd_node = prepare_command_request(priv->adapter, CMD_ADD_KEY, cmd_len, priv->if_type);
+	cmd_node = prepare_command_request(priv->adapter, CMD_ADD_KEY, cmd_len);
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");
 		return -ENOMEM;
@@ -1233,7 +1234,7 @@ int cmd_init_interface(struct esp_wifi_device *priv)
 
 	cmd_len = sizeof(struct command_header);
 
-	cmd_node = prepare_command_request(priv->adapter, CMD_INIT_INTERFACE, cmd_len, priv->if_type);
+	cmd_node = prepare_command_request(priv->adapter, CMD_INIT_INTERFACE, cmd_len);
 
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");
@@ -1263,7 +1264,7 @@ int cmd_deinit_interface(struct esp_wifi_device *priv)
 
 	cmd_len = sizeof(struct command_header);
 
-	cmd_node = prepare_command_request(priv->adapter, CMD_DEINIT_INTERFACE, cmd_len, priv->if_type);
+	cmd_node = prepare_command_request(priv->adapter, CMD_DEINIT_INTERFACE, cmd_len);
 
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");
@@ -1303,7 +1304,7 @@ int internal_scan_request(struct esp_wifi_device *priv, char *ssid,
 
 	cmd_len = sizeof(struct scan_request);
 
-	cmd_node = prepare_command_request(priv->adapter, CMD_SCAN_REQUEST, cmd_len, priv->if_type);
+	cmd_node = prepare_command_request(priv->adapter, CMD_SCAN_REQUEST, cmd_len);
 
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");
@@ -1362,7 +1363,7 @@ int cmd_scan_request(struct esp_wifi_device *priv, struct cfg80211_scan_request 
 
 	cmd_len = sizeof(struct scan_request);
 
-	cmd_node = prepare_command_request(priv->adapter, CMD_SCAN_REQUEST, cmd_len, priv->if_type);
+	cmd_node = prepare_command_request(priv->adapter, CMD_SCAN_REQUEST, cmd_len);
 
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");
@@ -1402,90 +1403,6 @@ int cmd_scan_request(struct esp_wifi_device *priv, struct cfg80211_scan_request 
 	return 0;
 }
 
-/* Fixed AP passphrase: nl80211/cfg80211_ap_settings does not carry the raw
- * PSK for FullMAC APs (hostapd normally owns the 4-way handshake; here the
- * ESP-IDF side does it internally instead). hostapd.conf's wpa_passphrase
- * must match this value -- it only picks the SSID/channel dynamically. */
-static char esp_ap_password[65] = "linux1234";
-module_param_string(esp_ap_password, esp_ap_password, sizeof(esp_ap_password), 0400);
-MODULE_PARM_DESC(esp_ap_password, "WPA2-PSK passphrase for the esp32 SoftAP (must match hostapd.conf)");
-
-int cmd_ap_start(struct esp_wifi_device *priv, struct cfg80211_ap_settings *settings)
-{
-	u16 cmd_len;
-	struct command_node *cmd_node = NULL;
-	struct cmd_ap_start *ap_start;
-
-	if (!priv || !priv->adapter || !settings) {
-		esp_err("Invalid argument\n");
-		return -EINVAL;
-	}
-
-	if (test_bit(ESP_CLEANUP_IN_PROGRESS, &priv->adapter->state_flags)) {
-		esp_err("%u cleanup in progress, return", __LINE__);
-		return -EBUSY;
-	}
-
-	cmd_len = sizeof(struct cmd_ap_start);
-
-	cmd_node = prepare_command_request(priv->adapter, CMD_AP_START, cmd_len, priv->if_type);
-
-	if (!cmd_node) {
-		esp_err("Failed to get command node\n");
-		return -ENOMEM;
-	}
-
-	ap_start = (struct cmd_ap_start *) (cmd_node->cmd_skb->data +
-			sizeof(struct esp_payload_header));
-
-	if (settings->ssid && settings->ssid_len) {
-		memcpy(ap_start->ssid, settings->ssid,
-				min_t(size_t, settings->ssid_len, MAX_SSID_LEN));
-		ap_start->ssid_len = min_t(size_t, settings->ssid_len, MAX_SSID_LEN);
-	}
-
-	ap_start->ssid_hidden = (settings->hidden_ssid != NL80211_HIDDEN_SSID_NOT_IN_USE);
-	ap_start->channel = settings->chandef.chan ? settings->chandef.chan->hw_value : 1;
-	ap_start->authmode = settings->privacy ? 3 /* WIFI_AUTH_WPA2_PSK */ : 0 /* WIFI_AUTH_OPEN */;
-	ap_start->max_connection = 4;
-
-	strscpy(ap_start->password, esp_ap_password, sizeof(ap_start->password));
-
-	queue_cmd_node(priv->adapter, cmd_node, ESP_CMD_DFLT_PRIO);
-	queue_work(priv->adapter->cmd_wq, &priv->adapter->cmd_work);
-
-	RET_ON_FAIL(wait_and_decode_cmd_resp(priv, cmd_node));
-
-	return 0;
-}
-
-int cmd_ap_stop(struct esp_wifi_device *priv)
-{
-	u16 cmd_len;
-	struct command_node *cmd_node = NULL;
-
-	if (!priv || !priv->adapter) {
-		esp_err("Invalid argument\n");
-		return -EINVAL;
-	}
-
-	cmd_len = sizeof(struct command_header);
-
-	cmd_node = prepare_command_request(priv->adapter, CMD_AP_STOP, cmd_len, priv->if_type);
-
-	if (!cmd_node) {
-		esp_err("Failed to get command node\n");
-		return -ENOMEM;
-	}
-
-	queue_cmd_node(priv->adapter, cmd_node, ESP_CMD_DFLT_PRIO);
-	queue_work(priv->adapter->cmd_wq, &priv->adapter->cmd_work);
-
-	RET_ON_FAIL(wait_and_decode_cmd_resp(priv, cmd_node));
-
-	return 0;
-}
-
 int cmd_init_raw_tp_task_timer(struct esp_wifi_device *priv)
 {
 	u16 cmd_len;
@@ -1499,9 +1416,9 @@ int cmd_init_raw_tp_task_timer(struct esp_wifi_device *priv)
 	cmd_len = sizeof(struct command_header);
 
 	if (raw_tp_mode == ESP_TEST_RAW_TP_ESP_TO_HOST) {
-		cmd_node = prepare_command_request(priv->adapter, CMD_RAW_TP_ESP_TO_HOST, cmd_len, priv->if_type);
+		cmd_node = prepare_command_request(priv->adapter, CMD_RAW_TP_ESP_TO_HOST, cmd_len);
 	} else if (raw_tp_mode == ESP_TEST_RAW_TP_HOST_TO_ESP) {
-		cmd_node = prepare_command_request(priv->adapter, CMD_RAW_TP_HOST_TO_ESP, cmd_len, priv->if_type);
+		cmd_node = prepare_command_request(priv->adapter, CMD_RAW_TP_HOST_TO_ESP, cmd_len);
 	}
 
 	if (!cmd_node) {
@@ -1529,7 +1446,7 @@ int cmd_get_mac(struct esp_wifi_device *priv)
 
 	cmd_len = sizeof(struct command_header);
 
-	cmd_node = prepare_command_request(priv->adapter, CMD_GET_MAC, cmd_len, priv->if_type);
+	cmd_node = prepare_command_request(priv->adapter, CMD_GET_MAC, cmd_len);
 
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");
@@ -1557,7 +1474,7 @@ int cmd_set_mac(struct esp_wifi_device *priv, uint8_t *mac_addr)
 
 	cmd_len = sizeof(struct cmd_config_mac_address);
 
-	cmd_node = prepare_command_request(priv->adapter, CMD_SET_MAC, cmd_len, priv->if_type);
+	cmd_node = prepare_command_request(priv->adapter, CMD_SET_MAC, cmd_len);
 
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");
@@ -1628,7 +1545,7 @@ int cmd_set_tx_power(struct esp_wifi_device *priv, int power)
 
 	cmd_len = sizeof(struct cmd_set_get_val);
 
-	cmd_node = prepare_command_request(priv->adapter, CMD_SET_TXPOWER, cmd_len, priv->if_type);
+	cmd_node = prepare_command_request(priv->adapter, CMD_SET_TXPOWER, cmd_len);
 
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");
@@ -1660,7 +1577,7 @@ int cmd_get_tx_power(struct esp_wifi_device *priv)
 
 	cmd_len = sizeof(struct command_header) + sizeof(int32_t);
 
-	cmd_node = prepare_command_request(priv->adapter, CMD_GET_TXPOWER, cmd_len, priv->if_type);
+	cmd_node = prepare_command_request(priv->adapter, CMD_GET_TXPOWER, cmd_len);
 
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");
@@ -1687,7 +1604,7 @@ int cmd_get_reg_domain(struct esp_wifi_device *priv)
 
 	cmd_len = sizeof(struct cmd_reg_domain);
 
-	cmd_node = prepare_command_request(priv->adapter, CMD_GET_REG_DOMAIN, cmd_len, priv->if_type);
+	cmd_node = prepare_command_request(priv->adapter, CMD_GET_REG_DOMAIN, cmd_len);
 
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");
@@ -1715,7 +1632,7 @@ int cmd_set_reg_domain(struct esp_wifi_device *priv)
 
 	cmd_len = sizeof(struct cmd_reg_domain);
 
-	cmd_node = prepare_command_request(priv->adapter, CMD_SET_REG_DOMAIN, cmd_len, priv->if_type);
+	cmd_node = prepare_command_request(priv->adapter, CMD_SET_REG_DOMAIN, cmd_len);
 
 	if (!cmd_node) {
 		esp_err("Failed to get command node\n");

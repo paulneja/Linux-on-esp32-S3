@@ -26,6 +26,11 @@ struct esp_wifi_device *get_priv_from_payload_header(struct esp_adapter *adapter
 						     struct esp_payload_header *header);
 struct sk_buff *esp_alloc_skb(u32 len);
 int esp_send_packet(struct esp_adapter *adapter, struct sk_buff *skb);
+
+/* BLE provisioning pipe (/dev/esp-ble) -- see esp_ble_prov.c */
+int esp_ble_prov_init(struct esp_adapter *adapter);
+void esp_ble_prov_deinit(void);
+void esp_ble_prov_rx(struct sk_buff *skb);
 u8 esp_is_bt_supported_over_sdio(u32 cap);
 void esp_tx_pause(struct esp_wifi_device *priv);
 void esp_tx_resume(struct esp_wifi_device *priv);

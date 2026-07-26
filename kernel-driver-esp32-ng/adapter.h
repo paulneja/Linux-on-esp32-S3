@@ -54,6 +54,9 @@ enum ESP_INTERFACE_TYPE {
 	ESP_HCI_IF,
 	ESP_INTERNAL_IF,
 	ESP_TEST_IF,
+	/* Byte pipe for the BLE provisioning link; must match the
+	 * firmware's adapter.h. Appended to keep existing values. */
+	ESP_BLE_PROV_IF,
 	ESP_MAX_IF,
 };
 
@@ -122,8 +125,6 @@ enum COMMAND_CODE {
 	CMD_SET_REG_DOMAIN,
 	CMD_RAW_TP_ESP_TO_HOST,
 	CMD_RAW_TP_HOST_TO_ESP,
-	CMD_AP_START,
-	CMD_AP_STOP,
 	CMD_MAX,
 };
 
@@ -133,8 +134,6 @@ enum EVENT_CODE {
 	EVENT_STA_DISCONNECT,
 	EVENT_AUTH_RX,
 	EVENT_ASSOC_RX,
-	EVENT_AP_STACONNECTED,
-	EVENT_AP_STADISCONNECTED,
 };
 
 enum COMMAND_RESPONSE_TYPE {
@@ -204,18 +203,6 @@ struct cmd_sta_connect {
 struct cmd_sta_disconnect {
 	struct     command_header header;
 	uint16_t   reason_code;
-	uint8_t    pad[2];
-} __packed;
-
-struct cmd_ap_start {
-	struct     command_header header;
-	char       ssid[MAX_SSID_LEN+1];
-	uint8_t    ssid_len;
-	uint8_t    ssid_hidden;
-	uint8_t    channel;
-	uint8_t    authmode;
-	uint8_t    max_connection;
-	char       password[64+1];
 	uint8_t    pad[2];
 } __packed;
 
@@ -306,20 +293,6 @@ struct disconnect_event {
 	uint8_t    bssid[MAC_ADDR_LEN];
 	char       ssid[MAX_SSID_LEN+1];
 	uint8_t    reason;
-} __packed;
-
-struct ap_sta_connected_event {
-	struct     event_header header;
-	uint8_t    mac[MAC_ADDR_LEN];
-	uint8_t    aid;
-	uint8_t    pad[1];
-} __packed;
-
-struct ap_sta_disconnected_event {
-	struct     event_header header;
-	uint8_t    mac[MAC_ADDR_LEN];
-	uint8_t    reason;
-	uint8_t    pad[1];
 } __packed;
 
 struct esp_internal_bootup_event {
