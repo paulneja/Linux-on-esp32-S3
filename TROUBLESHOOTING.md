@@ -69,8 +69,32 @@ A scan request the firmware did not answer. Occasional ones while the firmware
 is busy are survivable — `wpa_supplicant` retries and eventually associates.
 
 Continuous ones that never recover used to mean the SoftAP had been brought up,
-which wedged the firmware so the STA could no longer scan. The SoftAP is gone as
-of 0.3, so this should not happen; if it does, it is worth an issue.
+which wedged the firmware so the STA could no longer scan. The SoftAP was
+disabled in 0.3 and the code removed from both the driver and the firmware
+afterwards, so this should not happen; if it does, it is worth an issue.
+
+### `curl: (60) peer certificate could not be verified` on every HTTPS site
+
+The clock, not the CA bundle. **The board has no RTC and no NTP client, so it
+boots at 1 Jan 1970, every time.** Every certificate's `notBefore` is decades in
+the future from there, so verification fails — for *all* sites, which is what
+tells this apart from a root that is genuinely missing from the trimmed bundle.
+
+Set the date and it works:
+
+```sh
+date -s "2026-07-26 03:30:00"
+curl -sI https://github.com | head -1      # HTTP/1.1 200 OK
+```
+
+Verified on hardware: with the clock at 1970 github, google and example.com all
+fail; with it set, all three succeed. The date is lost again on the next boot —
+nothing persists or fetches it.
+
+`echo $CURL_CA_BUNDLE` should print
+`/usr/share/ca-certificates/ca-bundle.crt` (set by `/etc/profile.d/curl-ca.sh`,
+so it is only in *login* shells). If that is empty, you are in a non-login
+shell, and that is a different failure with the same message.
 
 ## Bluetooth
 

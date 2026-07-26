@@ -19,7 +19,7 @@
 # it once the package is built, so nothing here reproduced its absence.
 #
 # Removing it is what the rest of the system expects. With no config,
-# wpa_supplicant exits at boot (the "FAIL" after "Starting network") and the
+# wpa_supplicant exits at boot (recorded in /var/log/network.log) and the
 # radio stays idle until someone chooses a network -- `wifi connect`, or the
 # BLE dialog, both of which write this file themselves.
 

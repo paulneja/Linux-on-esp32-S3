@@ -148,7 +148,7 @@ that matters.
 **Verified against fresh independent clones** (not against an already-patched
 tree): the buildroot patch applies to a fresh `jcmvbkbc/buildroot
 -b xtensa-2024.08-fdpic`, the firmware patch to a fresh `jcmvbkbc/esp-hosted
--b ipc-5.1.1`, and both kernel patches to a fresh `jcmvbkbc/linux-xtensa
+-b ipc-5.1.1`, and all three kernel patches to a fresh `jcmvbkbc/linux-xtensa
 -b xtensa-6.11-esp32-tag`.
 
 ### The kernel driver: a special case, already solved more robustly
@@ -168,11 +168,17 @@ Fix (does not rely on "don't touch that folder"):
 `BR2_LINUX_KERNEL_PATCH="board/espressif/esp32s3/patches/linux"`, buildroot's
 native option for kernel patches — it re-applies itself after **every** kernel
 extraction, no matter what triggers it. Verified with
-`make linux-dirclean && make linux-patch`: the patch applied itself, with no
-manual intervention. `patches/01-kernel-esp32ng-ap-support.patch` is no longer
-empty (it used to be a "this could not be generated as a diff" placeholder) —
-it is now a real 493-line diff against the pristine kernel, verified to apply
-cleanly with `patch -p1 --dry-run`.
+`make linux-dirclean && make linux-patch`: the patches applied themselves, with
+no manual intervention.
+
+One more trap in the same area, found later: `apply-local-changes.sh` copies
+`new-files/board/` over buildroot with `rsync -a` and **no `--delete`**, so a
+patch deleted from this repo would linger in the buildroot tree and keep being
+applied, and a renamed one would be applied twice under both names. A plain
+`--delete` is not an option there (it would wipe buildroot's own `board/*`
+profiles), so the script now removes
+`build/buildroot/board/espressif/esp32s3/patches` before the rsync, which makes
+that one directory match `new-files/` exactly.
 
 ## This session's incidents (why all this armor exists)
 
@@ -237,17 +243,18 @@ cleanly with `patch -p1 --dry-run`.
   workarounds, and hostapd disabled. Verified to apply with `patch -p1` to a
   fresh clone of `jcmvbkbc/esp32-linux-build`, both on a host and inside the
   Docker image.
-- `patches/01-kernel-esp32ng-ap-support.patch` — a real diff (493 lines)
-  against a pristine `jcmvbkbc/linux-xtensa -b xtensa-6.11-esp32-tag`. Applied
-  automatically via `BR2_LINUX_KERNEL_PATCH` (see above) — no manual
-  intervention needed unless the defconfig is rebuilt from scratch.
 - `patches/04-kernel-esp32s3-rsa-crypto.patch` — adds the hardware RSA
   accelerator driver (`drivers/crypto/esp32s3_rsa.c`, 549 lines) plus its
-  `obj-y` line. Also applied automatically: both kernel patches live in
-  `new-files/board/espressif/esp32s3/patches/linux/` (as `01-` and `02-`, the
-  order they are applied in), which is what `BR2_LINUX_KERNEL_PATCH` points at.
-  Verified to apply cleanly with `patch -p1` and to reproduce the exact driver
-  that the shipped `xipImage` was built from.
+  `obj-y` line. Applied automatically: the kernel patches live in
+  `new-files/board/espressif/esp32s3/patches/linux/` (as `01-` RSA, `02-` BLE
+  and `03-` cmdline, the order they are applied in), which is what
+  `BR2_LINUX_KERNEL_PATCH` points at. Verified to apply cleanly with `patch -p1`
+  and to reproduce the exact driver that the shipped `xipImage` was built from.
+  There used to be a fourth, `01-kernel-esp32ng-ap-support.patch`, carrying the
+  SoftAP; it is gone, and with it the only reason the esp32-ng driver diverged
+  from upstream beyond the BLE pipe. Note the top-level numbering here has gaps
+  (`00`, `02`, `03`, `04`) where the SoftAP and ESP-IDF patches used to sit —
+  the remaining files keep their names so existing references stay valid.
 - `flash.sh` — flashes a bare board from `images/` with nothing but `esptool`
   (see "Flash directly" above).
 - `patches/02-firmware-network-adapter.patch` — every change to the ESP32
@@ -256,9 +263,6 @@ cleanly with `patch -p1 --dry-run`.
   accelerator to Linux. Generated straight from the tree the shipped image was
   built from, so it reproduces it byte for byte. Applied automatically by
   `apply-local-changes.sh esp-hosted`.
-- `patches/06-idf-hostap-sta-join.patch` — one symbol unhidden in the vendored
-  ESP-IDF so the SoftAP path links. Applied to the `esp-idf` submodule by the
-  same script.
 - `patches/03-buildroot-tracked-changes.patch` — a single consolidated
   `git diff` of all tracked files modified under `build/buildroot/`
   (busybox.config, inetd.conf, wpa_supplicant.conf.example, both defconfigs).
@@ -267,9 +271,9 @@ cleanly with `patch -p1 --dry-run`.
   overlapped each other and are no longer maintained. Applied automatically by
   `apply-local-changes.sh buildroot`.
 - `kernel-driver-esp32-ng/` — a complete reference/human-readable copy of
-  `drivers/net/wireless/espressif/esp32-ng/` (AP plumbing present but
-  hard-disabled, STA only); the patch above is what is actually used in the
-  automated flow, this is a readable backup.
+  `drivers/net/wireless/espressif/esp32-ng/` (pristine upstream plus the BLE
+  pipe; STA only, no AP code at all); the patch above is what is actually used
+  in the automated flow, this is a readable backup.
 - `new-files/` — an exact mirror of what has to be copied: `board/` and
   `configs/` go over `build/buildroot/` (automatic via
   `apply-local-changes.sh buildroot`); `esp-hosted/network_adapter/*.16m8r`
@@ -305,7 +309,6 @@ cp "$REPO"/new-files/esp-hosted/network_adapter/*.16m8r \
 git add esp/esp_driver/network_adapter/
 git -c user.email="local@backup" -c user.name="local-backup" \
   commit -m "network_adapter: this project's firmware (local-only, never push)"
-git -C esp/esp_driver/esp-idf apply "$REPO/patches/06-idf-hostap-sta-join.patch"
 cd ../../..
 
 cp "$REPO/new-files/toplevel/devkit-c1-16m.conf" .

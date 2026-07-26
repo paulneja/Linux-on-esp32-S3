@@ -90,8 +90,9 @@ Done. Open the serial console at 115200 baud, e.g.:
     screen /dev/ttyACM0 115200      (or: picocom -b 115200 /dev/ttyACM0)
 
 Log in as root / changeme123 and change the password with `passwd`.
-No WiFi is configured on a fresh flash — the boot log printing
-"Starting network: ... FAIL" is expected. Connect with:
+No WiFi is configured on a fresh flash. The boot prints "Starting network
+(background): OK" either way — it comes up behind the login prompt, and what
+it actually did is in /var/log/network.log. Connect with:
 
     wifi connect "YOUR SSID" "YOUR PASSWORD"
 

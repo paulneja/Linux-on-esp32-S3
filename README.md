@@ -53,8 +53,10 @@ screen /dev/ttyACM0 115200   # or: picocom -b 115200 /dev/ttyACM0
 
 Login is **`root`** / **`changeme123`** — change it with `passwd`.
 
-A fresh flash has no WiFi configured, so `Starting network: ... FAIL` in the
-boot log is expected. Join your network with:
+A fresh flash has no WiFi configured. `Starting network (background): OK` in
+the boot log only means the step was launched — it runs behind the login prompt
+and what it actually did lands in `/var/log/network.log`. Join your network
+with:
 
 ```sh
 wifi                                      # interactive: scans, lists networks,
@@ -93,19 +95,23 @@ command can be killed by the OOM killer — wait a few seconds and retry.
 **Partly works**
 
 - **curl over HTTPS** — real certificate verification against a curated CA
-  bundle, checked against sites like github and google, but **experimental**:
+  bundle, checked against github, google and example.com, but **experimental**:
   the bundle is trimmed to 34 major roots because the full 140-cert set
   exhausts mbedTLS's memory on this board, TLS is 1.2 only, and RAM is tight.
   Fine for light fetches, not a robust tool.
+  **Set the clock first.** There is no RTC and no NTP, so the board boots at
+  1 Jan 1970 and every certificate reads as not-yet-valid — HTTPS fails on
+  *every* site until you run e.g. `date -s "2026-07-26 03:30:00"`, and the date
+  is lost again on the next boot.
 
 **Removed**
 
-- **SoftAP** (the board acting as an access point) — **disabled on purpose.**
+- **SoftAP** (the board acting as an access point) — **removed on purpose.**
   The closed WiFi blob beaconed as **WEP** instead of WPA2 (clients reject it),
   and bringing the AP up wedged the firmware so the STA could no longer scan or
-  associate. So the `espap0` interface is no longer created at all — the kernel
-  driver hard-forces it off — and the `ap` command is gone. This board is **STA
-  only**: it joins an existing network, it does not host one.
+  associate. It was disabled first and has now been taken out of both the
+  kernel driver and the firmware entirely, along with the `ap` command. This
+  board is **STA only**: it joins an existing network, it does not host one.
 
 ## Build from source
 
