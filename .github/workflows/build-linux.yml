@@ -17,8 +17,15 @@ jobs:
 
       - name: Show runner resources
         run: |
+          echo "CPU cores:"
           nproc
+
+          echo
+          echo "Memory:"
           free -h
+
+          echo
+          echo "Disk:"
           df -h
 
       - name: Free disk space
@@ -27,39 +34,67 @@ jobs:
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /opt/ghc
           sudo rm -rf /opt/hostedtoolcache/CodeQL
+
           docker system prune -af || true
+
+          echo "Disk after cleanup:"
           df -h
 
       - name: Build Docker image
         run: |
           docker build \
-            -f new-files/toplevel/Dockerfile \
-            -t linux-on-esp32s3 .
+            --file new-files/toplevel/Dockerfile \
+            --tag linux-on-esp32s3:ci \
+            .
+
+      - name: Create build container
+        run: |
+          docker create \
+            --name esp32-linux-builder \
+            linux-on-esp32s3:ci
 
       - name: Build Linux and firmware
         run: |
+          docker start --attach esp32-linux-builder
+
+      - name: Copy build output from container
+        run: |
           mkdir -p build-output
 
-          docker run --rm \
-            -v "$GITHUB_WORKSPACE/build-output:/work/esp32-linux-build/build" \
-            linux-on-esp32s3
+          docker cp \
+            esp32-linux-builder:/work/esp32-linux-build/build/. \
+            build-output/
 
-      - name: Prepare build tree
+          echo "Copied build files:"
+          du -sh build-output
+          find build-output -maxdepth 2 -type f | head -100
+
+      - name: Prepare build tree for packaging
         run: |
           mkdir -p ci/esp32-linux-build
-          ln -s "$GITHUB_WORKSPACE/build-output" \
-            ci/esp32-linux-build/build
 
-      - name: Package image
+          ln -s \
+            "$GITHUB_WORKSPACE/build-output" \
+            "$GITHUB_WORKSPACE/ci/esp32-linux-build/build"
+
+      - name: Package flashable image
         run: |
           chmod +x make-images.sh
-          ./make-images.sh "$GITHUB_WORKSPACE/ci/esp32-linux-build"
 
-      - name: Generate checksum
+          ./make-images.sh \
+            "$GITHUB_WORKSPACE/ci/esp32-linux-build"
+
+      - name: Generate checksums
         run: |
           sha256sum images/*.bin | tee images/SHA256SUMS.txt
 
-      - name: Upload binaries
+      - name: Show resulting files
+        run: |
+          ls -lah images/
+          echo
+          cat images/SHA256SUMS.txt
+
+      - name: Upload flashable images
         uses: actions/upload-artifact@v4
         with:
           name: linux-esp32s3-build
@@ -68,3 +103,8 @@ jobs:
             images/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
+
+      - name: Remove build container
+        if: always()
+        run: |
+          docker rm -f esp32-linux-builder 2>/dev/null || true
