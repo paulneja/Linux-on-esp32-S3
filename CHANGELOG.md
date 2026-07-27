@@ -31,9 +31,12 @@ on hardware.
 
 Since confirmed the harder way: a clean clone of this repo, built end to end
 and flashed, boots and joins WiFi. Five of the six images come out at exactly
-the size of the ones committed here and `etc.jffs2` within 4 bytes, though none
-are byte-identical -- the kernel embeds its build date and the filesystem
-images carry timestamps.
+the size of the ones committed here and `etc.jffs2` within 4 bytes, but only
+`bootloader.bin` and `partition-table.bin` are byte-identical. That clone was
+built in Docker and these images natively, which is most of the difference:
+the kernel carries the build `user@host` in its version string, and a
+different length there shifts every pointer table after it. See DEVELOPMENT.md
+for the full accounting.
 
 ### SoftAP removed for real
 

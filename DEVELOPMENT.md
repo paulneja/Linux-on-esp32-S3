@@ -106,14 +106,37 @@ Worth knowing before trusting a rebuild to match:
   GitHub, built from scratch, flashed: the board boots, joins WiFi and works.
   Not a rebuild of a working tree -- a fresh clone, which is the only test that
   proves the patches and `new-files/` here are actually complete.
-- **The rebuild matches in size, not bit for bit.** Against the images
-  committed here, a from-scratch build produced `xipImage`, `rootfs.cramfs`,
-  `network_adapter.bin`, `bootloader.bin` and `partition-table.bin` at exactly
-  the same sizes, and `etc.jffs2` within 4 bytes. None are byte-identical:
-  the kernel embeds its build date and host in the version string, and the
-  filesystem images carry timestamps. Compare behaviour, not checksums --
-  except for `linux-esp32s3-native-full.bin`, which is just a concatenation of
-  the others and so reproduces exactly when they do.
+- **The rebuild matches in size, not bit for bit** -- and the reasons are
+  worth knowing, because they say what "reproducible" can mean here. A clean
+  clone built in Docker, compared against the images committed here (built
+  natively on Arch):
+
+  | | differs by | why |
+  |---|---|---|
+  | `bootloader.bin` | nothing | byte-identical |
+  | `partition-table.bin` | nothing | generated from the CSV in this repo |
+  | `network_adapter.bin` | 80 bytes of 687040 | a build stamp ESP-IDF embeds |
+  | `xipImage` | 9% | see below |
+  | `rootfs.cramfs` | 14.5% | see below |
+  | `etc.jffs2` | 4 bytes of ~24000 | jffs2 metadata |
+
+  The kernel's 9% is one string. `Linux version ...` embeds the build
+  `user@host`: `paulneja@arch` natively, `builder@<container-id>` in Docker.
+  Those are different lengths, so everything after it in `.rodata` shifts and
+  every pointer table reaching past it changes with it. The code is the same
+  -- 96% of the text strings are identical and neither image embeds a build
+  path.
+
+  The rootfs's 14.5% is real: whole 512K regions are byte-identical while
+  others differ heavily, and the ones that differ hold the large userspace
+  binaries (`nano` and `libcurl` in the worst of them). Arch and Debian build
+  those differently. Note cramfs stores no timestamps at all, so that is not
+  it.
+
+  So: compare behaviour, not checksums. Only
+  `linux-esp32s3-native-full.bin` is worth checksumming, and only against
+  images built the same way -- it is a concatenation of the others, so it
+  reproduces exactly when they do.
 - **It took four fixes to get the first from-scratch build working**
   (incidents 4-7 below): the container was missing `cpio`, one patch was being
   discarded in silence, and both the firmware patch and the defconfig had
