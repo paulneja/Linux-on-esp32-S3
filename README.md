@@ -92,9 +92,36 @@ command can be killed by the OOM killer — wait a few seconds and retry.
 - **SSH** (dropbear) — present but **off by default**: `ssh-server on|off|status`.
   It is slow here, and the RSA accelerator does not help it (modern SSH uses
   Curve25519, not RSA).
-- **Lua**, and a BusyBox **httpd** serving a small status page (`/www`), started
-  on demand with `httpd -h /www -p 80` so it costs nothing when unused.
+- **Lua**, and a BusyBox **httpd** serving a small status page (`/www`) — see
+  the manual step below.
 - **curl** over plain HTTP.
+
+**Works, but you have to do it again after every boot**
+
+Both of these are tested and working. Neither is automated yet, and nothing
+remembers them across a restart.
+
+- **The clock.** There is no RTC on this board and no NTP client, so it boots
+  believing it is 1 Jan 1970. Nothing cares except HTTPS: every certificate
+  says "valid from <a date in the future>", so the board rejects all of them
+  and `curl https://` fails on *every* site. Set it and it works:
+
+  ```sh
+  date -s "2026-07-26 10:00:00"
+  ```
+
+  WiFi, ping, telnet, the status page and plain `http://` are unaffected.
+
+- **The web status page.** Start it by hand:
+
+  ```sh
+  httpd -h /www -p 80
+  ```
+
+  Then browse to the board's IP. There is no init script for it, so it does not
+  come back after a reboot. On the upside it costs nothing while it is not
+  running. SSH has a proper `ssh-server on|off|status` helper that persists;
+  the web server does not have an equivalent yet.
 
 **Partly works**
 
@@ -102,11 +129,7 @@ command can be killed by the OOM killer — wait a few seconds and retry.
   bundle, checked against github, google and example.com, but **experimental**:
   the bundle is trimmed to 34 major roots because the full 140-cert set
   exhausts mbedTLS's memory on this board, TLS is 1.2 only, and RAM is tight.
-  Fine for light fetches, not a robust tool.
-  **Set the clock first.** There is no RTC and no NTP, so the board boots at
-  1 Jan 1970 and every certificate reads as not-yet-valid — HTTPS fails on
-  *every* site until you run e.g. `date -s "2026-07-26 03:30:00"`, and the date
-  is lost again on the next boot.
+  Fine for light fetches, not a robust tool. Set the clock first, as above.
 
 **Removed**
 
