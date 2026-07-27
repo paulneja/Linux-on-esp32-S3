@@ -102,11 +102,23 @@ Worth knowing before trusting a rebuild to match:
   `esp-hosted -b ipc-5.1.1` and the kernel tag the same way. If upstream moves,
   a rebuild can produce different output, or a patch here can stop applying.
   That is upstream's design, not something this repo overrides.
-- **A full from-scratch build has now been run end to end, and the result boots
-  on hardware.** It took four fixes to get there (incidents 4-7 below): the
-  container was missing `cpio`, one patch was being discarded in silence, and
-  both the firmware patch and the defconfig had drifted behind the tree the
-  published images were built from. Nothing built before those is comparable.
+- **Reproduced from a clean clone of this repo, on real hardware.** Cloned from
+  GitHub, built from scratch, flashed: the board boots, joins WiFi and works.
+  Not a rebuild of a working tree -- a fresh clone, which is the only test that
+  proves the patches and `new-files/` here are actually complete.
+- **The rebuild matches in size, not bit for bit.** Against the images
+  committed here, a from-scratch build produced `xipImage`, `rootfs.cramfs`,
+  `network_adapter.bin`, `bootloader.bin` and `partition-table.bin` at exactly
+  the same sizes, and `etc.jffs2` within 4 bytes. None are byte-identical:
+  the kernel embeds its build date and host in the version string, and the
+  filesystem images carry timestamps. Compare behaviour, not checksums --
+  except for `linux-esp32s3-native-full.bin`, which is just a concatenation of
+  the others and so reproduces exactly when they do.
+- **It took four fixes to get the first from-scratch build working**
+  (incidents 4-7 below): the container was missing `cpio`, one patch was being
+  discarded in silence, and both the firmware patch and the defconfig had
+  drifted behind the tree the published images were built from. Nothing built
+  before those is comparable.
 - **GitHub's source ZIP drops the executable bit.** Git stores it correctly
   (`100755`), so a `git clone` is fine; if you downloaded the ZIP, run
   `bash flash.sh` or `chmod +x *.sh` first.

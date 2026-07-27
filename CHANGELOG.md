@@ -29,6 +29,12 @@ the four defects that stood in the way, all found on hardware.
 A full from-scratch build in Docker now runs to completion and the result boots
 on hardware.
 
+Since confirmed the harder way: a clean clone of this repo, built end to end
+and flashed, boots and joins WiFi. Five of the six images come out at exactly
+the size of the ones committed here and `etc.jffs2` within 4 bytes, though none
+are byte-identical -- the kernel embeds its build date and the filesystem
+images carry timestamps.
+
 ### SoftAP removed for real
 
 0.3 disabled the SoftAP; the code stayed behind, unreachable. It is now gone

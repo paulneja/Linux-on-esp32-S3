@@ -14,6 +14,10 @@ API, so it is usable by any program, not just one demo.
 > self-tests, the rootfs mounts from flash, telnet comes up and the board
 > reaches the internet. It is a hobby project, not a product — see
 > [What works](#what-works-and-what-does-not) for the honest list.
+>
+> **And reproduced from scratch:** a clean clone of this repo, built end to
+> end, flashed to a board — it boots, joins WiFi and works. The images here
+> are not something you have to take on trust.
 
 > **Note on history.** This repo used to host an *emulated* approach (a RISC-V
 > RV32IMA interpreter running Linux on top of the ESP32-S3). That worked, but
