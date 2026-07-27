@@ -1,0 +1,70 @@
+name: Build Linux ESP32-S3
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show runner resources
+        run: |
+          nproc
+          free -h
+          df -h
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          docker system prune -af || true
+          df -h
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -f new-files/toplevel/Dockerfile \
+            -t linux-on-esp32s3 .
+
+      - name: Build Linux and firmware
+        run: |
+          mkdir -p build-output
+
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/build-output:/work/esp32-linux-build/build" \
+            linux-on-esp32s3
+
+      - name: Prepare build tree
+        run: |
+          mkdir -p ci/esp32-linux-build
+          ln -s "$GITHUB_WORKSPACE/build-output" \
+            ci/esp32-linux-build/build
+
+      - name: Package image
+        run: |
+          chmod +x make-images.sh
+          ./make-images.sh "$GITHUB_WORKSPACE/ci/esp32-linux-build"
+
+      - name: Generate checksum
+        run: |
+          sha256sum images/*.bin | tee images/SHA256SUMS.txt
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-esp32s3-build
+          path: |
+            images/*.bin
+            images/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
