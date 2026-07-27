@@ -2,13 +2,22 @@ name: Build Linux ESP32-S3
 
 on:
   workflow_dispatch:
+    inputs:
+      reuse_build_from_run:
+        description: >-
+          Run ID whose esp32-linux-raw-build artifact to package, instead of
+          compiling again. Leave empty for a full build.
+        required: false
+        default: ""
 
 permissions:
   contents: read
+  actions: read          # to read another run's artifact
 
 jobs:
   build:
     name: Compile Linux and firmware
+    if: inputs.reuse_build_from_run == ''
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
@@ -87,6 +96,9 @@ jobs:
   package:
     name: Package flashable image
     needs: build
+    # Runs both after a fresh build and on its own, when the build job was
+    # skipped because an earlier run's output is being reused.
+    if: always() && (needs.build.result == 'success' || needs.build.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -95,10 +107,20 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download raw build output
+        if: inputs.reuse_build_from_run == ''
         uses: actions/download-artifact@v4
         with:
           name: esp32-linux-raw-build
           path: build-output
+
+      - name: Download raw build output from an earlier run
+        if: inputs.reuse_build_from_run != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: esp32-linux-raw-build
+          path: build-output
+          run-id: ${{ inputs.reuse_build_from_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Show downloaded build
         run: |
