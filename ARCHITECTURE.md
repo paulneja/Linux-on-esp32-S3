@@ -3,8 +3,9 @@
 > **Status: verified on hardware.** Everything below is running on a real
 > board: flashed from a fully erased chip, it boots to a login prompt, mounts
 > the rootfs from flash via XIP, passes the RSA accelerator self-tests and
-> reaches the internet over WiFi. See [README.md](README.md) for the list of
-> what works and what does not.
+> reaches the internet over WiFi, and the whole thing has been rebuilt from a
+> clean clone of this repo and booted again. See [README.md](README.md) for the
+> list of what works and what does not.
 
 ## The big picture: two cores, two operating systems, one chip
 
