@@ -96,6 +96,12 @@ nothing persists or fetches it.
 so it is only in *login* shells). If that is empty, you are in a non-login
 shell, and that is a different failure with the same message.
 
+### The status page is not there after a reboot
+
+Expected: `httpd` is started on demand and there is no init script for it, so
+it does not survive a restart. Start it again with `httpd -h /www -p 80`. See
+README for why it works that way.
+
 ## Bluetooth
 
 ### The board does not appear in a BLE scan
