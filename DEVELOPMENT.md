@@ -26,9 +26,22 @@ of this repo:
 
 ```bash
 docker build -f new-files/toplevel/Dockerfile -t linux-on-esp32s3 .
+mkdir -p build-output
 docker run --rm -v $(pwd)/build-output:/work/esp32-linux-build/build \
     linux-on-esp32s3
 ```
+
+**Create `build-output` yourself first** — that `mkdir` is not optional. Docker
+creates a missing bind-mount directory itself, as **root**, and the container
+builds as an unprivileged `builder` user, which then cannot write into it. The
+run dies within seconds on the first clone:
+
+```
+fatal: could not create work tree dir 'esp32s3': Permission denied
+```
+
+It fails loudly rather than producing a half-built image, but the message
+points at git rather than at the mount, so it is easy to misread.
 
 The image clones jcmvbkbc's `esp32-linux-build`, patches it with
 `patches/00-...`, and drops `apply-local-changes.sh` plus the 16MB board

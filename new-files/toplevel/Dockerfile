@@ -8,8 +8,14 @@
 #
 # Build it from the root of this repo:
 #     docker build -f new-files/toplevel/Dockerfile -t linux-on-esp32s3 .
+#     mkdir -p build-output
 #     docker run --rm -v $(pwd)/build-output:/work/esp32-linux-build/build \
 #         linux-on-esp32s3
+#
+# The mkdir matters: Docker would otherwise create that directory itself, as
+# root, and the build runs as the unprivileged `builder` user below -- which
+# cannot then write into it, so the first git clone fails with "Permission
+# denied" and the run exits immediately.
 #
 # The compile takes hours: it builds a crosstool-NG toolchain, then buildroot,
 # the kernel and the firmware. Results land in the mounted build/ directory.
