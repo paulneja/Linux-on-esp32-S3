@@ -85,8 +85,15 @@ The build driver compiles everything but stops there — it does not gather the
 results or package them. `make-images.sh` closes that gap:
 
 ```bash
-./make-images.sh /path/to/esp32-linux-build
+./make-images.sh /path/to/esp32-linux-build   # after a native build
+./make-images.sh build-output                 # after the Docker build
 ```
+
+Either shape works. A native build leaves an `esp32-linux-build/` directory
+with `build/` inside it; the Docker build mounts a host directory *as* that
+`build/`, so afterwards all that exists is `build-output/` — the build
+directory itself, with no parent to point at. Run with no argument and it
+looks for all three.
 
 It collects the six binaries into `images/`, checks each one fits its
 partition, refuses to package an `etc.jffs2` that has a `psk=` line in it, and
