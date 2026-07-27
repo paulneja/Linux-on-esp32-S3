@@ -122,10 +122,19 @@ Worth knowing before trusting a rebuild to match:
   `esp-hosted -b ipc-5.1.1` and the kernel tag the same way. If upstream moves,
   a rebuild can produce different output, or a patch here can stop applying.
   That is upstream's design, not something this repo overrides.
-- **Reproduced from a clean clone of this repo, on real hardware.** Cloned from
-  GitHub, built from scratch, flashed: the board boots, joins WiFi and works.
-  Not a rebuild of a working tree -- a fresh clone, which is the only test that
-  proves the patches and `new-files/` here are actually complete.
+- **Reproduced from a clean clone of this repo, on real hardware, following
+  only what is written here.** `git clone`, `docker build`, `mkdir -p
+  build-output`, `docker run`, `./make-images.sh build-output`,
+  `./flash.sh --erase` — no other step, and nothing taken from a local working
+  tree. The build ran 43 minutes; the board then booted in 11 s, passed both
+  RSA self-tests, joined WiFi and reached the internet.
+
+  Walking it that way is what found the two defects that made it impossible:
+  `build-output/` had to exist before `docker run` or the build died on its
+  first clone, and `make-images.sh` could not be pointed at what the Docker
+  build leaves behind. Both were invisible from a working tree, because the
+  directory always already existed and the images were always packaged from a
+  native build. A rebuild of a tree that already works cannot find either.
 - **The rebuild matches in size, not bit for bit** -- and the reasons are
   worth knowing, because they say what "reproducible" can mean here. A clean
   clone built in Docker, compared against the images committed here (built

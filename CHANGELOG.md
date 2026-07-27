@@ -4,11 +4,16 @@ Releases carry one flashable `.bin` for a 16 MB / 8 MB-PSRAM ESP32-S3. Full
 notes and the binaries are on the
 [releases page](https://github.com/paulneja/Linux-on-esp32-S3/releases).
 
-## Unreleased
+## 0.5 — SoftAP gone, faster boot, reproducible (2026-07-26)
 
-Build reproducibility only — **the `0.4` binary is unchanged**. A build made
-from a clean clone of this repo did not reproduce the released image; these are
-the four defects that stood in the way, all found on hardware.
+**A new binary.** The SoftAP is removed from both the driver and the firmware,
+the cold boot is down from 14.6 s to 11.0 s, and the whole thing has been
+rebuilt from a clean clone of this repo and booted again.
+
+### Build reproducibility
+
+A build made from a clean clone did not reproduce the released image; these are
+the defects that stood in the way, all found on hardware.
 
 - The Docker image was missing `cpio`, which buildroot checks for *after*
   crosstool-NG has compiled the entire toolchain — hours in, at the most
