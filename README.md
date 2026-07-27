@@ -14,6 +14,11 @@ API, so it is usable by any program, not just one demo.
 > self-tests, the rootfs mounts from flash, telnet comes up and the board
 > reaches the internet. It is a hobby project, not a product — see
 > [What works](#what-works-and-what-does-not) for the honest list.
+>
+> **And reproduced from scratch, by the documented path:** clone, `docker
+> build`, `docker run`, `make-images.sh`, `flash.sh` — nothing else. The board
+> boots in 11 s, passes the RSA self-tests, joins WiFi and reaches the
+> internet. The images here are not something you have to take on trust.
 
 > **Note on history.** This repo used to host an *emulated* approach (a RISC-V
 > RV32IMA interpreter running Linux on top of the ESP32-S3). That worked, but
@@ -53,8 +58,10 @@ screen /dev/ttyACM0 115200   # or: picocom -b 115200 /dev/ttyACM0
 
 Login is **`root`** / **`changeme123`** — change it with `passwd`.
 
-A fresh flash has no WiFi configured, so `Starting network: ... FAIL` in the
-boot log is expected. Join your network with:
+A fresh flash has no WiFi configured. `Starting network (background): OK` in
+the boot log only means the step was launched — it runs behind the login prompt
+and what it actually did lands in `/var/log/network.log`. Join your network
+with:
 
 ```sh
 wifi                                      # interactive: scans, lists networks,
@@ -86,26 +93,53 @@ command can be killed by the OOM killer — wait a few seconds and retry.
 - **SSH** (dropbear) — present but **off by default**: `ssh-server on|off|status`.
   It is slow here, and the RSA accelerator does not help it (modern SSH uses
   Curve25519, not RSA).
-- **Lua**, and a BusyBox **httpd** serving a small status page (`/www`), started
-  on demand with `httpd -h /www -p 80` so it costs nothing when unused.
+- **Lua**, and a BusyBox **httpd** serving a small status page (`/www`) — see
+  the manual step below.
 - **curl** over plain HTTP.
+
+**Works, but you have to do it again after every boot**
+
+Both of these are tested and working. Neither is automated yet, and nothing
+remembers them across a restart.
+
+- **The clock.** There is no RTC on this board and no NTP client, so it boots
+  believing it is 1 Jan 1970. Nothing cares except HTTPS: every certificate
+  says "valid from <a date in the future>", so the board rejects all of them
+  and `curl https://` fails on *every* site. Set it and it works:
+
+  ```sh
+  date -s "2026-07-26 10:00:00"
+  ```
+
+  WiFi, ping, telnet, the status page and plain `http://` are unaffected.
+
+- **The web status page.** Start it by hand:
+
+  ```sh
+  httpd -h /www -p 80
+  ```
+
+  Then browse to the board's IP. There is no init script for it, so it does not
+  come back after a reboot. On the upside it costs nothing while it is not
+  running. SSH has a proper `ssh-server on|off|status` helper that persists;
+  the web server does not have an equivalent yet.
 
 **Partly works**
 
 - **curl over HTTPS** — real certificate verification against a curated CA
-  bundle, checked against sites like github and google, but **experimental**:
+  bundle, checked against github, google and example.com, but **experimental**:
   the bundle is trimmed to 34 major roots because the full 140-cert set
   exhausts mbedTLS's memory on this board, TLS is 1.2 only, and RAM is tight.
-  Fine for light fetches, not a robust tool.
+  Fine for light fetches, not a robust tool. Set the clock first, as above.
 
 **Removed**
 
-- **SoftAP** (the board acting as an access point) — **disabled on purpose.**
+- **SoftAP** (the board acting as an access point) — **removed on purpose.**
   The closed WiFi blob beaconed as **WEP** instead of WPA2 (clients reject it),
   and bringing the AP up wedged the firmware so the STA could no longer scan or
-  associate. So the `espap0` interface is no longer created at all — the kernel
-  driver hard-forces it off — and the `ap` command is gone. This board is **STA
-  only**: it joins an existing network, it does not host one.
+  associate. It was disabled first and has now been taken out of both the
+  kernel driver and the firmware entirely, along with the `ap` command. This
+  board is **STA only**: it joins an existing network, it does not host one.
 
 ## Build from source
 

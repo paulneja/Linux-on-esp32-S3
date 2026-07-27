@@ -20,8 +20,6 @@ component below remains additionally available under its own original license.
    This repository ships patches against that tree, not the tree itself:
 
      new-files/board/espressif/esp32s3/patches/linux/
-       01-kernel-esp32ng-ap-support.patch   — esp32-ng driver (AP plumbing,
-                                              hard-disabled; the board is STA only)
        02-kernel-esp32s3-rsa-crypto.patch   — drivers/crypto/esp32s3_rsa.c
 
    Both are derivative works of the Linux kernel and are therefore licensed
@@ -30,7 +28,7 @@ component below remains additionally available under its own original license.
    upstream tree above plus these patches.
 
    kernel-driver-esp32-ng/ is a readable reference copy of the in-tree
-   esp32-ng driver (AP plumbing present but hard-disabled; STA only — same
+   esp32-ng driver (pristine upstream plus the BLE pipe; STA only — same
    GPL-2.0 terms as the kernel).
 
 ================================================================================

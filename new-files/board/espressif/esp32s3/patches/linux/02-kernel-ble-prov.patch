@@ -1,3 +1,32 @@
+diff -Naur a/drivers/net/wireless/espressif/esp32-ng/adapter.h b/drivers/net/wireless/espressif/esp32-ng/adapter.h
+--- a/drivers/net/wireless/espressif/esp32-ng/adapter.h
++++ b/drivers/net/wireless/espressif/esp32-ng/adapter.h
+@@ -54,6 +54,9 @@
+ 	ESP_HCI_IF,
+ 	ESP_INTERNAL_IF,
+ 	ESP_TEST_IF,
++	/* Byte pipe for the BLE provisioning link; must match the
++	 * firmware's adapter.h. Appended to keep existing values. */
++	ESP_BLE_PROV_IF,
+ 	ESP_MAX_IF,
+ };
+ 
+diff -Naur a/drivers/net/wireless/espressif/esp32-ng/esp_api.h b/drivers/net/wireless/espressif/esp32-ng/esp_api.h
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_api.h
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_api.h
+@@ -26,6 +26,11 @@
+ 						     struct esp_payload_header *header);
+ struct sk_buff *esp_alloc_skb(u32 len);
+ int esp_send_packet(struct esp_adapter *adapter, struct sk_buff *skb);
++
++/* BLE provisioning pipe (/dev/esp-ble) -- see esp_ble_prov.c */
++int esp_ble_prov_init(struct esp_adapter *adapter);
++void esp_ble_prov_deinit(void);
++void esp_ble_prov_rx(struct sk_buff *skb);
+ u8 esp_is_bt_supported_over_sdio(u32 cap);
+ void esp_tx_pause(struct esp_wifi_device *priv);
+ void esp_tx_resume(struct esp_wifi_device *priv);
+diff -Naur a/drivers/net/wireless/espressif/esp32-ng/esp_ble_prov.c b/drivers/net/wireless/espressif/esp32-ng/esp_ble_prov.c
 --- /dev/null
 +++ b/drivers/net/wireless/espressif/esp32-ng/esp_ble_prov.c
 @@ -0,0 +1,225 @@
@@ -226,9 +255,10 @@
 +	skb_queue_purge(&rx_q);
 +	ble_adapter = NULL;
 +}
+diff -Naur a/drivers/net/wireless/espressif/esp32-ng/main.c b/drivers/net/wireless/espressif/esp32-ng/main.c
 --- a/drivers/net/wireless/espressif/esp32-ng/main.c
 +++ b/drivers/net/wireless/espressif/esp32-ng/main.c
-@@ -509,6 +509,11 @@
+@@ -488,6 +488,11 @@
  	RET_ON_FAIL(esp_add_wiphy(adapter));
  	RET_ON_FAIL(esp_add_network_ifaces(adapter));
  
@@ -240,7 +270,7 @@
  	return 0;
  }
  
-@@ -600,6 +605,7 @@
+@@ -579,6 +584,7 @@
  	esp_stop_network_ifaces(adapter);
  #ifdef CONFIG_ESP32_BT
  	/* BT may have been initialized after fw bootup event, deinit it */
@@ -248,7 +278,7 @@
  	esp_deinit_bt(adapter);
  #endif
  	esp_commands_teardown(adapter);
-@@ -810,6 +816,12 @@
+@@ -789,6 +795,12 @@
  			dev_kfree_skb_any(skb);
  		}
  
@@ -261,32 +291,7 @@
  	} else if (payload_header->if_type == ESP_TEST_IF) {
  #if TEST_RAW_TP
  		if (raw_tp_mode != 0) {
---- a/drivers/net/wireless/espressif/esp32-ng/adapter.h
-+++ b/drivers/net/wireless/espressif/esp32-ng/adapter.h
-@@ -54,6 +54,9 @@
- 	ESP_HCI_IF,
- 	ESP_INTERNAL_IF,
- 	ESP_TEST_IF,
-+	/* Byte pipe for the BLE provisioning link; must match the
-+	 * firmware's adapter.h. Appended to keep existing values. */
-+	ESP_BLE_PROV_IF,
- 	ESP_MAX_IF,
- };
- 
---- a/drivers/net/wireless/espressif/esp32-ng/esp_api.h
-+++ b/drivers/net/wireless/espressif/esp32-ng/esp_api.h
-@@ -26,6 +26,11 @@
- 						     struct esp_payload_header *header);
- struct sk_buff *esp_alloc_skb(u32 len);
- int esp_send_packet(struct esp_adapter *adapter, struct sk_buff *skb);
-+
-+/* BLE provisioning pipe (/dev/esp-ble) -- see esp_ble_prov.c */
-+int esp_ble_prov_init(struct esp_adapter *adapter);
-+void esp_ble_prov_deinit(void);
-+void esp_ble_prov_rx(struct sk_buff *skb);
- u8 esp_is_bt_supported_over_sdio(u32 cap);
- void esp_tx_pause(struct esp_wifi_device *priv);
- void esp_tx_resume(struct esp_wifi_device *priv);
+diff -Naur a/drivers/net/wireless/espressif/esp32-ng/Makefile b/drivers/net/wireless/espressif/esp32-ng/Makefile
 --- a/drivers/net/wireless/espressif/esp32-ng/Makefile
 +++ b/drivers/net/wireless/espressif/esp32-ng/Makefile
 @@ -1,5 +1,5 @@
