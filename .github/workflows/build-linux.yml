@@ -8,6 +8,7 @@ permissions:
 
 jobs:
   build:
+    name: Compile Linux and firmware
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
@@ -69,6 +70,59 @@ jobs:
           du -sh build-output
           find build-output -maxdepth 2 -type f | head -100
 
+      - name: Upload raw build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp32-linux-raw-build
+          path: build-output/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 1
+
+      - name: Remove build container
+        if: always()
+        run: |
+          docker rm -f esp32-linux-builder 2>/dev/null || true
+
+  package:
+    name: Package flashable image
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download raw build output
+        uses: actions/download-artifact@v4
+        with:
+          name: esp32-linux-raw-build
+          path: build-output
+
+      - name: Show downloaded build
+        run: |
+          echo "Downloaded build size:"
+          du -sh build-output
+
+          echo
+          echo "Top-level contents:"
+          find build-output -maxdepth 2 -type f | head -100
+
+      - name: Install esptool
+        run: |
+          python3 -m venv "$GITHUB_WORKSPACE/.venv"
+
+          "$GITHUB_WORKSPACE/.venv/bin/python" \
+            -m pip install --upgrade pip
+
+          "$GITHUB_WORKSPACE/.venv/bin/python" \
+            -m pip install esptool
+
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+
+          "$GITHUB_WORKSPACE/.venv/bin/esptool" version
+
       - name: Prepare build tree for packaging
         run: |
           mkdir -p ci/esp32-linux-build
@@ -77,6 +131,9 @@ jobs:
             "$GITHUB_WORKSPACE/build-output" \
             "$GITHUB_WORKSPACE/ci/esp32-linux-build/build"
 
+          ls -lah ci/esp32-linux-build
+          ls -lah ci/esp32-linux-build/build | head
+
       - name: Package flashable image
         run: |
           chmod +x make-images.sh
@@ -84,15 +141,19 @@ jobs:
           ./make-images.sh \
             "$GITHUB_WORKSPACE/ci/esp32-linux-build"
 
+      - name: Verify generated images
+        run: |
+          if ! compgen -G "images/*.bin" > /dev/null; then
+            echo "Error: no .bin files were generated"
+            find . -maxdepth 3 -type f | sort | tail -200
+            exit 1
+          fi
+
+          ls -lah images/
+
       - name: Generate checksums
         run: |
           sha256sum images/*.bin | tee images/SHA256SUMS.txt
-
-      - name: Show resulting files
-        run: |
-          ls -lah images/
-          echo
-          cat images/SHA256SUMS.txt
 
       - name: Upload flashable images
         uses: actions/upload-artifact@v4
@@ -103,8 +164,3 @@ jobs:
             images/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
-
-      - name: Remove build container
-        if: always()
-        run: |
-          docker rm -f esp32-linux-builder 2>/dev/null || true
