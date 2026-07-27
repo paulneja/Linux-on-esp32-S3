@@ -26,9 +26,22 @@ of this repo:
 
 ```bash
 docker build -f new-files/toplevel/Dockerfile -t linux-on-esp32s3 .
+mkdir -p build-output
 docker run --rm -v $(pwd)/build-output:/work/esp32-linux-build/build \
     linux-on-esp32s3
 ```
+
+**Create `build-output` yourself first** — that `mkdir` is not optional. Docker
+creates a missing bind-mount directory itself, as **root**, and the container
+builds as an unprivileged `builder` user, which then cannot write into it. The
+run dies within seconds on the first clone:
+
+```
+fatal: could not create work tree dir 'esp32s3': Permission denied
+```
+
+It fails loudly rather than producing a half-built image, but the message
+points at git rather than at the mount, so it is easy to misread.
 
 The image clones jcmvbkbc's `esp32-linux-build`, patches it with
 `patches/00-...`, and drops `apply-local-changes.sh` plus the 16MB board
@@ -72,8 +85,15 @@ The build driver compiles everything but stops there — it does not gather the
 results or package them. `make-images.sh` closes that gap:
 
 ```bash
-./make-images.sh /path/to/esp32-linux-build
+./make-images.sh /path/to/esp32-linux-build   # after a native build
+./make-images.sh build-output                 # after the Docker build
 ```
+
+Either shape works. A native build leaves an `esp32-linux-build/` directory
+with `build/` inside it; the Docker build mounts a host directory *as* that
+`build/`, so afterwards all that exists is `build-output/` — the build
+directory itself, with no parent to point at. Run with no argument and it
+looks for all three.
 
 It collects the six binaries into `images/`, checks each one fits its
 partition, refuses to package an `etc.jffs2` that has a `psk=` line in it, and
@@ -102,11 +122,55 @@ Worth knowing before trusting a rebuild to match:
   `esp-hosted -b ipc-5.1.1` and the kernel tag the same way. If upstream moves,
   a rebuild can produce different output, or a patch here can stop applying.
   That is upstream's design, not something this repo overrides.
-- **A full from-scratch build has now been run end to end, and the result boots
-  on hardware.** It took four fixes to get there (incidents 4-7 below): the
-  container was missing `cpio`, one patch was being discarded in silence, and
-  both the firmware patch and the defconfig had drifted behind the tree the
-  published images were built from. Nothing built before those is comparable.
+- **Reproduced from a clean clone of this repo, on real hardware, following
+  only what is written here.** `git clone`, `docker build`, `mkdir -p
+  build-output`, `docker run`, `./make-images.sh build-output`,
+  `./flash.sh --erase` — no other step, and nothing taken from a local working
+  tree. The build ran 43 minutes; the board then booted in 11 s, passed both
+  RSA self-tests, joined WiFi and reached the internet.
+
+  Walking it that way is what found the two defects that made it impossible:
+  `build-output/` had to exist before `docker run` or the build died on its
+  first clone, and `make-images.sh` could not be pointed at what the Docker
+  build leaves behind. Both were invisible from a working tree, because the
+  directory always already existed and the images were always packaged from a
+  native build. A rebuild of a tree that already works cannot find either.
+- **The rebuild matches in size, not bit for bit** -- and the reasons are
+  worth knowing, because they say what "reproducible" can mean here. A clean
+  clone built in Docker, compared against the images committed here (built
+  natively on Arch):
+
+  | | differs by | why |
+  |---|---|---|
+  | `bootloader.bin` | nothing | byte-identical |
+  | `partition-table.bin` | nothing | generated from the CSV in this repo |
+  | `network_adapter.bin` | 80 bytes of 687040 | a build stamp ESP-IDF embeds |
+  | `xipImage` | 9% | see below |
+  | `rootfs.cramfs` | 14.5% | see below |
+  | `etc.jffs2` | 4 bytes of ~24000 | jffs2 metadata |
+
+  The kernel's 9% is one string. `Linux version ...` embeds the build
+  `user@host`: `paulneja@arch` natively, `builder@<container-id>` in Docker.
+  Those are different lengths, so everything after it in `.rodata` shifts and
+  every pointer table reaching past it changes with it. The code is the same
+  -- 96% of the text strings are identical and neither image embeds a build
+  path.
+
+  The rootfs's 14.5% is real: whole 512K regions are byte-identical while
+  others differ heavily, and the ones that differ hold the large userspace
+  binaries (`nano` and `libcurl` in the worst of them). Arch and Debian build
+  those differently. Note cramfs stores no timestamps at all, so that is not
+  it.
+
+  So: compare behaviour, not checksums. Only
+  `linux-esp32s3-native-full.bin` is worth checksumming, and only against
+  images built the same way -- it is a concatenation of the others, so it
+  reproduces exactly when they do.
+- **It took four fixes to get the first from-scratch build working**
+  (incidents 4-7 below): the container was missing `cpio`, one patch was being
+  discarded in silence, and both the firmware patch and the defconfig had
+  drifted behind the tree the published images were built from. Nothing built
+  before those is comparable.
 - **GitHub's source ZIP drops the executable bit.** Git stores it correctly
   (`100755`), so a `git clone` is fine; if you downloaded the ZIP, run
   `bash flash.sh` or `chmod +x *.sh` first.
@@ -148,7 +212,7 @@ that matters.
 **Verified against fresh independent clones** (not against an already-patched
 tree): the buildroot patch applies to a fresh `jcmvbkbc/buildroot
 -b xtensa-2024.08-fdpic`, the firmware patch to a fresh `jcmvbkbc/esp-hosted
--b ipc-5.1.1`, and both kernel patches to a fresh `jcmvbkbc/linux-xtensa
+-b ipc-5.1.1`, and all three kernel patches to a fresh `jcmvbkbc/linux-xtensa
 -b xtensa-6.11-esp32-tag`.
 
 ### The kernel driver: a special case, already solved more robustly
@@ -168,11 +232,17 @@ Fix (does not rely on "don't touch that folder"):
 `BR2_LINUX_KERNEL_PATCH="board/espressif/esp32s3/patches/linux"`, buildroot's
 native option for kernel patches — it re-applies itself after **every** kernel
 extraction, no matter what triggers it. Verified with
-`make linux-dirclean && make linux-patch`: the patch applied itself, with no
-manual intervention. `patches/01-kernel-esp32ng-ap-support.patch` is no longer
-empty (it used to be a "this could not be generated as a diff" placeholder) —
-it is now a real 493-line diff against the pristine kernel, verified to apply
-cleanly with `patch -p1 --dry-run`.
+`make linux-dirclean && make linux-patch`: the patches applied themselves, with
+no manual intervention.
+
+One more trap in the same area, found later: `apply-local-changes.sh` copies
+`new-files/board/` over buildroot with `rsync -a` and **no `--delete`**, so a
+patch deleted from this repo would linger in the buildroot tree and keep being
+applied, and a renamed one would be applied twice under both names. A plain
+`--delete` is not an option there (it would wipe buildroot's own `board/*`
+profiles), so the script now removes
+`build/buildroot/board/espressif/esp32s3/patches` before the rsync, which makes
+that one directory match `new-files/` exactly.
 
 ## This session's incidents (why all this armor exists)
 
@@ -237,17 +307,18 @@ cleanly with `patch -p1 --dry-run`.
   workarounds, and hostapd disabled. Verified to apply with `patch -p1` to a
   fresh clone of `jcmvbkbc/esp32-linux-build`, both on a host and inside the
   Docker image.
-- `patches/01-kernel-esp32ng-ap-support.patch` — a real diff (493 lines)
-  against a pristine `jcmvbkbc/linux-xtensa -b xtensa-6.11-esp32-tag`. Applied
-  automatically via `BR2_LINUX_KERNEL_PATCH` (see above) — no manual
-  intervention needed unless the defconfig is rebuilt from scratch.
 - `patches/04-kernel-esp32s3-rsa-crypto.patch` — adds the hardware RSA
   accelerator driver (`drivers/crypto/esp32s3_rsa.c`, 549 lines) plus its
-  `obj-y` line. Also applied automatically: both kernel patches live in
-  `new-files/board/espressif/esp32s3/patches/linux/` (as `01-` and `02-`, the
-  order they are applied in), which is what `BR2_LINUX_KERNEL_PATCH` points at.
-  Verified to apply cleanly with `patch -p1` and to reproduce the exact driver
-  that the shipped `xipImage` was built from.
+  `obj-y` line. Applied automatically: the kernel patches live in
+  `new-files/board/espressif/esp32s3/patches/linux/` (as `01-` RSA, `02-` BLE
+  and `03-` cmdline, the order they are applied in), which is what
+  `BR2_LINUX_KERNEL_PATCH` points at. Verified to apply cleanly with `patch -p1`
+  and to reproduce the exact driver that the shipped `xipImage` was built from.
+  There used to be a fourth, `01-kernel-esp32ng-ap-support.patch`, carrying the
+  SoftAP; it is gone, and with it the only reason the esp32-ng driver diverged
+  from upstream beyond the BLE pipe. Note the top-level numbering here has gaps
+  (`00`, `02`, `03`, `04`) where the SoftAP and ESP-IDF patches used to sit —
+  the remaining files keep their names so existing references stay valid.
 - `flash.sh` — flashes a bare board from `images/` with nothing but `esptool`
   (see "Flash directly" above).
 - `patches/02-firmware-network-adapter.patch` — every change to the ESP32
@@ -256,9 +327,6 @@ cleanly with `patch -p1 --dry-run`.
   accelerator to Linux. Generated straight from the tree the shipped image was
   built from, so it reproduces it byte for byte. Applied automatically by
   `apply-local-changes.sh esp-hosted`.
-- `patches/06-idf-hostap-sta-join.patch` — one symbol unhidden in the vendored
-  ESP-IDF so the SoftAP path links. Applied to the `esp-idf` submodule by the
-  same script.
 - `patches/03-buildroot-tracked-changes.patch` — a single consolidated
   `git diff` of all tracked files modified under `build/buildroot/`
   (busybox.config, inetd.conf, wpa_supplicant.conf.example, both defconfigs).
@@ -267,9 +335,9 @@ cleanly with `patch -p1 --dry-run`.
   overlapped each other and are no longer maintained. Applied automatically by
   `apply-local-changes.sh buildroot`.
 - `kernel-driver-esp32-ng/` — a complete reference/human-readable copy of
-  `drivers/net/wireless/espressif/esp32-ng/` (AP plumbing present but
-  hard-disabled, STA only); the patch above is what is actually used in the
-  automated flow, this is a readable backup.
+  `drivers/net/wireless/espressif/esp32-ng/` (pristine upstream plus the BLE
+  pipe; STA only, no AP code at all); the patch above is what is actually used
+  in the automated flow, this is a readable backup.
 - `new-files/` — an exact mirror of what has to be copied: `board/` and
   `configs/` go over `build/buildroot/` (automatic via
   `apply-local-changes.sh buildroot`); `esp-hosted/network_adapter/*.16m8r`
@@ -305,7 +373,6 @@ cp "$REPO"/new-files/esp-hosted/network_adapter/*.16m8r \
 git add esp/esp_driver/network_adapter/
 git -c user.email="local@backup" -c user.name="local-backup" \
   commit -m "network_adapter: this project's firmware (local-only, never push)"
-git -C esp/esp_driver/esp-idf apply "$REPO/patches/06-idf-hostap-sta-join.patch"
 cd ../../..
 
 cp "$REPO/new-files/toplevel/devkit-c1-16m.conf" .

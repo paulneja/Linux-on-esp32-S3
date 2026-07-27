@@ -18,19 +18,18 @@ BR2_ROOTFS_OVERLAY="board/espressif/esp32s3/rootfs_overlay"
 # root lands in /root, on the read-only cramfs, instead of the writable jffs2.
 # no-open-wifi.sh deletes the default wpa_supplicant.conf the buildroot
 # package installs; it matches any open network and joins one on its own.
-BR2_ROOTFS_POST_BUILD_SCRIPT="board/espressif/esp32s3/trim-libs.sh board/espressif/esp32s3/setup-home.sh board/espressif/esp32s3/no-open-wifi.sh"
+BR2_ROOTFS_POST_BUILD_SCRIPT="board/espressif/esp32s3/trim-libs.sh board/espressif/esp32s3/setup-home.sh board/espressif/esp32s3/no-open-wifi.sh board/espressif/esp32s3/trim-target.sh"
 BR2_ROOTFS_POST_FAKEROOT_SCRIPT="board/espressif/esp32s3/mkfs-etc.sh"
 BR2_ROOTFS_POST_IMAGE_SCRIPT="board/espressif/esp32s3/post-build.sh"
 BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_GIT=y
 BR2_LINUX_KERNEL_CUSTOM_REPO_URL="https://github.com/jcmvbkbc/linux-xtensa.git"
 BR2_LINUX_KERNEL_CUSTOM_REPO_VERSION="xtensa-6.11-esp32-tag"
-# SoftAP support for the esp32-ng driver (espap0 netdev + cfg80211
-# start_ap/stop_ap + CMD_AP_START/STOP over the shmem IPC protocol) is not
-# upstream. This directory is untracked by the kernel's own git repo, so a
-# clean re-extraction silently discards local edits made directly in the
-# build tree -- happened twice this session. BR2_LINUX_KERNEL_PATCH makes
-# buildroot re-apply the patch after every extraction instead.
+# The hardware RSA driver and the BLE provisioning pipe are not upstream.
+# Their directories are untracked by the kernel's own git repo, so a clean
+# re-extraction silently discards local edits made directly in the build tree
+# -- that happened twice. BR2_LINUX_KERNEL_PATCH makes buildroot re-apply the
+# patches after every extraction instead.
 BR2_LINUX_KERNEL_PATCH="board/espressif/esp32s3/patches/linux"
 BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="board/espressif/esp32s3/devkit_c1_16m_linux.config"
@@ -43,9 +42,10 @@ BR2_PACKAGE_DROPBEAR=y
 BR2_PACKAGE_IW=y
 BR2_PACKAGE_WIRELESS_REGDB=y
 BR2_PACKAGE_WPA_SUPPLICANT=y
-# hostapd needs real fork() (os_unix.c); this target's uclibc-fdpic is NOMMU
-# and does not declare it, so hostapd cannot be built here. The SoftAP is
-# started directly by the ESP32 firmware instead (fixed SSID, no hostapd).
+# This board is WiFi client (STA) only. There is no AP mode: hostapd needs
+# real fork() (os_unix.c), which this target's NOMMU uclibc-fdpic does not
+# declare, and the firmware's own SoftAP wedged the wifi task so the STA could
+# no longer scan -- so it was removed rather than shipped broken.
 BR2_PACKAGE_IPTABLES=y
 # The classic nano editor replaces busybox vi (disabled in busybox.config).
 # Pulls in ncurses; EDITOR/VISUAL are set to nano in /etc/profile.d/editor.sh.

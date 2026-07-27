@@ -1,0 +1,44 @@
+#!/bin/sh
+#
+# Apply /etc/sysctl.conf.
+#
+# This replaces buildroot's generic S02sysctl, which is written to cover procps
+# and busybox across five possible config directories. To do that it runs a
+# `find` over all of them, pipes the result through `xargs` and `readlink`, and
+# builds a two-stage pipeline through `logger` -- roughly ten process spawns.
+#
+# On this target that is not free: the rootfs is XIP cramfs on SPI flash and
+# the libc is NOMMU fdpic, so every fork/exec is expensive. It measured 1.8 s
+# of a 14.6 s boot, to apply the single line this board actually has
+# (kernel.default_stack_size). This version does the same work with one.
+#
+# Only /etc/sysctl.conf is read. If you ever add drop-in files under
+# /etc/sysctl.d/, extend the loop below -- they are deliberately not scanned.
+
+case "$1" in
+	start|restart|reload)
+		printf 'Running sysctl: '
+		if [ -r /etc/sysctl.conf ]; then
+			# stdout is just the "key = value" echo of what was applied, and
+			# it is noise at boot. stderr is NOT redirected on purpose: a key
+			# that does not exist is the one thing worth seeing, and busybox
+			# sysctl reports it there while still exiting 0 -- which is also
+			# why the exit status below cannot be trusted to catch it.
+			if /sbin/sysctl -p /etc/sysctl.conf >/dev/null; then
+				echo "OK"
+			else
+				echo "FAIL"
+				exit 1
+			fi
+		else
+			echo "OK (no /etc/sysctl.conf)"
+		fi
+		;;
+	stop)
+		:
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart|reload}"
+		exit 1
+		;;
+esac

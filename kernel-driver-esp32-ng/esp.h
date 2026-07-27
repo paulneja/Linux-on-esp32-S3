@@ -27,8 +27,8 @@
 #define ESP_LINK_DOWN           0
 #define ESP_LINK_UP             1
 
-#define ESP_MAX_INTERFACE       2
-//#define ESP_MAX_INTERFACE       1
+#define ESP_MAX_INTERFACE       1
+//#define ESP_MAX_INTERFACE       2
 #define ESP_STA_NW_IF           0
 #define ESP_AP_NW_IF            1
 

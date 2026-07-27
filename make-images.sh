@@ -26,16 +26,37 @@ PROFILE=esp32s3_devkit_c1_16m
 die() { echo "error: $*" >&2; exit 1; }
 
 # --- locate the build tree ----------------------------------------------
+# Two shapes are accepted, because the two documented ways to build produce
+# different ones:
+#
+#   - a native build leaves an esp32-linux-build/ directory with build/ inside
+#     it, and that is what gets passed here;
+#   - the Docker build mounts a host directory *as* build/, so all that exists
+#     afterwards is build-output/ -- the build directory itself, with no parent
+#     to point at. Passing it used to fail with "…/build-output/build does not
+#     exist", which reads like the build never ran.
+#
+# So: if the argument has a build/ inside it, use that; if the argument looks
+# like a build directory itself, use it directly.
 SRC="${1:-}"
 if [ -z "$SRC" ]; then
-	for d in ../esp32-linux-build ./esp32-linux-build; do
-		[ -d "$d/build" ] && { SRC="$d"; break; }
+	for d in ../esp32-linux-build ./esp32-linux-build ./build-output; do
+		if [ -d "$d/build" ] || [ -d "$d/buildroot" ]; then
+			SRC="$d"
+			break
+		fi
 	done
-	[ -n "$SRC" ] || die "cannot find esp32-linux-build; pass it as an argument"
+	[ -n "$SRC" ] || die "cannot find a build tree; pass esp32-linux-build/ or build-output/ as an argument"
 fi
-SRC=$(CDPATH= cd -- "$SRC" && pwd)
-BUILD="$SRC/build"
-[ -d "$BUILD" ] || die "$BUILD does not exist -- has the build run?"
+[ -d "$SRC" ] || die "$SRC does not exist"
+SRC=$(CDPATH= cd -- "$SRC" && pwd -P)
+if [ -d "$SRC/build" ]; then
+	BUILD="$SRC/build"
+elif [ -d "$SRC/buildroot" ] && [ -d "$SRC/esp-hosted" ]; then
+	BUILD="$SRC"          # handed the build directory itself
+else
+	die "$SRC is neither an esp32-linux-build tree (no build/ in it) nor a build directory (no buildroot/ and esp-hosted/ in it) -- has the build run?"
+fi
 
 BR="$BUILD/build-buildroot-$PROFILE/images"
 NA="$BUILD/esp-hosted/esp_hosted_ng/esp/esp_driver/network_adapter"
@@ -58,7 +79,12 @@ mkdir -p "$OUT"
 # and the kernel derives the rootfs XIP address from the partition table, so
 # booting it panics with "Cannot open root device".
 CSV="$REPO/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r"
-GEN=$(find "$BUILD" -path '*partition_table/gen_esp32part.py' -print -quit 2>/dev/null) \
+# The trailing slash matters: BUILD can be a symlink (a packaged tree pointing
+# at the real build output), and find does not traverse a symlink handed to it
+# as a starting point. The slash resolves that one path. Not -L, which follows
+# every symlink in the tree: buildroot's host/usr -> . loop then makes find
+# exit non-zero even after a successful match, firing the die below.
+GEN=$(find "$BUILD/" -path '*partition_table/gen_esp32part.py' -print -quit 2>/dev/null) \
 	|| die "gen_esp32part.py not found under $BUILD"
 [ -n "$GEN" ] || die "gen_esp32part.py not found under $BUILD"
 echo "==> partition table (from $(basename "$CSV"))"

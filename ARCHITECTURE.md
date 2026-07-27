@@ -3,8 +3,9 @@
 > **Status: verified on hardware.** Everything below is running on a real
 > board: flashed from a fully erased chip, it boots to a login prompt, mounts
 > the rootfs from flash via XIP, passes the RSA accelerator self-tests and
-> reaches the internet over WiFi. See [README.md](README.md) for the list of
-> what works and what does not.
+> reaches the internet over WiFi, and the whole thing has been rebuilt from a
+> clean clone of this repo and booted again. See [README.md](README.md) for the
+> list of what works and what does not.
 
 ## The big picture: two cores, two operating systems, one chip
 
@@ -28,7 +29,7 @@ ESP32-S3 (single chip, two Xtensa LX7 cores)
 └── Core 1 — Linux 6.11 (real, native Xtensa binary)
     ├── esp32-ng driver (drivers/net/wireless/espressif/esp32-ng/)
     │   ├── espsta0 — STA netdev, joins the home WiFi (wpa_supplicant).
-    │   │             STA only: the AP side is hard-disabled (see below).
+    │   │             STA only: the AP side was removed (see below).
     │   └── /dev/esp-ble — the other end of the BLE pipe (single reader)
     ├── BusyBox userland (telnetd, dropbear/ssh, inetd) + nano editor
     ├── wifi — interactive scan/connect helper for the STA uplink
@@ -54,9 +55,11 @@ this edition exists at all.
 3. userspace: `S45inetd` (telnet; ssh only if enabled with `ssh-server on`)
    → `wpa_supplicant` on `espsta0` (via `/etc/network/interfaces`, joining the
    WiFi set with the interactive `wifi` command or `wifi connect "SSID" "PASS"`).
-   With no network chosen yet there is no `/etc/wpa_supplicant.conf`, so
-   `wpa_supplicant` exits and the step reports `FAIL` — that is the expected
-   state of a freshly flashed board, not a fault.
+   That step runs in the **background** so it does not hold the login prompt
+   (see `S40network`); its output goes to `/var/log/network.log`. With no
+   network chosen yet there is no `/etc/wpa_supplicant.conf`, so
+   `wpa_supplicant` exits and that log records the failure — the expected state
+   of a freshly flashed board, not a fault.
 4. `S46blewifi` starts `ble-wifi-setup` if the firmware exposed `/dev/esp-ble`,
    so the board can be joined to a network from a phone with no PC and no
    cable. Core 0 has been advertising since long before this point, which is
@@ -71,17 +74,35 @@ WPA2, so clients reject it, and — worse — bringing the AP up wedged the
 firmware's wifi task so `CMD_SCAN_REQUEST` never returned, meaning the STA
 could no longer scan or associate.
 
-So the esp32-ng driver is now hard-forced to **never create `espap0`**
-(`esp_add_network_ifaces()` returns right after adding the STA interface), and
-the `ap` command was deleted. With no AP netdev, the firmware never receives an
-AP init and never beacons — the board is **STA only**: it joins an existing
-network, it does not host one. The `.start_ap`/`.stop_ap` cfg80211 plumbing and
-the firmware's `start_softap_fixed()` still exist, dormant, in case a future
-build wants a working AP — which would need `hostapd`, and `hostapd` doesn't
-build here: its `os_unix.c` calls `fork()`, which this target's NOMMU C library
-(`uClibc-ng-fdpic`) does not declare at all. BusyBox's daemons (`inetd`,
-`dropbear`, `crond`) work only because BusyBox falls back to `vfork()` on NOMMU;
-`hostapd` upstream has no such fallback.
+It was first disabled (the driver was hard-forced never to create `espap0`) and
+has since been **removed outright**, on both sides. The board is **STA only**:
+it joins an existing network, it does not host one.
+
+- Kernel: the esp32-ng driver is back to its pristine upstream form plus the
+  BLE pipe. Gone are the `.start_ap`/`.stop_ap` cfg80211 ops, `cmd_ap_start`/
+  `cmd_ap_stop`, the `CMD_AP_*` and `EVENT_AP_*` protocol codes, the
+  `esp_ap_password` and `ap_iface` module parameters, and `NL80211_IFTYPE_AP`
+  in `wiphy->interface_modes`. `ESP_MAX_INTERFACE` is 1 again.
+- Firmware: `cmd.c` is byte-identical to upstream again — `process_ap_start`/
+  `process_ap_stop`, `configure_softap_fixed`, the AP half of `wpa_funcs`
+  (`hostap_init`, `wpa_ap_*`, `hostap_sta_join`) and the `WIFI_EVENT_AP_*`
+  handlers are all gone. WiFi start-up went back to upstream's model too: the
+  event loop and `esp_wifi_start()` live in `process_init_interface()` behind
+  the `!sta_init_flag` guard, rather than running once at boot — that
+  restructuring only ever existed so the AP beacon would carry its RSN element.
+- The vendored ESP-IDF is untouched again; it used to have `hostap_sta_join`
+  un-`static`ed so the AP authenticator could link against it.
+- The firmware is built with `CONFIG_ESP_WIFI_SOFTAP_SUPPORT=n`, so the SDK's
+  own AP machinery is not compiled in either. That is a supported ESP-IDF
+  configuration, not a hack: with the option off it provides an empty
+  `net80211_softap_funcs_init()` that overrides a weak symbol in the closed
+  WiFi library, which is built to run STA-only.
+
+Restoring an AP would mean more than reverting this: it needs `hostapd`, and
+`hostapd` doesn't build here — its `os_unix.c` calls `fork()`, which this
+target's NOMMU C library (`uClibc-ng-fdpic`) does not declare at all. BusyBox's
+daemons (`inetd`, `dropbear`, `crond`) work only because BusyBox falls back to
+`vfork()` on NOMMU; `hostapd` upstream has no such fallback.
 
 ## Storage layout (devkit-c1-16m profile, 16MB flash / 8MB PSRAM)
 

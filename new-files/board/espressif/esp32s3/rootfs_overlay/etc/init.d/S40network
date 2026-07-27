@@ -1,0 +1,66 @@
+#!/bin/sh
+#
+# Bring the network up without holding the boot.
+#
+# This replaces buildroot's S40network, which runs `ifup -a` in the foreground.
+# On this board that step costs ~2.2 s of a 14.6 s boot, and none of it is work
+# the login prompt has to wait for:
+#
+#   - /etc/network/interfaces declares espsta0 as `inet dhcp` with wpa_supplicant
+#     in a post-up hook, so udhcpc starts *before* the radio has associated and
+#     sits there;
+#   - with no /etc/wpa_supplicant.conf yet (a freshly flashed board), the whole
+#     sequence runs only to fail.
+#
+# So it goes to the background. Nothing later in the boot needs the network:
+# inetd binds regardless of link state, and the BLE provisioning link talks over
+# /dev/esp-ble, not IP. The shell comes up ~2 s sooner and the interface
+# finishes coming up behind it.
+#
+# Output goes to $LOG instead of the console -- otherwise wpa_supplicant's
+# messages land on top of the login prompt seconds later. Read it there, or use
+# `start-fg` below to run the whole thing in the foreground by hand.
+
+LOG=/var/log/network.log
+
+# Debian ifupdown needs the /run/network lock directory
+mkdir -p /run/network
+
+case "$1" in
+  start)
+	printf "Starting network (background): "
+	# Make sure the log is writable before redirecting into it. /var/log is a
+	# symlink to /tmp, so if that tmpfs is not mounted yet the redirection
+	# fails -- and a failed redirection means the shell never runs ifup at
+	# all, while this script still prints OK. Losing the log is acceptable;
+	# silently losing the network is not.
+	#
+	# `touch`, not `: > "$LOG"`: `:` is a POSIX *special builtin*, and a
+	# redirection error on one of those makes a non-interactive shell exit
+	# outright -- the `||` would never run, taking the whole boot script with
+	# it. Verified: with `:` the fallback never fires.
+	touch "$LOG" 2>/dev/null || LOG=/dev/null
+	/sbin/ifup -a >"$LOG" 2>&1 &
+	# "OK" here only means the job was launched -- see $LOG for what it did.
+	echo "OK"
+	;;
+  start-fg)
+	printf "Starting network: "
+	/sbin/ifup -a
+	[ $? = 0 ] && echo "OK" || echo "FAIL"
+	;;
+  stop)
+	printf "Stopping network: "
+	/sbin/ifdown -a
+	[ $? = 0 ] && echo "OK" || echo "FAIL"
+	;;
+  restart|reload)
+	"$0" stop
+	"$0" start-fg
+	;;
+  *)
+	echo "Usage: $0 {start|start-fg|stop|restart}"
+	exit 1
+esac
+
+exit $?
