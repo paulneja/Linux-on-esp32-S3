@@ -128,7 +128,14 @@ fits "$OUT/rootfs.cramfs"       "$OFF_ROOTFS" "$SIZE_ROOTFS" rootfs.cramfs
 # from a manual test once got baked into etc.jffs2 and shipped. The overlay
 # only carries wpa_supplicant.conf.example, so a clean image has no PSK line.
 echo "==> checking for baked-in WiFi credentials"
-if strings "$OUT/etc.jffs2" | grep -qE '^[[:space:]]*psk="'; then
+# Read it once instead of piping strings into grep twice: `grep -q` exits on
+# the first match, `strings` then dies of SIGPIPE, and `set -o pipefail` hands
+# the pipeline that 141 -- so a match could read as "no match" and wave a
+# credential-carrying image straight through. Whether it does depends on which
+# process gets scheduled first, which is not a property to leave in a check
+# that exists to stop a PSK from being published.
+ETC_TEXT=$(strings "$OUT/etc.jffs2")
+if grep -qE '^[[:space:]]*psk="' <<<"$ETC_TEXT"; then
 	echo "  !! etc.jffs2 contains a psk= line." >&2
 	echo "  !! Delete build-buildroot-$PROFILE/target/etc/wpa_supplicant.conf" >&2
 	echo "  !! and rebuild: WiFi is meant to be set at runtime with 'wifi connect'." >&2
@@ -140,7 +147,7 @@ fi
 # so the board joins whatever unencrypted AP is in range on its own. It has no
 # psk line, so the check above waves it through. no-open-wifi.sh removes it at
 # post-build; this is the backstop for when that does not run.
-if strings "$OUT/etc.jffs2" | grep -qE '^[[:space:]]*key_mgmt=NONE'; then
+if grep -qE '^[[:space:]]*key_mgmt=NONE' <<<"$ETC_TEXT"; then
 	echo "  !! etc.jffs2 has a key_mgmt=NONE network block -- this image would" >&2
 	echo "  !! join any open WiFi by itself. no-open-wifi.sh should have removed" >&2
 	echo "  !! /etc/wpa_supplicant.conf; check BR2_ROOTFS_POST_BUILD_SCRIPT." >&2
@@ -163,15 +170,44 @@ echo "    clean"
 echo "==> checking Linux vector address against the firmware"
 KCONF="$REPO/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config"
 FW_ELF="$NA/build/network_adapter.elf"
-NM=$(command -v xtensa-esp32s3-elf-nm 2>/dev/null || \
-     ls /home/*/.espressif/tools/xtensa-esp32s3-elf/*/xtensa-esp32s3-elf/bin/xtensa-esp32s3-elf-nm 2>/dev/null | head -1)
 
-if [ -z "$NM" ] || [ ! -f "$FW_ELF" ]; then
-	echo "  !! cannot verify (no xtensa nm, or firmware ELF missing)." >&2
-	echo "  !! Check by hand that space_for_vectors in $FW_ELF" >&2
+# Read the symbol's address out of the firmware ELF without needing the xtensa
+# toolchain. nm was used here before, found either on PATH or by globbing
+# ~/.espressif; neither exists where the build and the packaging happen on
+# different machines (CI packages the artifacts of an earlier job, with no
+# ESP-IDF installed), and skipping the check there is exactly the case it was
+# written for: a wrong address boots to a dead stop with nothing on the
+# console. So walk .symtab directly -- an ELF32 symbol table is a flat array
+# and python3 is already required by this script.
+#
+# The old lookup was also a live landmine: the ~/.espressif glob normally
+# matches nothing, and `ls` failing inside $(...) with `set -o pipefail` in
+# effect aborted the whole script with a bare "exit 2" and no message.
+elf_symbol_addr() { # elf symbol -> lowercase hex address, empty if absent
+	python3 -c '
+import struct, sys
+b = open(sys.argv[1], "rb").read()
+shoff, = struct.unpack_from("<I", b, 0x20)
+shentsize, shnum = struct.unpack_from("<HH", b, 0x2e)
+secs = [struct.unpack_from("<10I", b, shoff + i * shentsize) for i in range(shnum)]
+for _, typ, _, _, off, size, link, _, _, entsize in secs:
+    if typ != 2 or not entsize:      # SHT_SYMTAB
+        continue
+    strs = b[secs[link][4]:secs[link][4] + secs[link][5]]
+    for s in range(off, off + size, entsize):
+        nameoff, value = struct.unpack_from("<II", b, s)
+        if strs[nameoff:strs.index(b"\0", nameoff)] == sys.argv[2].encode():
+            print("%08x" % value)
+            sys.exit(0)
+' "$1" "$2" 2>/dev/null || true
+}
+
+if [ ! -f "$FW_ELF" ]; then
+	echo "  !! cannot verify: firmware ELF missing ($FW_ELF)." >&2
+	echo "  !! Check by hand that space_for_vectors there" >&2
 	echo "  !! equals CONFIG_VECTORS_ADDR in $KCONF" >&2
 else
-	FW_VEC=$("$NM" "$FW_ELF" | awk '/ space_for_vectors$/ {print $1}' | head -1)
+	FW_VEC=$(elf_symbol_addr "$FW_ELF" space_for_vectors)
 	K_VEC=$(sed -n 's/^CONFIG_VECTORS_ADDR=0x\([0-9a-fA-F]*\).*/\1/p' "$KCONF" | head -1)
 	# normalise: nm prints lowercase hex without 0x, kconfig may use either case
 	FW_VEC=$(printf '%s' "$FW_VEC" | tr 'A-F' 'a-f')
