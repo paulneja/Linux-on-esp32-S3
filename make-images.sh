@@ -229,6 +229,18 @@ else
 		[ -f "$KDOTCONF" ] && \
 			sed -i "s/^CONFIG_VECTORS_ADDR=.*/CONFIG_VECTORS_ADDR=0x$FW_VEC/" "$KDOTCONF"
 
+		# Rebuilding needs a toolchain, and packaging does not always
+		# happen where the build did: in CI this step runs in a separate
+		# job holding only the downloaded build tree. Say which of the
+		# two problems this is, rather than letting make fail with a
+		# generic message about a rebuild the user never asked for.
+		if [ ! -f "$BUILD/xtensa-dynconfig/esp32s3.so" ]; then
+			die "the vector address moved, so the kernel has to be rebuilt,
+       but there is no xtensa toolchain here:
+       $BUILD/xtensa-dynconfig/esp32s3.so is missing.
+       Run the full build instead of repackaging an existing tree."
+		fi
+
 		# Same environment the build driver uses for the kernel.
 		: "${GCC14_SHIM:=$HOME/esp/gcc14shim}"
 		[ -d "$GCC14_SHIM" ] && PATH="$GCC14_SHIM:$PATH"

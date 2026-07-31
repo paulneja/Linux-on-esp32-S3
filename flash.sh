@@ -67,15 +67,55 @@ if [ "$ERASE" = 1 ]; then
 fi
 
 if [ "$PARTS" = 1 ]; then
+	# Read the offsets out of the partition-table CSV instead of repeating
+	# them here, so they cannot drift from the table the board is actually
+	# given. Typed by hand they did drift: for several releases this wrote
+	# /etc inside the firmware partition and the kernel 128K low -- a board
+	# that flashes without complaint and then never boots. The combined image
+	# is built from this same CSV by make-images.sh, which is why it was
+	# always right and nothing noticed.
+	CSV="$DIR/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r"
+	if [ ! -f "$CSV" ]; then
+		echo "error: partition table not found at $CSV" >&2
+		echo "       --parts needs the full repository. If you only have" >&2
+		echo "       images/, flash the combined image instead: $0" >&2
+		exit 1
+	fi
+
+	# Fields: label, type, subtype, offset, size. Pre-set to empty so `set -u`
+	# does not turn a missing row into an unbound-variable message.
+	OFF_APP=""; OFF_ETC=""; OFF_LINUX=""; OFF_ROOTFS=""
+	eval "$(awk -F', *' '
+		/^[a-z]/ {
+			gsub(/[ \t]/, "", $1); gsub(/[ \t]/, "", $4)
+			if ($1 == "factory") printf "OFF_APP=%s ",    $4
+			if ($1 == "etc")     printf "OFF_ETC=%s ",    $4
+			if ($1 == "linux")   printf "OFF_LINUX=%s ",  $4
+			if ($1 == "rootfs")  printf "OFF_ROOTFS=%s ", $4
+		}' "$CSV")"
+	if [ -z "$OFF_APP" ] || [ -z "$OFF_ETC" ] || \
+	   [ -z "$OFF_LINUX" ] || [ -z "$OFF_ROOTFS" ]; then
+		echo "error: could not read the factory/etc/linux/rootfs offsets" >&2
+		echo "       from $CSV" >&2
+		exit 1
+	fi
+
+	# The two that are not in the CSV and cannot be: the ESP32-S3 ROM loads
+	# the bootloader from 0x0, and the bootloader looks for the partition
+	# table at 0x8000 (ESP-IDF's CONFIG_PARTITION_TABLE_OFFSET default, which
+	# this project does not change). A table cannot describe where it lives.
 	echo "==> Flashing the 6 images separately"
+	printf '    offsets from %s:\n' "$(basename "$CSV")"
+	printf '    firmware %s   etc %s   kernel %s   rootfs %s\n' \
+		"$OFF_APP" "$OFF_ETC" "$OFF_LINUX" "$OFF_ROOTFS"
 	# shellcheck disable=SC2086
 	$ESPTOOL $COMMON write_flash $FLASHOPTS \
-		0x0      "$IMG/bootloader.bin" \
-		0x8000   "$IMG/partition-table.bin" \
-		0x10000  "$IMG/network_adapter.bin" \
-		0xb0000  "$IMG/etc.jffs2" \
-		0x120000 "$IMG/xipImage" \
-		0x5a0000 "$IMG/rootfs.cramfs"
+		0x0          "$IMG/bootloader.bin" \
+		0x8000       "$IMG/partition-table.bin" \
+		"$OFF_APP"    "$IMG/network_adapter.bin" \
+		"$OFF_ETC"    "$IMG/etc.jffs2" \
+		"$OFF_LINUX"  "$IMG/xipImage" \
+		"$OFF_ROOTFS" "$IMG/rootfs.cramfs"
 else
 	echo "==> Flashing the combined image at 0x0"
 	# shellcheck disable=SC2086

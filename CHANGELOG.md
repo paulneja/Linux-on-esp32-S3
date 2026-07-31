@@ -4,6 +4,73 @@ Releases carry one flashable `.bin` for a 16 MB / 8 MB-PSRAM ESP32-S3. Full
 notes and the binaries are on the
 [releases page](https://github.com/paulneja/Linux-on-esp32-S3/releases).
 
+## 0.6 — the clock sets itself, the web page stays on (2026-07-31)
+
+Verified the whole way down on a **fully erased board**, not an incremental
+reflash: erase, write the combined image, join WiFi from nothing, and the clock
+sets itself and HTTPS works with nothing typed by hand.
+
+### `flash.sh --parts` wrote three of the six pieces to the wrong place
+
+The offsets were typed into the script and had drifted from the partition
+table: `/etc` landed inside the firmware partition and the kernel 128K below
+where the bootloader looks for it. esptool reports success and the board never
+boots. `--parts` is the road less travelled — the combined image is the
+documented path and `make-images.sh` builds it by reading the same table — so
+nothing caught it.
+
+Rather than correct the numbers and leave the next drift to chance, the script
+now reads them out of `partition_table.esp32s3.16m8r`, the same CSV
+`make-images.sh` generates `partition-table.bin` from. Change the table and
+both follow. Verified by moving two partitions in the CSV and watching the
+offsets move with them, with the script untouched.
+
+Only `0x0` (bootloader) and `0x8000` (the partition table itself) stay
+constants, because they cannot come from a table that has not been found yet.
+
+### The clock sets itself
+
+The board has no RTC, so it powered on in 1970 and *every* HTTPS request failed
+until someone typed `date -s` by hand. It now asks NTP.
+
+- `CONFIG_NTPD=y` in the busybox config (client only — a board that has just
+  learnt the time has no business serving it). This is the only new code on the
+  image: `rootfs.cramfs` grows by one 16 KB block, 6,832,128 → 6,848,512 bytes,
+  leaving 992 KB free in the partition.
+- The sync runs from a **udhcpc hook**, `/usr/share/udhcpc/default.script.d/50-set-clock`,
+  not an init script. udhcpc calls its hooks after the address, the default
+  route and `resolv.conf` are all in place, which is the first moment an NTP
+  query can succeed; an init script would have to sit in a loop waiting for
+  exactly that.
+- It runs in the background — udhcpc waits for the script and `ifup` waits for
+  udhcpc, and since 0.5 the boot deliberately does not wait for `ifup`. It
+  cannot linger either: `ntpd -q` arms a 10 s alarm at startup (50 s once some
+  peer has replied) and kills itself when it fires.
+- Three peers: `pool.ntp.org`, plus Cloudflare's and Google's time servers as
+  **IP literals**, so a network where DNS is broken but UDP 123 works still
+  gets the time. Cloudflare is listed only as an address — with the name there
+  too, both resolve to the same host and ntpd drops one as a duplicate peer.
+- On `bound` it always syncs; on `renew` only if the clock is still unset. A
+  lease renewal on a board that already knows the year is not a reason to go
+  ask again.
+- What it did lands in `/var/log/network.log`, next to what `ifup` did.
+
+### `web-server on|off|status`
+
+The status page needed `httpd -h /www -p 80` typed again after every reboot.
+Now it has the same helper `ssh-server` has, and for the same reasons.
+
+- The switch is a line in `/etc/inetd.conf`, on the writable `/etc` partition,
+  so it survives a reboot. inetd starts httpd only when someone actually
+  connects: enabled-but-unvisited costs no process and no RAM, which matters
+  more here than the per-request spawn does.
+- **Off by default**, unchanged. An unauthenticated HTTP port is not something
+  to hand out unasked.
+- The service field is the port number, not `http`: busybox inetd takes either,
+  but `/etc/services` calls port 80 `www` with `http` only as an alias.
+- Verified end to end with busybox inetd + `httpd -i` before it went near the
+  board, CGI included.
+
 ## 0.5 — SoftAP gone, faster boot, reproducible (2026-07-26)
 
 **A new binary.** The SoftAP is removed from both the driver and the firmware,
