@@ -14,6 +14,13 @@ permissions:
   contents: read
   actions: read          # to read another run's artifact
 
+# One build at a time. Two of these overlapping would fight over nothing in
+# particular, but each occupies a runner for over an hour and produces a 2 GB
+# artifact, and a second dispatch is nearly always a correction of the first.
+concurrency:
+  group: build-linux-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Compile Linux and firmware
@@ -23,7 +30,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Show runner resources
         run: |
@@ -80,13 +87,19 @@ jobs:
           find build-output -maxdepth 2 -type f | head -100
 
       - name: Upload raw build output
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: esp32-linux-raw-build
           path: build-output/
           if-no-files-found: error
           retention-days: 7
           compression-level: 1
+          # A build tree is mostly dotfiles: .config, .stamp_built, the kernel's
+          # own .config. Without this the artifact silently omits them, and
+          # repackaging it later then behaves differently from repackaging the
+          # tree it came from -- the kind of difference that shows up as an
+          # unreproducible image and gets blamed on the compiler.
+          include-hidden-files: true
 
       - name: Remove build container
         if: always()
@@ -104,18 +117,18 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download raw build output
         if: inputs.reuse_build_from_run == ''
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: esp32-linux-raw-build
           path: build-output
 
       - name: Download raw build output from an earlier run
         if: inputs.reuse_build_from_run != ''
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: esp32-linux-raw-build
           path: build-output
@@ -156,6 +169,15 @@ jobs:
           ls -lah ci/esp32-linux-build
           ls -lah ci/esp32-linux-build/build | head
 
+      # make-images.sh writes into images/, overwriting the ones committed to
+      # the repository. Keep a copy first or there is nothing left to compare
+      # against afterwards.
+      - name: Set aside the committed images
+        run: |
+          cp -a images images-committed
+
+          ls -la images-committed
+
       - name: Package flashable image
         run: |
           chmod +x make-images.sh
@@ -177,12 +199,94 @@ jobs:
         run: |
           sha256sum images/*.bin | tee images/SHA256SUMS.txt
 
+      # Green used to mean only "it compiled and packaged". This is the step
+      # that says whether what came out matches what the repository ships.
+      #
+      # It reports, it does not fail. Byte-identical is not the expected
+      # outcome and never was: the kernel embeds the user@host that built it,
+      # so a Docker build and a native one differ in length there and every
+      # pointer table after it shifts. bootloader.bin and partition-table.bin
+      # carry no such thing and must match exactly -- if those two ever differ,
+      # something real has changed. See DEVELOPMENT.md.
+      - name: Compare against the images committed to the repository
+        run: |
+          exact="bootloader.bin partition-table.bin"
+
+          emit() { echo "$1"; echo "$1" >> "$GITHUB_STEP_SUMMARY"; }
+
+          # Every image, not just *.bin: rootfs.cramfs, xipImage and etc.jffs2
+          # are three of the interesting ones and none of them ends in .bin.
+          # SHA256SUMS.txt is generated here, and the .example is a sample
+          # config that is not an image at all.
+          names() {
+            ls "$1" 2>/dev/null | grep -vE '^SHA256SUMS\.txt$|\.example$' || true
+          }
+
+          emit "## Built here vs committed to the repository"
+          emit ""
+          emit "| image | committed | built | result |"
+          emit "|---|---:|---:|---|"
+
+          mismatch=""
+          for n in $( { names images-committed; names images; } | sort -u ); do
+            new="images/$n"
+            old="images-committed/$n"
+
+            if [ ! -f "$new" ]; then
+              emit "| \`$n\` | $(stat -c%s "$old") | — | not produced by this build |"
+              continue
+            fi
+            if [ ! -f "$old" ]; then
+              emit "| \`$n\` | — | $(stat -c%s "$new") | not in the repository |"
+              continue
+            fi
+
+            so=$(stat -c%s "$old")
+            sn=$(stat -c%s "$new")
+
+            if cmp -s "$old" "$new"; then
+              r="identical"
+            elif [ "$so" != "$sn" ]; then
+              r="**different size**"
+            else
+              r="same size, different bytes"
+            fi
+
+            # The two that have no excuse.
+            case " $exact " in
+              *" $n "*)
+                if [ "$r" != "identical" ]; then
+                  r="$r — **expected identical**"
+                  mismatch="$mismatch $n"
+                fi
+                ;;
+            esac
+
+            emit "| \`$n\` | $so | $sn | $r |"
+          done
+
+          emit ""
+          if [ -n "$mismatch" ]; then
+            emit "> Reproducibility: these must be byte-identical and are not:**$mismatch**"
+            emit "> Everything else differing is expected — see DEVELOPMENT.md."
+          else
+            emit "> \`bootloader.bin\` and \`partition-table.bin\` match, as they must."
+            emit "> The rest embed the build host and are expected to differ."
+          fi
+
+          echo
+          echo "sha256 of what this run built:"
+          cat images/SHA256SUMS.txt
+
       - name: Upload flashable images
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-esp32s3-build
           path: |
             images/*.bin
+            images/*.cramfs
+            images/*.jffs2
+            images/xipImage
             images/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
