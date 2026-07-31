@@ -6,27 +6,18 @@ notes and the binaries are on the
 
 ## 0.6 — the clock sets itself, the web page stays on (2026-07-31)
 
-Verified the whole way down on a **fully erased board**, not an incremental
-reflash: erase, write the combined image, join WiFi from nothing, and the clock
-sets itself and HTTPS works with nothing typed by hand.
+**Two things that had to be redone after every single boot no longer do.** The
+clock now comes from the network instead of starting at 1 Jan 1970, which is
+what made every HTTPS request fail; and the status page has a switch that
+survives a restart. Neither needed new machinery — both are one small script
+hung off something the board already did.
 
-### `flash.sh --parts` wrote three of the six pieces to the wrong place
-
-The offsets were typed into the script and had drifted from the partition
-table: `/etc` landed inside the firmware partition and the kernel 128K below
-where the bootloader looks for it. esptool reports success and the board never
-boots. `--parts` is the road less travelled — the combined image is the
-documented path and `make-images.sh` builds it by reading the same table — so
-nothing caught it.
-
-Rather than correct the numbers and leave the next drift to chance, the script
-now reads them out of `partition_table.esp32s3.16m8r`, the same CSV
-`make-images.sh` generates `partition-table.bin` from. Change the table and
-both follow. Verified by moving two partitions in the CSV and watching the
-offsets move with them, with the script untouched.
-
-Only `0x0` (bootloader) and `0x8000` (the partition table itself) stay
-constants, because they cannot come from a table that has not been found yet.
+Verified twice over. On a **fully erased board**, not an incremental reflash:
+erase, write the combined image, join WiFi from nothing, and the clock sets
+itself and HTTPS works with nothing typed by hand. And rebuilt from this
+repository alone by GitHub Actions in Docker, where all seven images come out
+at exactly the size of the ones committed here and the two that carry nothing
+of the machine that built them are byte-identical.
 
 ### The clock sets itself
 
@@ -70,6 +61,68 @@ Now it has the same helper `ssh-server` has, and for the same reasons.
   but `/etc/services` calls port 80 `www` with `http` only as an alias.
 - Verified end to end with busybox inetd + `httpd -i` before it went near the
   board, CGI included.
+
+### `flash.sh --parts` wrote three of the six pieces to the wrong place
+
+The offsets were typed into the script and had drifted from the partition
+table: `/etc` landed inside the firmware partition and the kernel 128K below
+where the bootloader looks for it. esptool reports success and the board never
+boots. `--parts` is the road less travelled — the combined image is the
+documented path and `make-images.sh` builds it by reading the same table — so
+nothing caught it.
+
+Rather than correct the numbers and leave the next drift to chance, the script
+now reads them out of `partition_table.esp32s3.16m8r`, the same CSV
+`make-images.sh` generates `partition-table.bin` from. Change the table and
+both follow. Verified by moving two partitions in the CSV and watching the
+offsets move with them, with the script untouched.
+
+Only `0x0` (bootloader) and `0x8000` (the partition table itself) stay
+constants, because they cannot come from a table that has not been found yet.
+
+### CI checks the build against the images here, not just that it builds
+
+A green run used to mean "it compiled and packaged". It never compared the
+result with what this repository ships, which is the one thing a build from a
+clean checkout is worth running for.
+
+- The packaging job keeps a copy of the committed images before
+  `make-images.sh` overwrites them, and prints a table — to the log and to the
+  run summary — of size and byte equality for each.
+- It reports rather than fails. Byte-identical is not the expected outcome for
+  most of them: the kernel embeds the `user@host` that built it, so a Docker
+  build and a native one differ in length there and every pointer table after
+  it shifts. `bootloader.bin` and `partition-table.bin` carry no such thing and
+  must match exactly; if those two ever differ the summary says so outright.
+- Caught while testing that step: iterating over `images/*.bin` silently skips
+  `rootfs.cramfs`, `xipImage` and `etc.jffs2` — three of the four that can
+  actually differ. It walks both directories by name now.
+- `include-hidden-files` on the raw build artifact. A build tree is mostly
+  dotfiles, and v4 quietly stopped including them, so repackaging a downloaded
+  artifact was not the same as repackaging the tree it came from.
+- A concurrency group, the artifact actions moved to their current majors after
+  checking every input the workflow uses still exists, and `make-images.sh`
+  now says *"there is no toolchain here"* instead of failing obscurely when the
+  vector address moves in a packaging job that has no compiler.
+
+The first run of it, on this release: seven of seven sizes equal, two
+byte-identical, the vector address in agreement, and no WiFi credentials baked
+into the image.
+
+### Also
+
+- **TROUBLESHOOTING**: `jffs2: Name CRC failed on node at 0x...`, which is a
+  directory entry written only half way — jffs2 spots it at mount, discards it
+  and carries on. Seen here after a flash that was interrupted part way; a full
+  erase cleared it. Includes how to tell which of the two writable partitions
+  it is, and why nothing important can be lost that way.
+- **TROUBLESHOOTING**: `sh: bad number`, printed by hush after almost every
+  command substitution in an interactive shell — including `$(echo hi)`, which
+  runs no external program. It is hush re-executing busybox because a NOMMU
+  system cannot fork. Values are always correct and scripts are unaffected.
+- **SECURITY**: the NTP queries as their own trade-off. Unsolicited outbound
+  traffic to three third parties, unauthenticated, and whoever can intercept it
+  decides whether an expired certificate looks valid to this board.
 
 ## 0.5 — SoftAP gone, faster boot, reproducible (2026-07-26)
 
