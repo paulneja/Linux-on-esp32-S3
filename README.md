@@ -93,36 +93,20 @@ command can be killed by the OOM killer — wait a few seconds and retry.
 - **SSH** (dropbear) — present but **off by default**: `ssh-server on|off|status`.
   It is slow here, and the RSA accelerator does not help it (modern SSH uses
   Curve25519, not RSA).
-- **Lua**, and a BusyBox **httpd** serving a small status page (`/www`) — see
-  the manual step below.
+- **Lua**, and a BusyBox **httpd** serving a small status page (`/www`) —
+  **off by default**: `web-server on|off|status`, the same idea as
+  `ssh-server`. Turn it on and browse to the board's IP; the setting survives a
+  reboot, and while nobody is looking at the page nothing is running.
 - **curl** over plain HTTP.
-
-**Works, but you have to do it again after every boot**
-
-Both of these are tested and working. Neither is automated yet, and nothing
-remembers them across a restart.
-
-- **The clock.** There is no RTC on this board and no NTP client, so it boots
-  believing it is 1 Jan 1970. Nothing cares except HTTPS: every certificate
-  says "valid from <a date in the future>", so the board rejects all of them
-  and `curl https://` fails on *every* site. Set it and it works:
-
-  ```sh
-  date -s "2026-07-26 10:00:00"
-  ```
-
-  WiFi, ping, telnet, the status page and plain `http://` are unaffected.
-
-- **The web status page.** Start it by hand:
-
-  ```sh
-  httpd -h /www -p 80
-  ```
-
-  Then browse to the board's IP. There is no init script for it, so it does not
-  come back after a reboot. On the upside it costs nothing while it is not
-  running. SSH has a proper `ssh-server on|off|status` helper that persists;
-  the web server does not have an equivalent yet.
+- **The clock sets itself.** There is no RTC on this board, so it powers on
+  believing it is 1 Jan 1970 — and until that is fixed *every* HTTPS request
+  fails, because every certificate is "not valid before" a date still in the
+  future. It now asks NTP as soon as the interface gets an address. That is
+  *after* the login prompt, not before — the prompt comes up at ~11 s and the
+  clock lands around 20–35 s in, once WiFi has associated — so if you log
+  straight in, `date` can still say 1970 for a moment. What it did is in
+  `/var/log/network.log`. On a network with no internet it stays in 1970;
+  `date -s "2026-07-31 10:00:00"` still works by hand.
 
 **Partly works**
 
@@ -130,7 +114,7 @@ remembers them across a restart.
   bundle, checked against github, google and example.com, but **experimental**:
   the bundle is trimmed to 34 major roots because the full 140-cert set
   exhausts mbedTLS's memory on this board, TLS is 1.2 only, and RAM is tight.
-  Fine for light fetches, not a robust tool. Set the clock first, as above.
+  Fine for light fetches, not a robust tool.
 
 **Removed**
 

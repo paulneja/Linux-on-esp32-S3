@@ -16,7 +16,7 @@ choice to accept them is yours and not a surprise.
 | **Telnet** | on by default, **unencrypted** — password and session in clear text |
 | **SSH** | off by default (`ssh-server on` enables it); slow on this hardware |
 | **Bluetooth LE** | advertises as `Esp32-Linux`, **no pairing, no PIN** |
-| **HTTP status page** | not running unless you start it (`httpd -h /www -p 80`); no auth, plain HTTP |
+| **HTTP status page** | off by default (`web-server on` enables it, and it stays on across reboots); no auth, plain HTTP |
 | **Firewall** | none. `/etc/iptables.conf` is empty and iptables does not run at boot |
 | **Secure boot / flash encryption** | not used; flash can be read and rewritten over USB |
 
@@ -28,6 +28,21 @@ listening on it. `iptables` is installed and can be started by hand
 The password is deliberately an obvious `changeme` rather than a plausible-looking
 one, so there is no chance of mistaking it for a real secret. Change it with
 `passwd` before the board is on any network you care about.
+
+### It asks the internet what time it is
+
+Every time the board joins a network it sends an NTP query to `pool.ntp.org`
+and to two IP literals belonging to Cloudflare and Google. That is
+unsolicited outbound traffic to third parties, and the answer is
+unauthenticated — plain NTP has no signatures, so whoever can intercept it can
+set this board's clock to whatever they like, which in turn decides whether an
+expired certificate looks valid.
+
+It is the same trade every appliance without a battery makes, and the
+alternative is a board that cannot do HTTPS at all until someone types the
+date. If you would rather it stayed quiet, delete
+`/usr/share/udhcpc/default.script.d/50-set-clock` — but it is on the read-only
+cramfs, so in practice that means rebuilding the image.
 
 ### The Bluetooth link is unauthenticated
 
