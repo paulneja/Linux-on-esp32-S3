@@ -45,6 +45,32 @@ grep CONFIG_VECTORS_ADDR .../devkit_c1_16m_linux.config
 `CONFIG_KERNEL_LOAD_ADDRESS` must equal `0x42000000 +` the `linux` partition
 offset. Moving a partition without updating it produces exactly this.
 
+### `jffs2: Name CRC failed on node at 0x...`
+
+One line during boot, and then everything works normally. A directory entry on
+`/etc` or `/home` was written only half way; jffs2 notices during the scan it
+does at mount, discards that entry and carries on. The scan exists for exactly
+this — it is the filesystem repairing itself, not reporting a fault.
+
+Which of the two partitions it is: the offset is relative to the start of the
+partition, so compare it against `cat /proc/mtd`. Anything past `etc`'s
+`0x70000` can only be `home`.
+
+Nothing important can be lost this way. The base system is a read-only cramfs
+and cannot be touched; what goes missing is whatever that one entry named,
+under `/etc` or `/home`. In the case seen here, an empty directory.
+
+It comes from a write cut short — a flash interrupted part way through, or the
+power going while something was being saved. Clear it for good by erasing
+first:
+
+```sh
+./flash.sh --erase
+```
+
+Verified: present after an interrupted flash, gone after a full erase and
+rewrite of the same image.
+
 ## After boot
 
 ### The prompt is `~` but you are in `/root`, and writes fail

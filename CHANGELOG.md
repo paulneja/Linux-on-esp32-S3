@@ -6,6 +6,10 @@ notes and the binaries are on the
 
 ## Unreleased
 
+Verified the whole way down on a **fully erased board**, not an incremental
+reflash: erase, write the combined image, join WiFi from nothing, and the clock
+sets itself and HTTPS works with nothing typed by hand.
+
 ### `flash.sh --parts` wrote three of the six pieces to the wrong place
 
 The offsets were typed into the script and had drifted from the partition
