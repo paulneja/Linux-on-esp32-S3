@@ -4,7 +4,7 @@ Releases carry one flashable `.bin` for a 16 MB / 8 MB-PSRAM ESP32-S3. Full
 notes and the binaries are on the
 [releases page](https://github.com/paulneja/Linux-on-esp32-S3/releases).
 
-## Unreleased
+## 0.6 — the clock sets itself, the web page stays on (2026-07-31)
 
 Verified the whole way down on a **fully erased board**, not an incremental
 reflash: erase, write the combined image, join WiFi from nothing, and the clock
