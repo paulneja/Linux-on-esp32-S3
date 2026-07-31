@@ -11,8 +11,9 @@ API, so it is usable by any program, not just one demo.
 
 > **Status: working, validated on real hardware.** Flashed to a fully erased
 > ESP32-S3: it boots to a login prompt, the RSA accelerator passes its
-> self-tests, the rootfs mounts from flash, telnet comes up and the board
-> reaches the internet. It is a hobby project, not a product — see
+> self-tests, the rootfs mounts from flash, telnet comes up, the board joins
+> WiFi from nothing, sets its own clock and fetches over HTTPS — none of it
+> typed by hand. It is a hobby project, not a product — see
 > [What works](#what-works-and-what-does-not) for the honest list.
 >
 > **And reproduced from scratch, by the documented path:** clone, `docker
