@@ -1,0 +1,68 @@
+#!/bin/sh
+#
+# Set the clock from the network, as soon as there is a network.
+#
+# This board has no RTC and no battery, so it boots believing it is 1 Jan
+# 1970. Nothing on it minds except TLS: every certificate is "not valid
+# before" some date in the future, so *every* HTTPS request fails with
+# curl: (60) until the clock is right.
+#
+# udhcpc runs its hooks at the end of the bound/renew handling -- after the
+# address, the default route and resolv.conf are all in place -- which is the
+# first moment an NTP query can possibly succeed. Hence a hook here rather
+# than an init script: an init script would have to poll for connectivity
+# that this one is simply handed.
+#
+# Two of the three peers are IP literals on purpose. If DNS is not working
+# pool.ntp.org is dead weight, but these still answer (they are Cloudflare's
+# and Google's time servers), and a clock that is only wrong by however long
+# that took is much better than 1970.
+#
+# Cloudflare is listed *only* as an address: with time.cloudflare.com here as
+# well, it resolves to this same 162.159.200.1 and ntpd logs "duplicate peer"
+# and drops one of them. Seen on hardware.
+#
+# It runs in the background because udhcpc waits for this script and ifup
+# waits for udhcpc. It cannot linger: `ntpd -q` arms a 10 s alarm at start
+# (extended to 50 s once some server has replied) and kills itself when it
+# fires, so the job is bounded either way. -n keeps it in the foreground of
+# this subshell -- without it busybox re-execs itself to daemonize, which on
+# a NOMMU system is not free.
+
+LOG=/var/log/network.log
+
+[ -x /usr/sbin/ntpd ] || exit 0
+
+case "$1" in
+	bound)
+		# a fresh lease: the board just joined a network, sync
+		;;
+	renew)
+		# the same lease continuing. Only worth doing if the clock never
+		# got set -- e.g. the network was up but the internet was not.
+		[ "$(date +%Y)" -lt 2024 ] || exit 0
+		;;
+	*)
+		exit 0
+		;;
+esac
+
+# Same reasoning as S40network: make sure the log is writable *before*
+# redirecting into it, or a failed redirection silently costs us the clock.
+touch "$LOG" 2>/dev/null || LOG=/dev/null
+
+{
+	echo "clock: was $(date), asking NTP"
+	if /usr/sbin/ntpd -n -q \
+		-p pool.ntp.org \
+		-p 162.159.200.1 \
+		-p 216.239.35.0
+	then
+		echo "clock: set to $(date)"
+	else
+		echo "clock: NTP did not answer, still $(date)"
+		echo "clock: HTTPS will fail until you set it: date -s 'YYYY-MM-DD HH:MM:SS'"
+	fi
+} >>"$LOG" 2>&1 &
+
+exit 0
