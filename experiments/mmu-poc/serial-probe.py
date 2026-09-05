@@ -14,6 +14,12 @@ import time
 import serial
 
 
+def terminal_text(data):
+    """Readline emits CSI bracketed-paste controls before command output."""
+    data = re.sub(rb"\x1b\[[0-?]*[ -/]*[@-~]", b"", data)
+    return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
 class Console:
     def __init__(self, name, log=None):
         self.log = log
@@ -35,9 +41,10 @@ class Console:
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
             data += self.port.read(max(1, self.port.in_waiting))
-            match = re.search(pattern, data)
+            visible = terminal_text(data)
+            match = re.search(pattern, visible)
             if match:
-                return data, match
+                return visible, match
         raise RuntimeError("Console timeout; last output: " + repr(data[-2048:]))
 
     def login(self):
