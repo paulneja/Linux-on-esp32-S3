@@ -1,0 +1,7 @@
+# Disposable CPython measurement image: no persistent flash filesystems mounted.
+::sysinit:/bin/mount -t proc proc /proc
+::sysinit:/bin/mount -t sysfs sysfs /sys
+::sysinit:/bin/mount -t tmpfs tmpfs /tmp
+::sysinit:/bin/mount -t tmpfs tmpfs /run
+::sysinit:/sbin/ifconfig lo 127.0.0.1 up
+console::respawn:/sbin/getty -L console 0 vt100
