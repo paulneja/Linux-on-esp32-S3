@@ -1,0 +1,10 @@
+--- a/src/makeint.h
++++ b/src/makeint.h
+@@ -61,6 +61,7 @@
+ #endif
+ 
+ #include <sys/types.h>
++#include "fork-decl.h"
+ #include <sys/stat.h>
+ #include <signal.h>
+ #include <stdio.h>
