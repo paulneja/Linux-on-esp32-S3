@@ -2,8 +2,8 @@
   "base_bytes": 6148096,
   "marginal_bytes": {
     "bash": 806912,
-    "dash": 94208,
-    "make": 208896,
+    "dash": 98304,
+    "make": 212992,
     "micropython": 299008,
     "socat": 229376
   },

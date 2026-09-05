@@ -14,4 +14,8 @@ echo 'PASS make: dry run'
 if make -rR fail; then exit 1; else code=$?; fi
 test "$code" -eq 2
 echo 'PASS make: failing recipe produces exit status 2'
-printf 'MAKE REAL TEST PASS directory=%s\n' "$task_dir"
+cd /
+rm -f "$task_dir/Makefile" "$task_dir/left" "$task_dir/right" "$task_dir/combined" \
+    "$task_dir/left.started" "$task_dir/right.started" "$task_dir/dry-run"
+rmdir "$task_dir"
+echo 'MAKE REAL TEST PASS (temporary files removed)'

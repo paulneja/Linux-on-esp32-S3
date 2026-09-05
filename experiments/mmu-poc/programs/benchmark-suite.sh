@@ -10,12 +10,15 @@ echo 'BENCHMARK make'
 work=$(mktemp -d /tmp/bench-make.XXXXXX)
 cp /usr/share/fork-real/Makefile.test "$work/Makefile"
 programbench -- /usr/bin/make -C "$work" -rR -j2 all
+rm -f "$work/Makefile" "$work/left" "$work/right" "$work/combined" "$work/left.started" "$work/right.started"
+rmdir "$work"
 echo 'BENCHMARK micropython'
 programbench -- /usr/bin/micropython /usr/share/program-tests/micropython-test.py
 echo 'BENCHMARK socat'
-programbench -- /usr/bin/socat -u EXEC:'/bin/sleep 0.2' -
+# Benchmark a bounded fork+exec and transfer; terminal handoff has a separate test.
+programbench -t 5 -- /usr/bin/socat -T1 -u EXEC:'/bin/echo socat-bench',pipes OPEN:/dev/null
 echo 'BENCHMARK nc'
-programbench -- /bin/nc -h
+programbench -- /bin/nc --help
 echo 'BENCHMARK busybox'
 programbench -- /bin/busybox true
 echo 'BENCHMARK jobq'

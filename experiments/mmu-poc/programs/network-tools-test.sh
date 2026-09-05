@@ -45,4 +45,9 @@ test "$(cat unix-reply)" = unix-loopback
 cleanup
 server=
 echo 'PASS socat: Unix socket, fork and exec'
-printf 'NETWORK TOOLS TEST PASS directory=%s\n' "$task_dir"
+cd /
+rm -f "$task_dir/input" "$task_dir/output" "$task_dir/tcp.log" "$task_dir/reply" \
+    "$task_dir/udp.log" "$task_dir/udp-reply" "$task_dir/unix.log" \
+    "$task_dir/unix-reply" "$task_dir/socket"
+rmdir "$task_dir"
+echo 'NETWORK TOOLS TEST PASS (temporary files removed)'
