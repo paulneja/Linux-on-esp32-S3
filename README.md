@@ -94,7 +94,7 @@ command can be killed by the OOM killer — wait a few seconds and retry.
 - **SSH** (dropbear) — present but **off by default**: `ssh-server on|off|status`.
   It is slow here, and the RSA accelerator does not help it (modern SSH uses
   Curve25519, not RSA).
-- **Lua**, and a BusyBox **httpd** serving a small status page (`/www`) —
+- **Lua**, and a BusyBox **httpd** serving an editable status page (`/home/www`) —
   **off by default**: `web-server on|off|status`, the same idea as
   `ssh-server`. Turn it on and browse to the board's IP; the setting survives a
   reboot, and while nobody is looking at the page nothing is running.

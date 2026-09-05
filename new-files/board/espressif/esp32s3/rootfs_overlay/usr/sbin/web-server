@@ -1,71 +1,64 @@
 #!/bin/sh
-#
-# Turn the web status page on or off. It is OFF by default: it is a status
-# page, not a service the board needs, and an open unauthenticated HTTP port
-# is not something to hand out without being asked.
-#
-# Same mechanism as ssh-server: a line in /etc/inetd.conf, which lives on the
-# writable /etc partition, so the choice survives a reboot. inetd starts httpd
-# only when someone actually connects, so an enabled-but-unvisited page costs
-# no RAM and no process -- which matters here, where RAM is the scarce thing.
-#
-# The service field is the port number rather than "http". busybox inetd
-# accepts either, but /etc/services calls port 80 "www" with "http" as an
-# alias, and a number cannot be misread.
-#
-
+# HTTP runs on demand as www-data, never as root. Content lives on JFFS2.
+set -e
 CONF=/etc/inetd.conf
 PORT=80
-HTTP_LINE="$PORT	stream	tcp	nowait	root	/usr/sbin/httpd	httpd -i -h /www"
-
+DOCROOT=/home/www
 enabled() { grep -q "^$PORT[ 	]" "$CONF"; }
-
 restart_inetd() {
-	killall inetd 2>/dev/null
-	sleep 1
-	/usr/sbin/inetd
+    killall inetd 2>/dev/null || :
+    /usr/sbin/inetd
 }
-
-case "$1" in
-on|enable)
-	if enabled; then
-		echo "Web server is already enabled."
-		exit 0
-	fi
-	if grep -q "^#$PORT[ 	]" "$CONF"; then
-		# uncomment the existing (disabled) line
-		sed -i "s/^#$PORT\([ 	]\)/$PORT\1/" "$CONF"
-	else
-		# no line at all: add one
-		printf '%s\n' "$HTTP_LINE" >> "$CONF"
-	fi
-	restart_inetd
-	echo "Web server enabled (starts on boot too). Disable with: web-server off"
-	# A convenience, not a check: no address yet (WiFi still coming up, or
-	# never configured) is perfectly normal, so this must not look like a
-	# failure -- `if`, not `[ ... ] && echo`, which would leave the whole
-	# script exiting 1 on the ordinary path.
-	IP=$(ip -4 addr show espsta0 2>/dev/null | sed -n 's;.*inet \([0-9.]*\)/.*;\1;p')
-	if [ -n "$IP" ]; then
-		echo "Browse to: http://$IP/"
-	fi
-	;;
-off|disable)
-	if enabled; then
-		sed -i "s/^$PORT\([ 	]\)/#$PORT\1/" "$CONF"
-		restart_inetd
-	fi
-	echo "Web server disabled."
-	;;
-status|"")
-	if enabled; then
-		echo "Web server: enabled (port $PORT, serving /www)"
-	else
-		echo "Web server: disabled"
-	fi
-	;;
-*)
-	echo "usage: web-server {on|off|status}" >&2
-	exit 1
-	;;
+migrate() {
+    test "$(id -u)" = 0
+    id www-data >/dev/null
+    test "$(id -u www-data)" != 0
+    # Only migrate our known httpd line. Never overwrite a different service.
+    awk '$0 ~ /^#?80[ \t]/ && ($8 != "-i" || $9 != "-h" ||
+        ($10 != "/www" && $10 != "/home/www") || $6 != "/usr/sbin/httpd") { exit 1 }' "$CONF" || {
+        echo 'web-server: port 80 has a custom configuration; not changed' >&2
+        return 1
+    }
+    tmp=$(mktemp /etc/inetd.web.XXXXXX)
+    cp -p "$CONF" "$tmp"
+    awk '$0 ~ /^#?80[ \t]/ {
+        prefix = substr($0,1,1)=="#" ? "#" : ""
+        print prefix "80\tstream\ttcp\tnowait\twww-data\t/usr/sbin/httpd\thttpd -i -h /home/www"
+        next
+    } {print}' "$CONF" > "$tmp"
+    if ! cmp -s "$CONF" "$tmp"; then
+        if [ ! -e /etc/inetd.conf.before-home-www ]; then cp -p "$CONF" /etc/inetd.conf.before-home-www; fi
+        mv "$tmp" "$CONF"
+        killall -HUP inetd 2>/dev/null || :
+    else
+        rm "$tmp"
+    fi
+}
+case "${1:-status}" in
+    migrate) migrate ;;
+    on|enable)
+        migrate
+        test -r "$DOCROOT/index.html" || { echo 'web-server: missing /home/www/index.html' >&2; exit 1; }
+        if enabled; then echo 'Web server already enabled (/home/www, www-data)'; exit 0; fi
+        if grep -q '^#80[ 	]' "$CONF"; then
+            sed -i 's/^#80\([ 	]\)/80\1/' "$CONF"
+        else
+            printf '80\tstream\ttcp\tnowait\twww-data\t/usr/sbin/httpd\thttpd -i -h /home/www\n' >> "$CONF"
+        fi
+        restart_inetd
+        echo 'Web server enabled: port 80, /home/www, user www-data (persists across boots).'
+        ;;
+    off|disable)
+        test "$(id -u)" = 0
+        if enabled; then
+            sed -i 's/^80\([ 	]\)/#80\1/' "$CONF"
+            restart_inetd
+        fi
+        echo 'Web server disabled.'
+        ;;
+    status)
+        if enabled; then echo 'Web server enabled: port 80, /home/www, user www-data'
+        else echo 'Web server disabled: content in /home/www'; fi
+        ;;
+    *) echo 'Usage: web-server {on|off|status|migrate}' >&2; exit 2 ;;
 esac

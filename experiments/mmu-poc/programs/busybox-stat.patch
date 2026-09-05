@@ -1,0 +1,7 @@
+--- a/.config
++++ b/.config
+@@ -322,2 +322,2 @@
+-# CONFIG_STAT is not set
+-# CONFIG_FEATURE_STAT_FORMAT is not set
++CONFIG_STAT=y
++CONFIG_FEATURE_STAT_FORMAT=y

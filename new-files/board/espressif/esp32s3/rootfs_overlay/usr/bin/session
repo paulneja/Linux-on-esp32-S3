@@ -1,0 +1,31 @@
+#!/bin/sh
+# Named dtach sessions. Private socket directories; never delete a stale socket blindly.
+set -e
+uid=$(id -u)
+directory=/tmp/dtach-$uid
+umask 077
+if [ ! -e "$directory" ] && [ ! -L "$directory" ]; then mkdir -m 700 "$directory"; fi
+test ! -L "$directory"
+test -d "$directory"
+test "$(stat -c %u "$directory")" = "$uid"
+test "$(stat -c %a "$directory")" = 700
+case "${1:-}" in
+    list)
+        for socket in "$directory"/*; do
+            if [ -S "$socket" ]; then printf '%s\n' "${socket##*/}"; fi
+        done
+        exit 0 ;;
+    start) mode=-n; shift ;;
+    '') echo 'Usage: session NAME [COMMAND ...] | session start NAME COMMAND ... | session list'; exit 2 ;;
+    *) mode=-A ;;
+esac
+name=${1:-}
+case "$name" in ''|*[!a-zA-Z0-9_-]*) echo 'Session name: letters, digits, underscore or dash only' >&2; exit 2 ;; esac
+shift
+if [ "$#" -eq 0 ]; then
+    # Keep RAM for attaching and launching jobs; login itself remains Bash.
+    if [ -x /usr/bin/dash ]; then set -- /usr/bin/dash -i
+    else set -- /bin/sh -i; fi
+fi
+echo 'Detach: Ctrl-]. Reattach: session' "$name"
+exec /usr/bin/dtach "$mode" "$directory/$name" -e '^]' -r winch "$@"
