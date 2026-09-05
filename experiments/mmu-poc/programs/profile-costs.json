@@ -1,11 +1,11 @@
 {
-  "base_bytes": 6148096,
+  "base_bytes": 6180864,
   "marginal_bytes": {
     "bash": 806912,
-    "dash": 98304,
-    "make": 212992,
+    "dash": 94208,
+    "make": 208896,
     "micropython": 299008,
-    "socat": 229376
+    "socat": 221184
   },
   "note": "Measured XIP cramfs marginal costs; alignment/deduplication makes totals approximate."
 }

@@ -52,7 +52,7 @@ def pack(selected, output):
     if not base.is_file():
         raise SystemExit('Missing baseline image. Run make-image.sh/compact-image.sh first; see README.')
     sources = [OUT / PACKAGES[n]['source'] for n in selected]
-    sources += [PROGRAMS / name for name in ('busybox-with-netcat', 'process-test', 'programbench', 'jobq')]
+    sources += [PROGRAMS / name for name in ('busybox-with-netcat', 'process-test', 'programbench', 'jobq', 'dtach')]
     missing = [str(p) for p in sources if not p.is_file()]
     if missing:
         raise SystemExit('Missing compiled artifacts (nothing flashed):\n' + '\n'.join(missing))
@@ -76,7 +76,7 @@ def pack(selected, output):
         # BusyBox LTO booted init but rejected valid inittab entries on hardware.
         # Keep the tested -Os build with the login fix; do not select LTO for it.
         install(PROGRAMS / 'busybox-with-netcat', tree / 'bin/busybox')
-        for name in ('nc', 'netcat'):
+        for name in ('nc', 'netcat', 'stat'):
             path = tree / 'bin' / name
             remove(path)
             path.symlink_to('busybox')
@@ -84,6 +84,19 @@ def pack(selected, output):
             install(PROGRAMS / name, tree / 'usr/bin' / name)
         install(HERE / 'user-shell', tree / 'usr/bin/user-shell')
         install(HERE / 'set-user-shell.sh', tree / 'usr/sbin/set-user-shell')
+        board = REPO / 'new-files/board/espressif/esp32s3'
+        overlay = board / 'rootfs_overlay'
+        for path in ('usr/sbin/web-server', 'usr/sbin/home-init', 'usr/sbin/home-users-setup',
+                     'usr/bin/user-shell', 'usr/bin/session', 'etc/init.d/S06home-users'):
+            install(overlay / path, tree / path)
+        run('sh', board / 'prepare-home.sh', tree)
+        install(PROGRAMS / 'dtach', tree / 'usr/bin/dtach')
+        install(PROGRAMS / 'dtach-b027c27b2439081064d07a86883c8e0b20a183c9/COPYING',
+                tree / 'usr/share/licenses/dtach/COPYING', 0o644)
+        for name in ('groups',):
+            path = tree / 'usr/bin' / name
+            remove(path)
+            path.symlink_to('../../bin/busybox')
         if 'dash' in selected:
             install(HERE / 'jobq-test.sh', tree / 'usr/share/program-tests/jobq-test.sh', 0o644)
         if set(PACKAGES).issubset(selected):
@@ -101,6 +114,9 @@ def pack(selected, output):
         assert (tree / 'bin/sh').is_symlink() and (tree / 'bin/sh').readlink() == Path('busybox')
         strip = BUILD / 'crosstool-NG/builds/xtensa-esp32s3-linux-uclibcfdpic/bin/xtensa-esp32s3-linux-uclibcfdpic-strip'
         run('python3', HERE / 'strip-rootfs.py', tree, '--strip', strip, '--section-headers')
+        # Writing/stripping may clear SUID: apply AFTER all ELF modifications.
+        # BusyBox's applet table retains it only for su/login/passwd-type applets.
+        (tree / 'bin/busybox').chmod(0o4755)
         # Bytes by installed component are real ELF sizes, not compressed flash claims.
         inventory = {name: {'path': '/' + PACKAGES[name]['binary'],
                            'elf_bytes': (tree / PACKAGES[name]['binary']).stat().st_size,
@@ -163,6 +179,7 @@ def main():
         if args.compile:
             import os
             run('bash', HERE / 'build-process-tools.sh')
+            run('bash', HERE / 'build-dtach.sh')
             commands = [('busybox', HERE / 'build-netcat.sh', None)]
             for name in selected:
                 if name in ('dash', 'make'): commands.append((name, EXP / 'fork/real/build.sh', name))
