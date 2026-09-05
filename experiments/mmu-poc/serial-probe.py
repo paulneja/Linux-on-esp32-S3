@@ -13,6 +13,36 @@ import time
 
 import serial
 
+if os.name == 'posix':
+    import fcntl
+    import struct
+    import termios
+
+
+class ConsoleSerial(serial.Serial):
+    """Apply the two auto-reset lines together on POSIX, not sequentially.
+
+    pySerial's separate DTR/RTS updates can briefly assert EN on ESP boards.
+    These two hooks are from pySerial 3.x's POSIX backend; test on upgrades.
+    Other platforms retain pySerial's behavior (no no-reset guarantee).
+    """
+    def _console_lines(self):
+        # Called inside open(), before pySerial marks is_open=True.
+        status = struct.unpack('I', fcntl.ioctl(self.fd, termios.TIOCMGET,
+                                              struct.pack('I', 0)))[0]
+        for flag, enabled in ((termios.TIOCM_DTR, self.dtr),
+                              (termios.TIOCM_RTS, self.rts)):
+            status = (status | flag) if enabled else (status & ~flag)
+        fcntl.ioctl(self.fd, termios.TIOCMSET, struct.pack('I', status))
+
+    def _update_dtr_state(self):
+        if os.name == 'posix': self._console_lines()
+        else: super()._update_dtr_state()
+
+    def _update_rts_state(self):
+        if os.name == 'posix': self._console_lines()
+        else: super()._update_rts_state()
+
 
 def terminal_text(data):
     """Readline emits CSI bracketed-paste controls before command output."""
@@ -23,12 +53,16 @@ def terminal_text(data):
 class Console:
     def __init__(self, name, log=None):
         self.log = log
-        self.port = serial.Serial(port=None, baudrate=115200, timeout=0.05,
+        self.port = ConsoleSerial(port=None, baudrate=115200, timeout=0.05,
                                   write_timeout=5, exclusive=True)
         self.port.dtr = False
         self.port.rts = False
         self.port.port = name
         self.port.open()
+        if os.name == 'posix':
+            attrs = termios.tcgetattr(self.port.fileno())
+            attrs[2] &= ~termios.HUPCL
+            termios.tcsetattr(self.port.fileno(), termios.TCSANOW, attrs)
 
     def show(self, text):
         print(text, flush=True)
@@ -104,14 +138,33 @@ def main():
     parser.add_argument("--upload", type=Path)
     parser.add_argument("--run", action="append", default=[])
     parser.add_argument("--log", type=Path)
+    parser.add_argument("--terminal", action="store_true",
+                        help="Interactive COM console; Ctrl-X exits, Ctrl-] reaches dtach; no automatic login")
     parser.add_argument("--session", action="store_true",
                         help="Keep one serial connection; read JSON command/upload requests from stdin")
     args = parser.parse_args()
+    if args.terminal and (args.command or args.upload or args.run or args.session or args.log):
+        parser.error('--terminal cannot be combined with automated commands or logging')
     if args.run and not args.upload:
         parser.error("--run requires --upload")
     log = args.log.open("a") if args.log else None
     console = Console(args.port, log)
     try:
+        if args.terminal:
+            from serial.tools.miniterm import Miniterm
+            terminal = Miniterm(console.port, echo=False, eol='lf')
+            terminal.set_rx_encoding('UTF-8')
+            terminal.set_tx_encoding('UTF-8')
+            terminal.exit_character = '\x18'
+            print('COM 115200. Exit: Ctrl-X. Detach board session: Ctrl-]. Press Enter for prompt.', flush=True)
+            terminal.start()
+            try:
+                terminal.join(True)
+            finally:
+                terminal.stop()
+                terminal.join()
+                terminal.console.cleanup()
+            return
         console.login()
         for command in args.command:
             console.show("$ " + command)
