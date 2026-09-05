@@ -8,8 +8,8 @@ build_dir=$(cd "$repo_dir/../refs/esp32-linux-build/build" && pwd)
 prefix="$build_dir/crosstool-NG/builds/xtensa-esp32s3-linux-uclibcfdpic/bin/xtensa-esp32s3-linux-uclibcfdpic-"
 export XTENSA_GNU_CONFIG="$build_dir/xtensa-dynconfig/esp32s3.so"
 cd "$out_dir/linux-fork"
-patch --batch --dry-run -R -p1 < "$task_dir/../kernel.patch"
-if ! patch --batch --dry-run -R -p1 < "$task_dir/scheduler.patch" >/dev/null 2>&1; then
+patch --force --dry-run -R -p1 < "$task_dir/../kernel.patch"
+if ! patch --force --dry-run -R -p1 < "$task_dir/scheduler.patch" >/dev/null 2>&1; then
     patch --batch --forward --dry-run -p1 < "$task_dir/scheduler.patch"
     patch --batch --forward -p1 < "$task_dir/scheduler.patch"
 fi

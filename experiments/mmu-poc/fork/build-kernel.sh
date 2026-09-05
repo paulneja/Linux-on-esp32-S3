@@ -11,7 +11,7 @@ if [[ ! -e "$kernel_dir" ]]; then
     cp -a --reflink=auto "$source_dir" "$kernel_dir"
 fi
 cd -- "$kernel_dir"
-if patch --batch --dry-run -R -p1 < "$task_dir/kernel.patch" >/dev/null 2>&1; then
+if patch --force --dry-run -R -p1 < "$task_dir/kernel.patch" >/dev/null 2>&1; then
     echo "Kernel patch already present."
 else
     patch --batch --forward --dry-run -p1 < "$task_dir/kernel.patch"
