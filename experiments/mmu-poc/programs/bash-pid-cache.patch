@@ -1,0 +1,20 @@
+--- a/jobs.c
++++ b/jobs.c
+@@ -761,5 +761,10 @@
+   ps_index_t nsize, nsize_cur, nsize_max;
+   ps_index_t psi;
+ 
++  /* Grow only when the arena is full.  Reserving CHILD_MAX entries on the
++     first completed background job costs 512 KiB on this NOMMU target. */
++  if (bgpids.nalloc && bgpids.head < bgpids.nalloc)
++    return;
++
+   if (bgpids.nalloc == 0)
+     {
+@@ -780,5 +785,5 @@
+ 
+-  while (nsize > 0 && nsize < nsize_cur)	/* > 0 should catch overflow */
++  if (bgpids.nalloc && nsize > 0 && nsize < nsize_cur)
+     nsize <<= 1;
+   if (nsize > nsize_max || nsize <= 0)		/* overflow? */
+     nsize = nsize_max;
