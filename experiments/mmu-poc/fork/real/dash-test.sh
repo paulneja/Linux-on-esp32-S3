@@ -33,4 +33,7 @@ while test "$i" -lt 10; do
     i=$((i + 1))
 done
 echo 'PASS dash: ten nested substitutions'
-printf 'DASH REAL TEST PASS directory=%s\n' "$task_dir"
+cd /
+rm -f "$task_dir/left" "$task_dir/right"
+rmdir "$task_dir"
+echo 'DASH REAL TEST PASS (temporary files removed)'
