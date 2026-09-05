@@ -19,6 +19,7 @@ assert 'START ' not in log and 'ADMISSION_TIMEOUT' in log
 assert 'code=127' in run([q, '--', '/does-not-exist'], 1)
 assert 'code=137' in run([q, '-t', '1', '--', '/bin/sleep', '3'], 1)
 assert 'code=7' in run([q, '--', '/bin/sh', '-c', 'exit 7'], 1)
+assert 'STOPPED job=1' in run([q, '--', '/bin/sh', '-c', 'kill -STOP $$'], 1)
 run([q, '--', '/bin/true', ':::'], 2)
 print('PASS: jobq concurrency, admission refusal, failed exec, timeout, exit codes, syntax')
 assert 'exit=0' in run([b, '--', '/bin/true'])

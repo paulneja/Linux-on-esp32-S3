@@ -10,6 +10,17 @@
 extern pid_t fork(void);
 static volatile sig_atomic_t interrupted;
 static void stop(int sig) { interrupted=sig; }
+static pid_t saved_foreground = -1;
+static int set_foreground(pid_t group) {
+    void (*old)(int) = signal(SIGTTOU,SIG_IGN);
+    int result=tcsetpgrp(STDIN_FILENO,group);
+    signal(SIGTTOU,old);return result;
+}
+static void restore_foreground(void) {
+    if(saved_foreground>=0) {
+        set_foreground(saved_foreground);saved_foreground=-1;
+    }
+}
 int main(int argc,char **argv) {
     int opt,timeout=30,status=0;pid_t p;long samples=0;
     while((opt=getopt(argc,argv,"+t:"))!=-1) {
@@ -17,6 +28,8 @@ int main(int argc,char **argv) {
     }
     if(optind==argc) {fprintf(stderr,"Usage: programbench [-t seconds] -- program [args...]\n");return 2;}
     signal(SIGINT,stop);signal(SIGTERM,stop);
+    pid_t foreground=tcgetpgrp(STDIN_FILENO);
+    if(foreground!=getpgrp())foreground=-1;  /* Never seize another foreground job's TTY. */
     long avail0=proc_field("/proc/meminfo","MemAvailable:");
     long shadow0=proc_field("/proc/meminfo","ForkShadow:");
     long recovered0=proc_field("/proc/meminfo","ForkRecovered:");
@@ -47,6 +60,13 @@ int main(int argc,char **argv) {
     char path[64];struct stat st;snprintf(path,sizeof path,"/proc/%ld/exe",(long)p);
     long elf_bytes=stat(path,&st)==0?(long)st.st_size:-1;
     long long exec_stop=monotonic_ms();
+    /* A separate group is needed for timeout cleanup, but leaving it in the
+     * background makes ordinary terminal ioctls stop it with SIGTTOU.
+     */
+    if(foreground>=0) {
+        if(set_foreground(p)<0) {perror("tcsetpgrp");kill(-p,SIGKILL);waitpid(p,&status,0);return 1;}
+        saved_foreground=foreground;atexit(restore_foreground);
+    }
     if(ptrace(PTRACE_DETACH,p,NULL,NULL)<0) {perror("detach");kill(-p,SIGKILL);waitpid(p,&status,0);return 1;}
     int timed_out=0;
     for(;;) {
@@ -55,7 +75,11 @@ int main(int argc,char **argv) {
         n=proc_field("/proc/meminfo","MemAvailable:");if(n>=0 && n<avail_min)avail_min=n;
         n=proc_field("/proc/meminfo","ForkShadow:");if(n>shadow_peak)shadow_peak=n;
         samples++;
-        pid_t w=waitpid(p,&status,WNOHANG);
+        pid_t w=waitpid(p,&status,WNOHANG|WUNTRACED);
+        if(w==p && WIFSTOPPED(status)) {
+            fprintf(stderr,"Measured job stopped by signal %d; terminating its group\n",WSTOPSIG(status));
+            kill(-p,SIGKILL);waitpid(p,&status,0);break;
+        }
         if(w==p)break;
         if(w<0 && errno!=EINTR) {perror("waitpid");return 1;}
         if(interrupted || monotonic_ms()-start>timeout*1000LL) {kill(-p,SIGKILL);waitpid(p,&status,0);timed_out=1;break;}
@@ -63,6 +87,7 @@ int main(int argc,char **argv) {
     }
     long recovered1=proc_field("/proc/meminfo","ForkRecovered:");
     int code=timed_out?124:WIFEXITED(status)?WEXITSTATUS(status):128+WTERMSIG(status);
+    restore_foreground();
     printf("BENCH elf_bytes=%ld exec_private_kib=%ld sampled_peak_private_kib=%ld "
            "sampled_own_shadow_kib=%ld global_shadow_delta_kib=%ld global_recovered_kib=%ld "
            "available_before_kib=%ld sampled_available_min_kib=%ld launch_ms=%lld "

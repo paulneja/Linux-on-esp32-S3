@@ -37,7 +37,11 @@ int main(int argc,char **argv) {
         long long now=monotonic_ms();
         for(unsigned i=0;i<next;i++)if(jobs[i].pid>0) {
             if(cancelled || now-jobs[i].started>timeout*1000LL)kill(-jobs[i].pid,SIGKILL);
-            int status;pid_t w=waitpid(jobs[i].pid,&status,WNOHANG);
+            int status;pid_t w=waitpid(jobs[i].pid,&status,WNOHANG|WUNTRACED);
+            if(w==jobs[i].pid && WIFSTOPPED(status)) {
+                fprintf(stderr,"STOPPED job=%u signal=%d; queue jobs must be noninteractive\n",i+1,WSTOPSIG(status));
+                kill(-jobs[i].pid,SIGKILL);failed=1;continue;
+            }
             if(w==jobs[i].pid) {
                 int code=WIFEXITED(status)?WEXITSTATUS(status):128+WTERMSIG(status);
                 printf("EXIT job=%u pid=%ld code=%d elapsed_ms=%lld\n",i+1,(long)w,code,now-jobs[i].started);
