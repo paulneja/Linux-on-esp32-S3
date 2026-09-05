@@ -1,0 +1,14 @@
+--- a/shell/hush.c
++++ b/shell/hush.c
+@@ -10259,6 +10259,11 @@
+ #endif
+ #if !BB_MMU
+ 	G.argv0_for_re_execing = argv[0];
++	/* Internal NOMMU children must not source login profiles again.
++	 * Keep the original argv[0] for login detection and shell $0.
++	 */
++	if (G.argv0_for_re_execing[0] == '-')
++		G.argv0_for_re_execing++;
+ #endif
+ 
+ 	cached_getpid = getpid();   /* for tcsetpgrp() during init */
