@@ -1,0 +1,19 @@
+#include <stdint.h>
+#include <alloca.h>
+#define MICROPY_CONFIG_ROM_LEVEL (MICROPY_CONFIG_ROM_LEVEL_MINIMUM)
+#define MICROPY_ENABLE_COMPILER (1)
+#define MICROPY_ENABLE_GC (1)
+#define MICROPY_PY_GC (1)
+#define MICROPY_STACK_CHECK (1)
+#define MICROPY_NLR_SETJMP (1)
+#define MICROPY_LONGINT_IMPL (MICROPY_LONGINT_IMPL_MPZ)
+#define MICROPY_FLOAT_IMPL (MICROPY_FLOAT_IMPL_NONE)
+#define MICROPY_ENABLE_EXTERNAL_IMPORT (0)
+#define MICROPY_ALLOC_PARSE_CHUNK_INIT (16)
+#define MICROPY_USE_INTERNAL_PRINTF (1)
+#define MICROPY_HW_BOARD_NAME "ESP32-S3 Linux MMU runtime"
+#define MICROPY_HW_MCU_NAME "Xtensa CALL0"
+typedef intptr_t mp_int_t;
+typedef uintptr_t mp_uint_t;
+typedef long mp_off_t;
+#define MP_STATE_PORT MP_STATE_VM
