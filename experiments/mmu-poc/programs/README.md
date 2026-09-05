@@ -1,6 +1,7 @@
 # Programas nativos: resultados del 2026-09-05
 
 Actualización posterior: [userspace, memoria y perfiles](USERSPACE-UPGRADE.md).
+Web editable, usuarios y sesiones: [uso y verificación](HOME-USERS.md).
 Ese documento describe el kernel nuevo, Bash solo para el usuario y la imagen
 actual. Los resultados y hashes siguientes se conservan como historial.
 
