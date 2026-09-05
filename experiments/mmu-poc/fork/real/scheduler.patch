@@ -1,0 +1,46 @@
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -970,6 +970,25 @@
+ 
+ static void clear_buddies(struct cfs_rq *cfs_rq, struct sched_entity *se);
+ 
++static u64 entity_base_slice(struct sched_entity *se)
++{
++#ifdef CONFIG_XTENSA_NOMMU_FORK
++	if (entity_is_task(se)) {
++		struct mm_struct *mm = task_of(se)->mm;
++
++		/* Software bank copies can exceed the normal 0.75ms slice.
++		 * Keep normal fair scheduling, but amortize those copies instead
++		 * of immediately expiring the incoming task's CPU request.
++		 * Non-banked tasks and kernel workers retain their usual slice.
++		 */
++		if (mm && mm->context.nommu_banks.next &&
++		    !list_empty(&mm->context.nommu_banks))
++			return max_t(u64, sysctl_sched_base_slice, 50000000ULL);
++	}
++#endif
++	return sysctl_sched_base_slice;
++}
++
+ /*
+  * XXX: strictly: vd_i += N*r_i/w_i such that: vd_i > ve_i
+  * this is probably good enough.
+@@ -984,7 +1003,7 @@
+ 	 * nice) while the request time r_i is determined by
+ 	 * sysctl_sched_base_slice.
+ 	 */
+-	se->slice = sysctl_sched_base_slice;
++	se->slice = entity_base_slice(se);
+ 
+ 	/*
+ 	 * EEVDF: vd_i = ve_i + r_i / w_i
+@@ -5178,7 +5197,7 @@
+ 	u64 vslice, vruntime = avg_vruntime(cfs_rq);
+ 	s64 lag = 0;
+ 
+-	se->slice = sysctl_sched_base_slice;
++	se->slice = entity_base_slice(se);
+ 	vslice = calc_delta_fair(se->slice, se);
+ 
+ 	/*
