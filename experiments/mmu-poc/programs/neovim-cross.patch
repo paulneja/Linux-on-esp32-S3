@@ -1,0 +1,29 @@
+--- a/src/nvim/CMakeLists.txt
++++ b/src/nvim/CMakeLists.txt
+@@ -3,6 +3,10 @@
+ # Internally we need to make a distinction between "nvim without runtime files"
+ # (nvim_bin) and "nvim with runtime files" (nvim).
+ add_executable(nvim_bin EXCLUDE_FROM_ALL)
++if(ESP32_ABORT_TRACE)
++  target_sources(nvim_bin PRIVATE ${ESP32_ABORT_TRACE})
++  target_link_options(nvim_bin PRIVATE -Wl,--wrap=abort)
++endif()
+ 
+ set_target_properties(nvim_bin
+   PROPERTIES
+@@ -515,8 +519,13 @@
+     "${NVIM_VERSION_DEF_H}"
+   DEPENDS "${PROJECT_BINARY_DIR}/cmake.config/auto/versiondef-$<CONFIG>.h")
+ 
+-set(LUA_GEN ${LUA_GEN_PRG} ${GENERATOR_PRELOAD} ${PROJECT_SOURCE_DIR} $<TARGET_FILE:nlua0> ${PROJECT_BINARY_DIR})
+-set(LUA_GEN_DEPS ${GENERATOR_PRELOAD} $<TARGET_FILE:nlua0>)
++if(CMAKE_CROSSCOMPILING AND HOST_NLUA0)
++  set(LUA_GEN ${LUA_GEN_PRG} ${GENERATOR_PRELOAD} ${PROJECT_SOURCE_DIR} ${HOST_NLUA0} ${PROJECT_BINARY_DIR})
++  set(LUA_GEN_DEPS ${GENERATOR_PRELOAD} ${HOST_NLUA0})
++else()
++  set(LUA_GEN ${LUA_GEN_PRG} ${GENERATOR_PRELOAD} ${PROJECT_SOURCE_DIR} $<TARGET_FILE:nlua0> ${PROJECT_BINARY_DIR})
++  set(LUA_GEN_DEPS ${GENERATOR_PRELOAD} $<TARGET_FILE:nlua0>)
++endif()
+ 
+ # Like LUA_GEN but includes also vim.fn, vim.api, vim.uv, etc
+ set(NVIM_LUA $<TARGET_FILE:nvim_bin> -u NONE -l ${NVIM_LUA_PRELOAD} ${PROJECT_SOURCE_DIR})
