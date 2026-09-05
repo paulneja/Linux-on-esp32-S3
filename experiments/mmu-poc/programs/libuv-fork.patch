@@ -1,0 +1,10 @@
+--- a/src/unix/process.c
++++ b/src/unix/process.c
+@@ -30,6 +30,7 @@
+ #include <string.h>
+ 
+ #include <sys/types.h>
++extern pid_t fork(void); /* Provided by the experimental libfork. */
+ #include <sys/wait.h>
+ #include <unistd.h>
+ #include <fcntl.h>

@@ -1,0 +1,13 @@
+# Temporary editor test image. Persistent etc/home partitions are not mounted.
+::sysinit:/bin/mount -t proc proc /proc
+::sysinit:/bin/mount -t sysfs sysfs /sys
+::sysinit:/bin/mount -t tmpfs tmpfs /tmp
+::sysinit:/bin/mount -t tmpfs tmpfs /run
+::sysinit:/bin/mkdir -p /dev/pts
+::sysinit:/bin/mount -t devpts devpts /dev/pts
+::sysinit:/bin/ln -sf /proc/self/fd /dev/fd
+::sysinit:/bin/ln -sf /proc/self/fd/0 /dev/stdin
+::sysinit:/bin/ln -sf /proc/self/fd/1 /dev/stdout
+::sysinit:/bin/ln -sf /proc/self/fd/2 /dev/stderr
+::sysinit:/sbin/ifconfig lo 127.0.0.1 up
+console::respawn:/sbin/getty -L console 0 vt100

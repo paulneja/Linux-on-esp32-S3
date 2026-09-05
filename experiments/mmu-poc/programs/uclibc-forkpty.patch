@@ -1,0 +1,25 @@
+--- a/libutil/forkpty.c
++++ b/libutil/forkpty.c
+@@ -17,6 +17,7 @@
+    <http://www.gnu.org/licenses/>.  */
+ 
+ #include <sys/types.h>
++#include <errno.h>
+ #include <termios.h>
+ #include <unistd.h>
+ #include <utmp.h>
+@@ -33,7 +34,13 @@
+   switch (pid = fork ())
+     {
+     case -1:
+-      return -1;
++      {
++        int saved_errno = errno;
++        close(master);
++        close(slave);
++        errno = saved_errno;
++        return -1;
++      }
+     case 0:
+       /* Child.  */
+       close (master);
