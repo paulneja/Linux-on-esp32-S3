@@ -1,5 +1,9 @@
 # Bash, netcat y socat
 
+Historial de la primera integración. Para la configuración actual, ver
+[userspace, memoria y perfiles](USERSPACE-UPGRADE.md): Bash de usuario separado,
+BusyBox corregido y recuperación de respaldos en el kernel.
+
 Construcción local para Xtensa CALL0 FDPIC y `6.11.0-forkbank #7`.
 No activa CONFIG_MMU ni convierte el backend experimental en fork universal.
 

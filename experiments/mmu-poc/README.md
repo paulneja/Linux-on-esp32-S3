@@ -1,5 +1,8 @@
 # Runtime MMU experimental — ESP32-S3 Linux
 
+Estado más reciente del userspace: [recuperación de fork, mediciones, cola y perfiles](programs/USERSPACE-UPGRADE.md).
+El runtime descrito aquí sigue siendo independiente de ese backend del kernel.
+
 Trabajo local en `mmu-poc`, sin pushes. Solo N16R8 con este Linux NOMMU.
 Ejecuta código nativo en PSRAM usando la MMU de memoria externa del S3.
 **No emula CPU/Linux ni implementa una MMU de procesos o compatibilidad binaria Linux.**
