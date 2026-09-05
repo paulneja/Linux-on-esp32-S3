@@ -1,0 +1,9 @@
+#!/bin/sh
+# Login shell only. Services continue to use /bin/sh -> BusyBox.
+# Profiles without Bash retain a working login through the fallback.
+if [ -x /bin/bash ]; then
+    if [ "$#" -eq 0 ]; then exec /bin/bash -l; fi
+    exec /bin/bash "$@"
+fi
+if [ "$#" -eq 0 ]; then exec /bin/busybox sh -l; fi
+exec /bin/busybox sh "$@"
