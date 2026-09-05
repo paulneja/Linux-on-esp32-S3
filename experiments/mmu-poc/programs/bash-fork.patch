@@ -1,0 +1,13 @@
+--- a/externs.h
++++ b/externs.h
+@@ -25,6 +25,10 @@
+ 
+ #include "stdc.h"
+ 
++/* NOMMU libc omits fork; the experimental libfork provides it. */
++#include <sys/types.h>
++extern pid_t fork (void);
++
+ /* Functions from expr.c. */
+ #define EXP_EXPANDED	0x01
+ 

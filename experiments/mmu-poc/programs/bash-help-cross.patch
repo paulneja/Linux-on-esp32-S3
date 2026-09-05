@@ -1,0 +1,13 @@
+--- a/builtins/Makefile.in
++++ b/builtins/Makefile.in
+@@ -177,6 +177,10 @@
+ 
+ tmpbuiltins.h:	tmpbuiltins.c
+ 
++tmpbuiltins.o: tmpbuiltins.c
++	$(RM) $@
++	$(CC_FOR_BUILD) -c $(CCFLAGS_FOR_BUILD) $<
++
+ gen-helpfiles.o: ../config.h
+ gen-helpfiles.o: gen-helpfiles.c
+ 	$(RM) $@
