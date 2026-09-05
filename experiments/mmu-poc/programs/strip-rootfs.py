@@ -20,8 +20,8 @@ def runtime(path):
     if machine != 94 or kind not in (2, 3):
         raise ValueError(f"Not an Xtensa executable/shared object: {path}")
     sections = [struct.unpack_from("<10I", data, shoff + i * shsize) for i in range(shnum)]
-    names_section = sections[shstr]
-    names = data[names_section[4]:names_section[4] + names_section[5]]
+    names_section = sections[shstr] if sections else None
+    names = data[names_section[4]:names_section[4] + names_section[5]] if names_section else b""
     allocated = {}
     for nameoff, typ, attrs, addr, offset, size, link, info, align, entsize in sections:
         name = names[nameoff:].split(b"\0", 1)[0]
@@ -35,10 +35,38 @@ def runtime(path):
             data[phoff:phoff + phsize * phnum], allocated)
 
 
+def segments(path):
+    """Compare whole load segments, allowing only removal of the section directory.
+
+    FDPIC Linux, ld-uClibc and mkcramfs use program headers, not section headers.
+    Header directory fields are inside the first PT_LOAD, hence the narrow mask.
+    All offsets, segment sizes, dynamic tables, code and data must remain identical.
+    """
+    data = bytearray(path.read_bytes())
+    if data[:4] != b"\x7fELF":
+        return None
+    runtime(path)  # Validate architecture/type and allocated Xtensa metadata.
+    h = struct.unpack_from("<16sHHIIIIIHHHHHH", data)
+    phoff, phsize, phnum = h[5], h[9], h[10]
+    headers = bytes(data[phoff:phoff+phsize*phnum])
+    data[32:36] = b"\0" * 4  # e_shoff only
+    data[46:52] = b"\0" * 6  # e_shentsize/e_shnum/e_shstrndx only
+    payloads = []
+    for i in range(phnum):
+        typ, offset, _, _, filesz, _, _, _ = struct.unpack_from("<8I", headers, i*phsize)
+        if filesz:
+            if offset+filesz > len(data):
+                raise ValueError(f"Truncated segment: {path}")
+            payloads.append((typ, offset, bytes(data[offset:offset+filesz])))
+    return bytes(data[:52]), headers, payloads
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path, help="Disposable rootfs staging tree")
     parser.add_argument("--strip", required=True, help="Xtensa target strip executable")
+    parser.add_argument("--section-headers", action="store_true",
+                        help="Also remove offline section directories; verify complete program segments")
     args = parser.parse_args()
     root = args.root.resolve(strict=True)
     if not root.is_dir() or root == Path("/") or not (root / "bin/busybox").is_file():
@@ -51,13 +79,16 @@ def main():
                 path = Path(directory) / name
                 if path.is_symlink() or not path.is_file():
                     continue
-                before = runtime(path)
+                snapshot = segments if args.section_headers else runtime
+                before = snapshot(path)
                 if before is None:
                     continue
                 shutil.copy2(path, candidate)
-                subprocess.run([args.strip, "--strip-unneeded", "-R", ".xt.prop",
-                                "-R", ".xt.lit", str(candidate)], check=True)
-                if runtime(candidate) != before:
+                options = ["--strip-unneeded", "-R", ".xt.prop", "-R", ".xt.lit"]
+                if args.section_headers:
+                    options += ["--strip-section-headers", "-R", ".comment", "-R", ".xtensa.info"]
+                subprocess.run([args.strip, *options, str(candidate)], check=True)
+                if snapshot(candidate) != before:
                     # Some freestanding payloads lose an empty PT_LOAD when stripped.
                     # Keep the original instead of relaxing loader invariants.
                     print(f"KEEP {path.relative_to(root)}: runtime layout would change")
