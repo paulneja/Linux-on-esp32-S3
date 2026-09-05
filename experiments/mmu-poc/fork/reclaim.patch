@@ -1,6 +1,11 @@
 --- a/mm/nommu-bank.inc
 +++ b/mm/nommu-bank.inc
-@@ -5,16 +5,31 @@
+@@ -1,20 +1,36 @@
+ /* SPDX-License-Identifier: GPL-2.0-only */
+ /* Included by nommu.c: experimental UP, eager-copy fork backend. */
++#include <linux/sched/signal.h>
+ #define NOMMU_BANK_MAX_BYTES (512UL * 1024)
+ #define BANK_GFP (GFP_KERNEL | __GFP_NORETRY | __GFP_NOWARN)
  
  struct nommu_bank {
  	struct list_head link;
@@ -33,7 +38,7 @@
  	kfree(bank);
  }
  
-@@ -27,6 +42,7 @@
+@@ -27,6 +43,7 @@
  	if (!bank)
  		return NULL;
  	INIT_LIST_HEAD(&bank->link);
@@ -41,7 +46,7 @@
  	bank->region = region;
  	for (i = 0; i < count; i++) {
  		bank->pages[i] = (void *)__get_free_page(BANK_GFP);
-@@ -35,6 +51,7 @@
+@@ -35,6 +52,7 @@
  			return NULL;
  		}
  		bank->count++;
@@ -49,7 +54,7 @@
  	}
  	return bank;
  }
-@@ -80,9 +97,27 @@
+@@ -80,9 +98,27 @@
  	if (!bank)
  		return;
  	local_irq_save(flags);
@@ -78,7 +83,7 @@
  	vma->nommu_bank = NULL;
  	local_irq_restore(flags);
  	bank_free(bank);
-@@ -91,20 +126,25 @@
+@@ -91,20 +127,25 @@
  static int bank_clone(struct vm_area_struct *dst, struct vm_area_struct *src)
  {
  	struct vm_region *region = src->vm_region;
@@ -113,7 +118,7 @@
  	}
  	local_irq_save(flags);
  	if (fresh) {
-@@ -115,11 +155,25 @@
+@@ -115,11 +156,25 @@
  	/* The calling process is resident, even if allocation scheduled. */
  	bank_copy(child, true);
  	dst->nommu_bank = child;
@@ -139,6 +144,36 @@
  int nommu_bank_dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
  {
  	VMA_ITERATOR(src_iter, oldmm, 0);
+@@ -128,9 +183,26 @@
+ 	unsigned long bytes = 0, addr;
+ 	int ret;
+ 
+-	/* No multi-threaded fork or asynchronously pinned private memory yet. */
+-	if (atomic_read(&oldmm->mm_users) != 1)
+-		return -EOPNOTSUPP;
++	/* mm_users also includes temporary /proc and ptrace references. They
++	 * are not extra executing threads. Reject actual CLONE_VM users only.
++	 * Holding mmap_lock already serializes readers of the VMA layout.
++	 */
++	if (atomic_read(&oldmm->mm_users) > 1) {
++		struct task_struct *group, *task;
++		bool shared = false;
++
++		rcu_read_lock();
++		for_each_process_thread(group, task) {
++			if (task != current && READ_ONCE(task->mm) == oldmm) {
++				shared = true;
++				goto checked_users;
++			}
++		}
++checked_users:
++		rcu_read_unlock();
++		if (shared)
++			return -EOPNOTSUPP;
++	}
+ 	for_each_vma(src_iter, src) {
+ 		if (src->vm_flags & VM_SHARED)
+ 			continue;
 --- a/include/linux/nommu-bank.h
 +++ b/include/linux/nommu-bank.h
 @@ -1,8 +1,12 @@

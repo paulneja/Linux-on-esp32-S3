@@ -8,6 +8,7 @@ import tempfile
 root = Path(__file__).resolve().parent.parent
 source = (root / 'out/linux-fork/mm/nommu-bank.inc').read_text()
 source = source.split('int nommu_bank_dup_mmap(', 1)[0]
+source = source.replace('#include <linux/sched/signal.h>\n', '')
 shim = r'''
 #include <assert.h>
 #include <stddef.h>
