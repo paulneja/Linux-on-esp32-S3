@@ -8,6 +8,10 @@ intérprete de ELF freestanding de `mmu-run`.
 
 - `/usr/bin/dash` 0.5.12 y `/usr/bin/make` 4.4.1, sin sufijos experimentales.
   `/bin/sh` sigue siendo BusyBox. Las suites usan los nombres reales.
+- Bash 5.2.37, socat 1.8.1.3 y nc/netcat de BusyBox están integrados en
+  `rootfs-shell-tools.cramfs`. Ver [construcción y pruebas](SHELL-TOOLS.md).
+  Bash funciona como `/bin/bash`; reemplazar globalmente `/bin/sh` produjo
+  presión de RAM y un fallo en DHCP, por lo que se conserva BusyBox para sh.
 - `/usr/bin/micropython`: port Unix de MicroPython 1.26.0, 128 KiB de GC
   divididos en cuatro heaps, setjmp de libc para la ABI FDPIC.
   No es CPython ni se instala con el nombre `python`.
