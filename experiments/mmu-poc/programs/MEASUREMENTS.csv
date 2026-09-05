@@ -1,0 +1,7 @@
+program,elf_bytes,packed_marginal_bytes,exec_private_kib,sampled_peak_private_kib,private_at_fork_min_kib,private_at_fork_max_kib,first_fork_backup_max_kib,instrumented_run_ms,workload
+bash,780692,806912,140,276,264,276,552,4676,bash-test.sh
+dash,94796,98304,84,140,128,140,280,2466,dash-test.sh
+make,195360,212992,92,216,216,216,432,1689,Makefile.test -rR -j2 all
+micropython,311788,299008,104,308,308,308,616,2078,micropython-test.py
+socat,242092,229376,108,184,152,152,304,338,"-T1 -u EXEC:/bin/echo,pipes OPEN:/dev/null"
+nc,846033,0,40,76,0,0,0,173,--help (BusyBox already in core; no fork in this workload)

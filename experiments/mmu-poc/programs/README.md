@@ -1,5 +1,9 @@
 # Programas nativos: resultados del 2026-09-05
 
+Actualización posterior: [userspace, memoria y perfiles](USERSPACE-UPGRADE.md).
+Ese documento describe el kernel nuevo, Bash solo para el usuario y la imagen
+actual. Los resultados y hashes siguientes se conservan como historial.
+
 Trabajo local en `mmu-poc`, sin push. Kernel físico `6.11.0-forkbank #7`.
 Estos programas usan Linux FDPIC y el backend de fork del kernel, no el
 intérprete de ELF freestanding de `mmu-run`.

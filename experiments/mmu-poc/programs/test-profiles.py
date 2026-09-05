@@ -10,10 +10,10 @@ here = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('profiles', here / 'image-profiles.py')
 p = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(p)
-for name, selected in [('rootfs-upgrade-final', set(p.PACKAGES)),
-                       ('rootfs-python-final', {'dash', 'make', 'micropython'}),
-                       ('rootfs-bash-red-final', {'bash', 'dash', 'make', 'socat'}),
-                       ('rootfs-custom-final', {'bash', 'dash', 'micropython'})]:
+for name, selected in [('rootfs-all', set(p.PACKAGES)),
+                       ('rootfs-python-automatizacion', {'dash', 'make', 'micropython'}),
+                       ('rootfs-bash-red', {'bash', 'dash', 'make', 'socat'}),
+                       ('rootfs-custom', {'bash', 'dash', 'micropython'})]:
     image = p.PROGRAMS / (name + '.cramfs')
     manifest = json.loads(image.with_suffix('.json').read_text())
     assert set(manifest['programs']) == selected
