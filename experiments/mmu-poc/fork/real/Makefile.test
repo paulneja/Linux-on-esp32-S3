@@ -1,0 +1,9 @@
+SHELL := /usr/bin/dash
+.PHONY: all fail
+all: combined
+combined: left right
+	cat left right > combined
+left right:
+	$(SHELL) /usr/share/fork-real/peer.sh $@
+fail:
+	exit 7

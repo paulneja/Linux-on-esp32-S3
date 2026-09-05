@@ -1,0 +1,10 @@
+--- a/src/jobs.c
++++ b/src/jobs.c
+@@ -62,6 +62,7 @@
+ #include "parser.h"
+ #include "nodes.h"
+ #include "jobs.h"
++#include "fork-decl.h"
+ #include "options.h"
+ #include "trap.h"
+ #include "syntax.h"
