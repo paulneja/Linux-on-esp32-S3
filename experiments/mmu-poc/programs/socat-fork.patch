@@ -1,0 +1,11 @@
+--- a/sysincludes.h
++++ b/sysincludes.h
+@@ -65,6 +65,8 @@
+ #if HAVE_SYS_TYPES_H
+ #include <sys/types.h>	/* pid_t, select(), socket(), connect(), open(), u_short */
+ #endif
++/* NOMMU libc omits fork; the experimental libfork provides it. */
++extern pid_t fork(void);
+ #if HAVE_POLL_H
+ #include <poll.h>	/* poll() */
+ #elif HAVE_SYS_POLL_H
