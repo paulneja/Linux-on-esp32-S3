@@ -15,7 +15,7 @@ host_dir="$build_dir/build-buildroot-esp32s3_devkit_c1_16m/host"
 
 apply_program_patch() {
     local source_dir=$1 patch_name=$2
-    if ! patch -d "$source_dir" -p1 -R --dry-run --batch < "$programs_dir/$patch_name" >/dev/null 2>&1; then
+    if ! patch -d "$source_dir" -p1 -R --force --dry-run < "$programs_dir/$patch_name" >/dev/null 2>&1; then
         patch -d "$source_dir" -p1 --forward --dry-run --batch < "$programs_dir/$patch_name"
         patch -d "$source_dir" -p1 --forward --batch < "$programs_dir/$patch_name"
     fi
