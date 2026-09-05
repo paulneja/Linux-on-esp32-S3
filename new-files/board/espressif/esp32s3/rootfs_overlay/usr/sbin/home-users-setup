@@ -1,0 +1,17 @@
+#!/bin/sh
+# Run once after updating rootfs on an existing installation. No account resets.
+set -e
+test "$(id -u)" = 0
+if [ ! -e /etc/init.d/S06home-users ] && [ ! -L /etc/init.d/S06home-users ]; then
+    cp /usr/share/esp32-home/S06home-users /etc/init.d/S06home-users
+    chmod 755 /etc/init.d/S06home-users
+fi
+test ! -L /etc/skel
+if [ ! -d /etc/skel ]; then mkdir -m 755 /etc/skel; fi
+if [ ! -e /etc/skel/.profile ] && [ ! -L /etc/skel/.profile ]; then
+    cp /usr/share/esp32-home/user.profile /etc/skel/.profile
+    chmod 644 /etc/skel/.profile
+fi
+/usr/sbin/home-init
+/usr/sbin/web-server migrate
+echo 'Home defaults and web configuration ready; existing accounts and files preserved.'

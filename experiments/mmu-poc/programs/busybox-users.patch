@@ -1,0 +1,26 @@
+--- a/.config
++++ b/.config
+@@ -267 +267 @@
+-# CONFIG_GROUPS is not set
++CONFIG_GROUPS=y
+@@ -534 +534 @@
+-# CONFIG_FEATURE_ADDUSER_TO_GROUP is not set
++CONFIG_FEATURE_ADDUSER_TO_GROUP=y
+@@ -536 +536 @@
+-# CONFIG_FEATURE_CHECK_NAMES is not set
++CONFIG_FEATURE_CHECK_NAMES=y
+@@ -546 +546 @@
+-# CONFIG_FEATURE_DEL_USER_FROM_GROUP is not set
++CONFIG_FEATURE_DEL_USER_FROM_GROUP=y
+--- a/loginutils/adduser.c
++++ b/loginutils/adduser.c
+@@ -287,2 +287,2 @@
+ 		/* set the owner and group so it is owned by the new user,
+-		 * then fix up the permissions to 2755. Can't do it before
++		 * then make the home private. Can't do it before
+@@ -290 +290 @@
+-		int mkdir_err = mkdir(pw.pw_dir, 0755);
++		int mkdir_err = mkdir(pw.pw_dir, 0700);
+@@ -313 +313 @@
+-		 || chmod(pw.pw_dir, 02755) != 0 /* set setgid bit on homedir */
++		 || chmod(pw.pw_dir, 0700) != 0

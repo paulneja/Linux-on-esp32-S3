@@ -1,0 +1,6 @@
+#!/bin/sh
+case "$1" in
+    start|restart|reload) /usr/sbin/home-init ;;
+    stop) : ;;
+    *) echo "Usage: $0 {start|stop|restart}" >&2; exit 2 ;;
+esac

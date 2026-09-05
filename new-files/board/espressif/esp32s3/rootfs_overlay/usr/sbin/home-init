@@ -1,0 +1,34 @@
+#!/bin/sh
+# Populate only missing defaults on the mounted, writable home partition.
+set -e
+test "$(id -u)" = 0
+awk '$2 == "/home" && $3 == "jffs2" && $4 ~ /(^|,)rw(,|$)/ { found=1 }
+     END { exit !found }' /proc/mounts || {
+    echo 'home-init: writable /home is not mounted; defaults not installed' >&2
+    exit 1
+}
+test ! -L /home/root
+if [ ! -d /home/root ]; then mkdir -m 700 /home/root; fi
+if [ ! -e /home/root/README.txt ] && [ ! -L /home/root/README.txt ]; then
+    cp /usr/share/esp32-home/README.txt /home/root/README.txt
+    chmod 600 /home/root/README.txt
+fi
+if [ ! -e /home/www ] && [ ! -L /home/www ]; then
+    umask 077
+    seed=$(mktemp -d /home/.www-seed.XXXXXX)
+    # This archive is generated from repository-owned defaults, never a download.
+    tar -xzf /usr/share/esp32-home/www.tar.gz -C "$seed"
+    chown -R 0:0 "$seed/www"
+    chmod 755 "$seed/www" "$seed/www/cgi-bin" "$seed/www/cgi-bin/status"
+    chmod 644 "$seed/www/index.html"
+    mv "$seed/www" /home/www
+    rmdir "$seed"
+fi
+if [ -L /home/www ] || [ ! -d /home/www ]; then
+    echo 'home-init: refusing a symlink or non-directory /home/www' >&2
+    exit 1
+fi
+if ! grep -qxF /usr/bin/user-shell /etc/shells; then
+    printf '%s\n' /usr/bin/user-shell >> /etc/shells
+fi
+/usr/sbin/web-server migrate

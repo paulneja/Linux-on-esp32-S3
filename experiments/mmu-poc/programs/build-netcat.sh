@@ -21,6 +21,8 @@ if [[ ! -d "$source_dir" ]]; then
 fi
 apply_program_patch "$source_dir" busybox-nc.patch
 apply_program_patch "$source_dir" busybox-login.patch
+apply_program_patch "$source_dir" busybox-users.patch
+apply_program_patch "$source_dir" busybox-stat.patch
 # Use Buildroot's wrapper, which already supplies the board's ABI and sysroot.
 unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS LIBS
 make -C "$source_dir" ARCH=xtensa CROSS_COMPILE="$host_dir/bin/xtensa-esp32s3-linux-uclibcfdpic-" \
