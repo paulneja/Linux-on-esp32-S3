@@ -1,0 +1,27 @@
+--- a/mm/nommu-bank.inc
++++ b/mm/nommu-bank.inc
+@@ -1,6 +1,12 @@
+ /* SPDX-License-Identifier: GPL-2.0-only */
+ /* Included by nommu.c: experimental UP, eager-copy fork backend. */
+ #include <linux/sched/signal.h>
++#include <linux/moduleparam.h>
++
++/* Successful forks are normal operation, not console diagnostics. */
++static bool nommu_bank_trace;
++module_param_named(fork_bank_trace, nommu_bank_trace, bool, 0600);
++MODULE_PARM_DESC(fork_bank_trace, "Log successful NOMMU bank forks (default off)");
+ #define NOMMU_BANK_MAX_BYTES (512UL * 1024)
+ #define BANK_GFP (GFP_KERNEL | __GFP_NORETRY | __GFP_NOWARN)
+ 
+@@ -258,8 +264,9 @@
+ 		mm->map_count++;
+ 		vma_iter_store(&dst_iter, dst);
+ 	}
+-	pr_info("fork-bank: parent=%d private=%lu pages=%lu\n",
+-		current->pid, bytes, bytes >> PAGE_SHIFT);
++	if (unlikely(READ_ONCE(nommu_bank_trace)))
++		pr_info("fork-bank: parent=%d private=%lu pages=%lu\n",
++			current->pid, bytes, bytes >> PAGE_SHIFT);
+ 	return 0;
+ }
+ 

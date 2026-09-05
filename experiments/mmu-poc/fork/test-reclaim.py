@@ -9,6 +9,7 @@ root = Path(__file__).resolve().parent.parent
 source = (root / 'out/linux-fork/mm/nommu-bank.inc').read_text()
 source = source.split('int nommu_bank_dup_mmap(', 1)[0]
 source = source.replace('#include <linux/sched/signal.h>\n', '')
+source = source.replace('#include <linux/moduleparam.h>\n', '')
 shim = r'''
 #include <assert.h>
 #include <stddef.h>
@@ -17,6 +18,9 @@ shim = r'''
 #include <string.h>
 #include <stdbool.h>
 #include <errno.h>
+#define module_param_named(name,value,type,perm) \
+ static void * const test_param_##name __attribute__((unused)) = &(value)
+#define MODULE_PARM_DESC(name,desc)
 #define PAGE_SHIFT 12
 #define PAGE_SIZE 4096
 #define GFP_KERNEL 0
