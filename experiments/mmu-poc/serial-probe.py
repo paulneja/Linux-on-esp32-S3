@@ -135,8 +135,13 @@ def main():
                                                      seconds=request.get("timeout", 30)))
                     elif "upload" in request:
                         console.show("REMOTE=" + console.upload(Path(request["upload"])))
+                    elif request.get("relogin"):
+                        console.port.write(b"exit\r")
+                        console.until(rb"(?:^|\n)[^\r\n]*login: ?$", 15)
+                        console.login()
+                        console.show("LOGIN_OK")
                     else:
-                        raise ValueError("Expected command, upload or close")
+                        raise ValueError("Expected command, upload, relogin or close")
                     console.show("SESSION_OK")
                 except Exception as error:
                     console.show("SESSION_ERROR: " + str(error))
