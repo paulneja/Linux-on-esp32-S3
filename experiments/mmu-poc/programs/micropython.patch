@@ -1,0 +1,25 @@
+--- a/ports/unix/main.c
++++ b/ports/unix/main.c
+@@ -62,7 +62,7 @@
+ #if MICROPY_ENABLE_GC
+ // Heap size of GC heap (if enabled)
+ // Make it larger on a 64 bit machine, because pointers are larger.
+-long heap_size = 1024 * 1024 * (sizeof(mp_uint_t) / 4);
++long heap_size = 128 * 1024;
+ #endif
+ 
+ // Number of heaps to assign by default if MICROPY_GC_SPLIT_HEAP=1
+@@ -521,6 +521,13 @@
+     long multi_heap_size = heap_size / MICROPY_GC_SPLIT_HEAP_N_HEAPS;
+     for (size_t i = 0; i < MICROPY_GC_SPLIT_HEAP_N_HEAPS; i++) {
+         heaps[i] = malloc(multi_heap_size);
++        if (heaps[i] == NULL) {
++            fprintf(stderr, "MicroPython: cannot allocate GC heap\n");
++            for (size_t j = 0; j < i; j++) {
++                free(heaps[j]);
++            }
++            return 1;
++        }
+         if (i == 0) {
+             gc_init(heaps[i], heaps[i] + multi_heap_size);
+         } else {
