@@ -3,7 +3,9 @@
 ## Recuperación del backend de fork
 
 `fork/build-kernel-reclaim.sh` aplica el backend base, el ajuste del scheduler
-y `fork/reclaim.patch` al árbol privado de construcción. No flashea.
+y `fork/reclaim.patch` al árbol privado de construcción. También aplica
+`fork/quiet-trace.patch`: las trazas de forks exitosos están apagadas por
+defecto. Produce `out/real-bins/xipImage-fork-quiet` y no flashea.
 
 Cada región mantiene una lista circular de sus bancos. Cuando queda uno:
 
@@ -95,6 +97,20 @@ proceso con P KiB privados puede requerir aproximadamente **2P KiB adicionales**
 para su primer fork. En una familia que ya está compartiendo esa región basta
 el respaldo adicional del nuevo hijo. El registro `fork-bank` muestra P real
 en cada fork exitoso; no deducirlo del tamaño del archivo ELF.
+
+Desde el kernel #11, ese registro es opcional, para no llenar la consola ni
+el buffer de dmesg durante el uso normal. Para una medición deliberada:
+
+```sh
+echo Y > /sys/module/nommu/parameters/fork_bank_trace
+# Ejecutar la carga a medir
+echo N > /sys/module/nommu/parameters/fork_bank_trace
+```
+
+Requiere root y vuelve a N al reiniciar. No cambia el nivel global de printk,
+no oculta errores y no desactiva `/proc` ni la recuperación de memoria.
+Para activarlo desde el arranque existe `nommu.fork_bank_trace=1` como
+parámetro del kernel; la imagen normal no lo incluye.
 
 ### Datos medidos
 
@@ -205,7 +221,9 @@ ya funcionaban; las suites se repiten tras el empaquetado.
 ## Resultado físico y artefactos finales
 
 Pruebas del 5 de septiembre de 2026, ESP32-S3 N16R8 conectado por COM.
-La placa quedó con kernel `6.11.0-forkbank #10` y el perfil completo.
+Esta batería completa se realizó con kernel `6.11.0-forkbank #10` y el perfil completo.
+El ajuste posterior #11 de trazas conserva ese rootfs; véase
+[UPGRADE.md](../UPGRADE.md#ajuste-posterior-de-consola) para su hash y pruebas.
 Los artefactos y logs de `out/` son locales e ignorados por Git; no se publicaron.
 
 | Artefacto | Bytes | SHA256 |

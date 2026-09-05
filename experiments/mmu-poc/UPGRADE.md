@@ -17,7 +17,7 @@ Los ocho puntos están implementados. El detalle técnico, las decisiones de
 compilación y las limitaciones están en [USERSPACE-UPGRADE.md](programs/USERSPACE-UPGRADE.md);
 los números por programa, en [MEASUREMENTS.csv](programs/MEASUREMENTS.csv).
 
-La placa quedó con Linux `6.11.0-forkbank #10`, Bash solo para el login del
+La batería original se hizo con Linux `6.11.0-forkbank #10`, Bash solo para el login del
 usuario y BusyBox para `/bin/sh` y los servicios. Se probó también una imagen
 sin Bash: el login de respaldo funcionó y luego se restauró la imagen completa.
 
@@ -32,6 +32,21 @@ sin Bash: el login de respaldo funcionó y luego se restauró la imagen completa
 No se añaden CPython ni Neovim. No es una MMU completa, COW ni aislamiento:
 se conserva el límite de 512 KiB privados por fork y la restricción sin fork
 multihilo. Las variantes LTO que fallaron en placa no se instalaron.
+
+## Ajuste posterior de consola
+
+Instalado kernel #11: los mensajes `nommu: fork-bank: parent=...` quedan
+desactivados por defecto y pueden habilitarse con el parámetro sysfs
+`/sys/module/nommu/parameters/fork_bank_trace`. No se silencian los errores
+del kernel ni se cambia `/bin/sh`. Rootfs y datos del usuario sin cambios.
+La prueba física comprobó 20 comandos sin trazas, activación explícita y
+otros 20 comandos sin trazas después de desactivarlas. Process-test 10/10,
+Dash y Bash pasaron nuevamente; recuperación del padre 0 → 124 → 0 KiB.
+
+Artefacto `out/real-bins/xipImage-fork-quiet`, 3.432.520 bytes, SHA256
+`77ed81553dd833f988035efd827cb616ba55cdddf5eae265ce6e0f5abb2990d4`.
+El kernel #10 anterior se conserva. Logs: `out/flash-kernel-quiet.log` y
+`out/programs/console-cleanup-tested.log`.
 
 ## Punto de restauración
 
