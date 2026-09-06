@@ -1,6 +1,6 @@
 --- a/jobs.c
 +++ b/jobs.c
-@@ -761,5 +761,10 @@
+@@ -761,6 +761,11 @@
    ps_index_t nsize, nsize_cur, nsize_max;
    ps_index_t psi;
  
@@ -11,7 +11,10 @@
 +
    if (bgpids.nalloc == 0)
      {
-@@ -780,5 +785,5 @@
+       /* invalidate hash table when bgpids table is reallocated */
+@@ -778,7 +783,7 @@
+   if (nsize_cur < 0)				/* overflow */
+     nsize_cur = MAX_CHILD_MAX;
  
 -  while (nsize > 0 && nsize < nsize_cur)	/* > 0 should catch overflow */
 +  if (bgpids.nalloc && nsize > 0 && nsize < nsize_cur)
