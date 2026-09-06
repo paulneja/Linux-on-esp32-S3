@@ -12,11 +12,12 @@ stops at `sysctl`, `S05home` is blocked on its first write to `/home`. Add
 `set -x` to `/etc/init.d/rcS` and to `S05home` on a test board and the trace
 ends at `mkdir -p /home/root`.
 
-The cause is not the script. A `home` partition left fully erased carries no
-jffs2 cleanmarkers, so the first allocation has to erase all 52 blocks before
-it can write, on the same flash the kernel executes from. A board in that
-state did not reach the login prompt in four minutes; with the partition
-already formatted the same image logs in after 17 seconds.
+A fully erased `home` partition carries no JFFS2 cleanmarkers. In the observed
+failure, the first `mkdir` stalled and login was not reached within four
+minutes. Repackaging with an empty formatted partition removed that stall;
+the subsequent clean build reached login in 19.08 seconds. This isolates the
+packaging condition but does not prove that every first allocation must erase
+all 52 blocks, or establish the exact interaction with execution from flash.
 
 Check the image rather than the scripts:
 
@@ -27,8 +28,11 @@ print(d[:12].hex(), d.count(b'\xff'), len(d))"
 
 A factory `/home` starts every 64 KiB block with `851903200c000000`. All `ff`
 means the image was packaged without `home.jffs2`; rebuild it with
-`make-images.sh`, or write that file at the `home` offset. `flash.sh --erase`
-needs it as well, because erasing the chip removes the formatting. Earlier
+`make-images.sh`, or write that file at the `home` offset. The command
+`flash.sh --parts --erase` needs the separate file as well, because erasing
+removes the formatting.
+A combined image already includes its own `/home` bytes and overwrites them
+even without `--erase`. Earlier
 releases packaged the partition erased too; whether they stall for as long
 has not been measured here.
 
