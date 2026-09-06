@@ -73,9 +73,20 @@ def boot_from_flash():
     console.port.rts = True
     time.sleep(0.1)
     console.port.rts = False
-    output, _ = console.until(rb'buildroot login: ?', 60)
-    (args.output / 'boot.log').write_bytes(output)
-    print(output.decode(errors='replace'), flush=True)
+    data = b''
+    deadline = time.monotonic() + 240
+    with (args.output / 'boot.log').open('wb') as log:
+        while time.monotonic() < deadline:
+            chunk = console.port.read(max(1, console.port.in_waiting))
+            if not chunk:
+                continue
+            log.write(chunk)
+            log.flush()
+            print(chunk.decode(errors='replace'), end='', flush=True)
+            data = (data + chunk)[-256:]
+            if re.search(rb'buildroot login: ?', data):
+                return
+    raise RuntimeError('No login within 240 seconds; complete output saved in boot.log')
 
 try:
     console = probe.Console(args.port)

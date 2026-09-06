@@ -15,12 +15,17 @@ fi
 if [ ! -e /home/www ] && [ ! -L /home/www ]; then
     umask 077
     seed=$(mktemp -d /home/.www-seed.XXXXXX)
-    tar -xzf /usr/share/esp32-home/www.tar.gz -C "$seed"
+    trap 'rm -rf -- "$seed"' EXIT
+    trap 'exit 1' HUP INT TERM
+    gzip -dc /usr/share/esp32-home/www.tar.gz > "$seed/archive.tar"
+    tar -xf "$seed/archive.tar" -C "$seed"
+    rm "$seed/archive.tar"
     chown -R 0:0 "$seed/www"
     chmod 755 "$seed/www" "$seed/www/cgi-bin" "$seed/www/cgi-bin/status"
     chmod 644 "$seed/www/index.html"
     mv "$seed/www" /home/www
     rmdir "$seed"
+    trap - EXIT HUP INT TERM
 fi
 if [ -L /home/www ] || [ ! -d /home/www ]; then
     echo 'home-init: refusing a symlink or non-directory /home/www' >&2
