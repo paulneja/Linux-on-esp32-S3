@@ -95,6 +95,9 @@ run('esptool', '--chip', 'esp32s3', 'merge_bin', '-o', out / 'linux-esp32s3-nati
     *[arg for partition, filename in files.items() for arg in (hex(parts[partition]['offset']), out / filename)])
 full = (out / 'linux-esp32s3-native-full.bin').read_bytes()
 assert len(full) == 16 * 1024 * 1024
+for offset, filename in ((0, 'bootloader.bin'), (0x8000, 'partition-table.bin')):
+    payload = (out / filename).read_bytes()
+    assert full[offset:offset + len(payload)] == payload, filename
 for partition, filename in files.items():
     payload = (out / filename).read_bytes()
     start = parts[partition]['offset']
@@ -115,6 +118,18 @@ inventory = {
     'build_method': 'Clean sources and Linux toolchain; no prebuilt project images or experiment binaries',
     'board_verification': 'pending',
 }
+configurations = {
+    'toolchain.config': build / 'crosstool-NG/.config',
+    'buildroot.config': build / 'build-buildroot-esp32s3_devkit_c1_16m/.config',
+    'firmware.config': firmware.parent / 'sdkconfig',
+    'kernel.config': experiment / 'linux-fork/.config',
+    'busybox.config': experiment / 'programs/busybox-netcat/.config',
+}
+(out / 'configs').mkdir(exist_ok=True)
+inventory['configuration_sha256'] = {}
+for name, path in configurations.items():
+    shutil.copyfile(path, out / 'configs' / name)
+    inventory['configuration_sha256'][name] = sha(path)
 (out / 'build-manifest.json').write_text(json.dumps(inventory, indent=2) + '\n')
 shutil.copyfile(repo / 'build/sources.lock', out / 'sources.lock')
 run('python3', repo / 'experiments/mmu-poc/programs/test-cron-image.py', out / 'rootfs.cramfs')
