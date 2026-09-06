@@ -1,6 +1,6 @@
 # Complete clean build
 
-Run from a clean, committed checkout on a Linux host with Docker and UID 1000:
+Run from a clean, committed checkout as a regular Linux user with Docker access:
 
 ```sh
 JOBS=8 bash build/reproduce.sh
