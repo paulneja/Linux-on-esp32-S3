@@ -58,7 +58,7 @@ if [ "$PARTS" = 1 ]; then
 		exit 1
 	fi
 
-	OFF_APP=""; OFF_ETC=""; OFF_LINUX=""; OFF_ROOTFS=""
+	OFF_APP=""; OFF_ETC=""; OFF_LINUX=""; OFF_ROOTFS=""; OFF_HOME=""
 	eval "$(awk -F', *' '
 		/^[a-z]/ {
 			gsub(/[ \t]/, "", $1); gsub(/[ \t]/, "", $4)
@@ -66,6 +66,7 @@ if [ "$PARTS" = 1 ]; then
 			if ($1 == "etc")     printf "OFF_ETC=%s ",    $4
 			if ($1 == "linux")   printf "OFF_LINUX=%s ",  $4
 			if ($1 == "rootfs")  printf "OFF_ROOTFS=%s ", $4
+			if ($1 == "home")    printf "OFF_HOME=%s ",   $4
 		}' "$CSV")"
 	if [ -z "$OFF_APP" ] || [ -z "$OFF_ETC" ] || \
 	   [ -z "$OFF_LINUX" ] || [ -z "$OFF_ROOTFS" ]; then
@@ -74,10 +75,28 @@ if [ "$PARTS" = 1 ]; then
 		exit 1
 	fi
 
-	echo "==> Flashing the 6 images separately"
+	HOME_ARGS=""
+	if [ "$ERASE" = 1 ]; then
+		if [ -z "$OFF_HOME" ]; then
+			echo "error: could not read the home offset from $CSV" >&2
+			exit 1
+		fi
+		if [ ! -f "$IMG/home.jffs2" ]; then
+			echo "error: $IMG/home.jffs2 is missing; --erase leaves /home" >&2
+			echo "       unformatted and the first boot hangs on its first" >&2
+			echo "       write. Run ./make-images.sh to produce it." >&2
+			exit 1
+		fi
+		HOME_ARGS="$OFF_HOME $IMG/home.jffs2"
+	fi
+
+	echo "==> Flashing the images separately"
 	printf '    offsets from %s:\n' "$(basename "$CSV")"
 	printf '    firmware %s   etc %s   kernel %s   rootfs %s\n' \
 		"$OFF_APP" "$OFF_ETC" "$OFF_LINUX" "$OFF_ROOTFS"
+	if [ -n "$HOME_ARGS" ]; then
+		printf '    factory home %s\n' "$OFF_HOME"
+	fi
 	# shellcheck disable=SC2086
 	$ESPTOOL $COMMON write_flash $FLASHOPTS \
 		0x0          "$IMG/bootloader.bin" \
@@ -85,7 +104,8 @@ if [ "$PARTS" = 1 ]; then
 		"$OFF_APP"    "$IMG/network_adapter.bin" \
 		"$OFF_ETC"    "$IMG/etc.jffs2" \
 		"$OFF_LINUX"  "$IMG/xipImage" \
-		"$OFF_ROOTFS" "$IMG/rootfs.cramfs"
+		"$OFF_ROOTFS" "$IMG/rootfs.cramfs" \
+		$HOME_ARGS
 else
 	echo "==> Flashing the combined image at 0x0"
 	# shellcheck disable=SC2086
