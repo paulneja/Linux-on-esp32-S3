@@ -26,7 +26,9 @@ spec = importlib.util.spec_from_file_location('probe', exp / 'serial-probe.py')
 probe = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(probe)
 results = {'image_sha256': manifest['sha256']['linux-esp32s3-native-full.bin'],
-           'source_commit': manifest['source_commit'], 'tests': [], 'status': 'running'}
+           'source_commit': manifest['source_commit'],
+           'test_runner_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+           'tests': [], 'status': 'running'}
 console = None
 
 def record(name, operation):
@@ -88,6 +90,16 @@ def boot_from_flash():
                 return
     raise RuntimeError('No login within 240 seconds; complete output saved in boot.log')
 
+def benchmarks():
+    console.port.write(b'exec /usr/bin/dash -c \'trap "sleep 1" EXIT; . /usr/share/program-tests/benchmark-suite.sh\'\n')
+    output, _ = console.until(rb'buildroot login: ?', 180)
+    text = output.decode(errors='replace')
+    print(text, flush=True)
+    (args.output / 'benchmarks.log').write_text(text)
+    console.login()
+    assert re.search(r'(?m)^BENCHMARK COMPLETE$', text), text
+    command('test -n "$BASH_VERSION"')
+
 try:
     console = probe.Console(args.port)
     if args.reset_from_bootloader:
@@ -99,6 +111,7 @@ try:
          ('6.11.0-forkbank', 'esp32s3-rsa: selftest 512-bit PASS',
           'esp32s3-rsa: selftest 2048-bit PASS', 'Mounted root (cramfs filesystem) readonly')),
         ('shell-policy', 'test -n "$BASH_VERSION" && test "$(readlink /bin/sh)" = busybox && test "$HOME" = /home/root', None),
+        ('first-boot-home', 'test -f /home/root/README.txt && test "$(stat -c %a /home/root)" = 700 && test -f /home/www/index.html && test -x /home/www/cgi-bin/status && test ! -e /www && set -- /home/.www-seed.* && test ! -e "$1"', None),
         ('excluded-programs', 'test ! -e /usr/bin/sqlite3 && test ! -e /usr/bin/sudo && test ! -e /usr/bin/doas && test ! -e /usr/bin/nvim && test ! -e /usr/bin/python3', None),
         ('mmu-executable-remap', 'mmu-run self-test', 'PASS: executable A -> B -> A -> B'),
         ('mmu-fibonacci', 'mmu-run run /usr/share/mmu/fib.elf 20', 'Result: 6765'),
@@ -113,11 +126,11 @@ try:
         ('network-tools', '/usr/bin/dash /usr/share/program-tests/network-tools-test.sh', 'PASS'),
         ('hush-login', '/usr/bin/dash /usr/share/program-tests/hush-login-test.sh', 'PASS'),
         ('jobq', '/usr/bin/dash /usr/share/program-tests/jobq-test.sh', 'PASS'),
-        ('benchmarks', '/usr/bin/dash /usr/share/program-tests/benchmark-suite.sh', 'BENCHMARK COMPLETE'),
-        ('kernel-health', 'test "$(cat /proc/sys/kernel/tainted)" = 0 && free', None),
     ]
     for name, text, expected in checks:
         record(name, lambda text=text, expected=expected: command(text, 180, expected))
+    record('benchmarks-lightweight-launcher', benchmarks)
+    record('kernel-health', lambda: command('test "$(cat /proc/sys/kernel/tainted)" = 0 && ! dmesg | grep -E "Out of memory:|Kernel panic|BUG:|Oops:" && free'))
     console.close()
     console = None
     for name in ('test-home-users-board', 'test-cron-board', 'test-com-reconnect', 'test-home-reboot'):

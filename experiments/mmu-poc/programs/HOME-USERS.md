@@ -31,6 +31,10 @@ solo rootfs en una instalación existente, ejecutar como root:
 home-users-setup
 ```
 
+La instalación inicial descomprime con `gzip -dc` y extrae con `tar -xf`:
+el BusyBox seleccionado no admite `tar -z`. Un gzip dañado aborta la siembra
+y elimina su directorio temporal; el próximo arranque puede reintentar.
+
 Instala el hook y el perfil inicial sin reemplazar cuentas, contraseñas,
 web personalizada o archivos existentes. La migración conserva el estado
 activado/desactivado de HTTP y rechaza servicios personalizados en el puerto 80.
