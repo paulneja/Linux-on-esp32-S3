@@ -5,6 +5,42 @@ the slow way, so the diagnostic step is included rather than just the fix.
 
 ## Boot
 
+### First boot stops after `Running sysctl: OK`
+
+The next line of a healthy boot is `Starting network (background): OK`. If it
+stops at `sysctl`, `S05home` is blocked on its first write to `/home`. Add
+`set -x` to `/etc/init.d/rcS` and to `S05home` on a test board and the trace
+ends at `mkdir -p /home/root`.
+
+The cause is not the script. A `home` partition left fully erased carries no
+jffs2 cleanmarkers, so the first allocation has to erase all 52 blocks before
+it can write, on the same flash the kernel executes from. A board in that
+state did not reach the login prompt in four minutes; with the partition
+already formatted the same image logs in after 17 seconds.
+
+Check the image rather than the scripts:
+
+```sh
+python3 -c "d=open('linux-esp32s3-native-full.bin','rb').read()[0xcc0000:0x1000000]
+print(d[:12].hex(), d.count(b'\xff'), len(d))"
+```
+
+A factory `/home` starts every 64 KiB block with `851903200c000000`. All `ff`
+means the image was packaged without `home.jffs2`; rebuild it with
+`make-images.sh`, or write that file at the `home` offset. `flash.sh --erase`
+needs it as well, because erasing the chip removes the formatting. Earlier
+releases packaged the partition erased too; whether they stall for as long
+has not been measured here.
+
+### First boot reports `tar: invalid option -- z` and `/home/www` is missing
+
+An early experimental image used `tar -xzf`, but its BusyBox configuration
+did not enable gzip handling inside tar. The corrected `home-init` uses
+`gzip -dc` followed by plain `tar -xf`, checks decompression failure and
+cleans its temporary directory. Existing user-edited web files are preserved.
+The clean-image test checks the web seed before running migration helpers,
+so an already populated `/home` cannot hide this startup bug.
+
 ### Boot stops after `mmc_spi`, no panic, no further output
 
 The next line in a healthy boot is `esp32s3-rsa: selftest 512-bit PASS`. If it
