@@ -86,6 +86,14 @@ en Bash. Bash explícito: `session trabajo /bin/bash -l`. Una consola principal
 más dos Bash adicionales agotaron RAM al intentar adjuntar el segundo cliente;
 no se recomienda esa combinación. No se impone un límite artificial de procesos.
 
+Durante las pruebas de la imagen diagnóstica se agotó RAM también al lanzar `id` con
+dos Bash interactivos, y al ejecutar `session list` desde Bash con dos
+sesiones Dash abiertas. Para la prueba de varias sesiones, la consola
+principal se cambia temporalmente con `exec /usr/bin/dash -i`; al terminar
+se recupera Bash con `exec /bin/bash -l`. El test de `nohup` se ejecuta por
+separado, sin las dos sesiones. Son límites medidos de concurrencia, no una
+promesa de que cualquier programa pueda ejecutarse dentro de esas sesiones.
+
 Para un proceso que no necesita terminal:
 
 ```sh
