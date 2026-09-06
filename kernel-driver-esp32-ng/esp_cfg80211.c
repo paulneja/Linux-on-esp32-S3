@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/*
- * Espressif Systems Wireless LAN device driver
- *
- * SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD
- *
- */
+/* SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD */
 #include "utils.h"
 #include "esp.h"
 #include "esp_api.h"
@@ -12,48 +7,43 @@
 #include "esp_cmd.h"
 #include "esp_kernel_port.h"
 
-/**
-  * @brief WiFi PHY rate encodings
-  *
-  */
 typedef enum {
-	WIFI_PHY_RATE_1M_L      = 0x00, /**< 1 Mbps with long preamble */
-	WIFI_PHY_RATE_2M_L      = 0x01, /**< 2 Mbps with long preamble */
-	WIFI_PHY_RATE_5M_L      = 0x02, /**< 5.5 Mbps with long preamble */
-	WIFI_PHY_RATE_11M_L     = 0x03, /**< 11 Mbps with long preamble */
-	WIFI_PHY_RATE_2M_S      = 0x05, /**< 2 Mbps with short preamble */
-	WIFI_PHY_RATE_5M_S      = 0x06, /**< 5.5 Mbps with short preamble */
-	WIFI_PHY_RATE_11M_S     = 0x07, /**< 11 Mbps with short preamble */
-	WIFI_PHY_RATE_48M       = 0x08, /**< 48 Mbps */
-	WIFI_PHY_RATE_24M       = 0x09, /**< 24 Mbps */
-	WIFI_PHY_RATE_12M       = 0x0A, /**< 12 Mbps */
-	WIFI_PHY_RATE_6M        = 0x0B, /**< 6 Mbps */
-	WIFI_PHY_RATE_54M       = 0x0C, /**< 54 Mbps */
-	WIFI_PHY_RATE_36M       = 0x0D, /**< 36 Mbps */
-	WIFI_PHY_RATE_18M       = 0x0E, /**< 18 Mbps */
-	WIFI_PHY_RATE_9M        = 0x0F, /**< 9 Mbps */
-	WIFI_PHY_RATE_MCS0_LGI  = 0x10, /**< MCS0 with long GI, 6.5 Mbps for 20MHz, 13.5 Mbps for 40MHz */
-	WIFI_PHY_RATE_MCS1_LGI  = 0x11, /**< MCS1 with long GI, 13 Mbps for 20MHz, 27 Mbps for 40MHz */
-	WIFI_PHY_RATE_MCS2_LGI  = 0x12, /**< MCS2 with long GI, 19.5 Mbps for 20MHz, 40.5 Mbps for 40MHz */
-	WIFI_PHY_RATE_MCS3_LGI  = 0x13, /**< MCS3 with long GI, 26 Mbps for 20MHz, 54 Mbps for 40MHz */
-	WIFI_PHY_RATE_MCS4_LGI  = 0x14, /**< MCS4 with long GI, 39 Mbps for 20MHz, 81 Mbps for 40MHz */
-	WIFI_PHY_RATE_MCS5_LGI  = 0x15, /**< MCS5 with long GI, 52 Mbps for 20MHz, 108 Mbps for 40MHz */
-	WIFI_PHY_RATE_MCS6_LGI  = 0x16, /**< MCS6 with long GI, 58.5 Mbps for 20MHz, 121.5 Mbps for 40MHz */
-	WIFI_PHY_RATE_MCS7_LGI  = 0x17, /**< MCS7 with long GI, 65 Mbps for 20MHz, 135 Mbps for 40MHz */
-	WIFI_PHY_RATE_MCS0_SGI  = 0x18, /**< MCS0 with short GI, 7.2 Mbps for 20MHz, 15 Mbps for 40MHz */
-	WIFI_PHY_RATE_MCS1_SGI  = 0x19, /**< MCS1 with short GI, 14.4 Mbps for 20MHz, 30 Mbps for 40MHz */
-	WIFI_PHY_RATE_MCS2_SGI  = 0x1A, /**< MCS2 with short GI, 21.7 Mbps for 20MHz, 45 Mbps for 40MHz */
-	WIFI_PHY_RATE_MCS3_SGI  = 0x1B, /**< MCS3 with short GI, 28.9 Mbps for 20MHz, 60 Mbps for 40MHz */
-	WIFI_PHY_RATE_MCS4_SGI  = 0x1C, /**< MCS4 with short GI, 43.3 Mbps for 20MHz, 90 Mbps for 40MHz */
-	WIFI_PHY_RATE_MCS5_SGI  = 0x1D, /**< MCS5 with short GI, 57.8 Mbps for 20MHz, 120 Mbps for 40MHz */
-	WIFI_PHY_RATE_MCS6_SGI  = 0x1E, /**< MCS6 with short GI, 65 Mbps for 20MHz, 135 Mbps for 40MHz */
-	WIFI_PHY_RATE_MCS7_SGI  = 0x1F, /**< MCS7 with short GI, 72.2 Mbps for 20MHz, 150 Mbps for 40MHz */
-	WIFI_PHY_RATE_LORA_250K = 0x29, /**< 250 Kbps */
-	WIFI_PHY_RATE_LORA_500K = 0x2A, /**< 500 Kbps */
+	WIFI_PHY_RATE_1M_L      = 0x00,
+	WIFI_PHY_RATE_2M_L      = 0x01,
+	WIFI_PHY_RATE_5M_L      = 0x02,
+	WIFI_PHY_RATE_11M_L     = 0x03,
+	WIFI_PHY_RATE_2M_S      = 0x05,
+	WIFI_PHY_RATE_5M_S      = 0x06,
+	WIFI_PHY_RATE_11M_S     = 0x07,
+	WIFI_PHY_RATE_48M       = 0x08,
+	WIFI_PHY_RATE_24M       = 0x09,
+	WIFI_PHY_RATE_12M       = 0x0A,
+	WIFI_PHY_RATE_6M        = 0x0B,
+	WIFI_PHY_RATE_54M       = 0x0C,
+	WIFI_PHY_RATE_36M       = 0x0D,
+	WIFI_PHY_RATE_18M       = 0x0E,
+	WIFI_PHY_RATE_9M        = 0x0F,
+	WIFI_PHY_RATE_MCS0_LGI  = 0x10,
+	WIFI_PHY_RATE_MCS1_LGI  = 0x11,
+	WIFI_PHY_RATE_MCS2_LGI  = 0x12,
+	WIFI_PHY_RATE_MCS3_LGI  = 0x13,
+	WIFI_PHY_RATE_MCS4_LGI  = 0x14,
+	WIFI_PHY_RATE_MCS5_LGI  = 0x15,
+	WIFI_PHY_RATE_MCS6_LGI  = 0x16,
+	WIFI_PHY_RATE_MCS7_LGI  = 0x17,
+	WIFI_PHY_RATE_MCS0_SGI  = 0x18,
+	WIFI_PHY_RATE_MCS1_SGI  = 0x19,
+	WIFI_PHY_RATE_MCS2_SGI  = 0x1A,
+	WIFI_PHY_RATE_MCS3_SGI  = 0x1B,
+	WIFI_PHY_RATE_MCS4_SGI  = 0x1C,
+	WIFI_PHY_RATE_MCS5_SGI  = 0x1D,
+	WIFI_PHY_RATE_MCS6_SGI  = 0x1E,
+	WIFI_PHY_RATE_MCS7_SGI  = 0x1F,
+	WIFI_PHY_RATE_LORA_250K = 0x29,
+	WIFI_PHY_RATE_LORA_500K = 0x2A,
 	WIFI_PHY_RATE_MAX,
 } wifi_phy_rate_t;
 
-/* Supported rates to be advertised to the cfg80211 */
 static struct ieee80211_rate esp_rates[] = {
 	{.bitrate = 10, .hw_value = WIFI_PHY_RATE_1M_L, },
 	{.bitrate = 20, .hw_value = WIFI_PHY_RATE_2M_L, },
@@ -70,7 +60,6 @@ static struct ieee80211_rate esp_rates[] = {
 };
 
 
-/* Channel definitions to be advertised to cfg80211 */
 static struct ieee80211_channel esp_channels_2ghz[] = {
 	{.center_freq = 2412, .hw_value = 1, },
 	{.center_freq = 2417, .hw_value = 2, },
@@ -95,7 +84,6 @@ static struct ieee80211_supported_band esp_wifi_bands = {
 	.n_bitrates = ARRAY_SIZE(esp_rates),
 };
 
-/* Supported crypto cipher suits to be advertised to cfg80211 */
 static const u32 esp_cipher_suites[] = {
 	WLAN_CIPHER_SUITE_WEP40,
 	WLAN_CIPHER_SUITE_WEP104,
@@ -120,7 +108,6 @@ static int esp_inetaddr_event(struct notifier_block *nb,
 	struct net_device *netdev = ifa->ifa_dev ? ifa->ifa_dev->dev : NULL;
 	struct esp_wifi_device *priv = netdev_priv(netdev);
 
-	/*esp_info("------- IP event -------: %d\n", priv->if_type);*/
 
 	if (!strstr(netdev->name, "espsta")) {
 		return 0;
@@ -153,7 +140,6 @@ struct wireless_dev *esp_cfg80211_add_iface(struct wiphy *wiphy,
 		struct vif_params *params)
 {
 	struct esp_device *esp_dev = NULL;
-/*	struct wireless_dev *wdev = NULL;*/
 	struct net_device *ndev;
 	struct esp_wifi_device *esp_wdev;
 	uint8_t esp_nw_if_num = 0;
@@ -195,8 +181,6 @@ struct wireless_dev *esp_cfg80211_add_iface(struct wiphy *wiphy,
 	esp_wdev->ndev = ndev;
 	esp_wdev->adapter = esp_dev->adapter;
 	esp_wdev->adapter->priv[esp_nw_if_num] = esp_wdev;
-	/*esp_info("Updated priv[%u] to %px\n",
-	 * esp_nw_if_num, esp_wdev->adapter->priv[esp_nw_if_num]);*/
 	dev_net_set(ndev, wiphy_net(wiphy));
 	SET_NETDEV_DEV(ndev, wiphy_dev(esp_wdev->wdev.wiphy));
 	esp_wdev->wdev.netdev = ndev;
@@ -460,23 +444,19 @@ static int esp_cfg80211_disassoc(struct wiphy *wiphy, struct net_device *dev,
 static int esp_cfg80211_suspend(struct wiphy *wiphy,
 			struct cfg80211_wowlan *wowlan)
 {
-	/*esp_dbg("\n");*/
 	return 0;
 }
 
 static int esp_cfg80211_resume(struct wiphy *wiphy)
 {
-	/*esp_dbg("\n");*/
 	return 0;
 }
 
 static void esp_cfg80211_set_wakeup(struct wiphy *wiphy,
 			bool enabled)
 {
-	/*esp_dbg("\n");*/
 }
 
-/* TODO get MAX_TX_POWER_MBM from Firmware for future chips */
 #define MAX_TX_POWER_MBM (20 * 100)
 static bool is_txpwr_valid(int mbm)
 {
@@ -604,7 +584,6 @@ static const struct cfg80211_ops esp_cfg80211_ops = {
 	.change_virtual_intf = esp_cfg80211_change_iface,
 #endif
 	.scan = esp_cfg80211_scan,
-	/*.connect = esp_cfg80211_connect,*/
 	.disconnect = esp_cfg80211_disconnect,
 	.add_key = esp_cfg80211_add_key,
 	.del_key = esp_cfg80211_del_key,
@@ -669,7 +648,6 @@ static void esp_reg_notifier(struct wiphy *wiphy,
 		return;
 	}
 
-	/* Don't send same regdom info to firmware */
 	if (strncmp(request->alpha2, priv->country_code, strlen(request->alpha2))) {
 		strscpy(priv->country_code, request->alpha2, MAX_COUNTRY_LEN);
 		cmd_set_reg_domain(priv);
@@ -707,13 +685,10 @@ int esp_add_wiphy(struct esp_adapter *adapter)
 	wiphy->interface_modes = BIT(NL80211_IFTYPE_STATION);
 	wiphy->bands[NL80211_BAND_2GHZ] = &esp_wifi_bands;
 
-	/* Initialize cipher suits */
 	wiphy->cipher_suites = esp_cipher_suites;
 	wiphy->n_cipher_suites = ARRAY_SIZE(esp_cipher_suites);
 
-	/* TODO: check and finalize the numbers */
 	wiphy->max_scan_ssids = 10;
-	/*	wiphy->max_match_sets = 10;*/
 	wiphy->max_scan_ie_len = 1000;
 	wiphy->max_sched_scan_ssids = 10;
 	wiphy->signal_type = CFG80211_SIGNAL_TYPE_MBM;
@@ -721,7 +696,6 @@ int esp_add_wiphy(struct esp_adapter *adapter)
 	wiphy->wowlan = &esp_wowlan_support;
 #endif
 
-	/* Advertise SAE support */
 	wiphy->features |= NL80211_FEATURE_SAE;
 
 	wiphy->reg_notifier = esp_reg_notifier;

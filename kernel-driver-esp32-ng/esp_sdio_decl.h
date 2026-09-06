@@ -1,16 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/*
- * Espressif Systems Wireless LAN device driver
- *
- * SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD
- *
- */
+/* SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD */
 #ifndef _ESP_DECL_H_
 #define _ESP_DECL_H_
 
 #include "esp.h"
 
-/* Interrupt Status */
 #define ESP_SLAVE_BIT0_INT             BIT(0)
 #define ESP_SLAVE_BIT1_INT             BIT(1)
 #define ESP_SLAVE_BIT2_INT             BIT(2)
@@ -37,17 +31,13 @@
 #define ESP_SLAVE_SLCHOST_BASE         0x3FF55000
 
 #define ESP_SLAVE_SCRATCH_REG_7        (ESP_SLAVE_SLCHOST_BASE + 0x8C)
-/* SLAVE registers */
-/* Interrupt Registers */
 #define ESP_SLAVE_INT_RAW_REG          (ESP_SLAVE_SLCHOST_BASE + 0x50)
 #define ESP_SLAVE_INT_ST_REG           (ESP_SLAVE_SLCHOST_BASE + 0x58)
 #define ESP_SLAVE_INT_CLR_REG          (ESP_SLAVE_SLCHOST_BASE + 0xD4)
 
-/* Data path registers*/
 #define ESP_SLAVE_PACKET_LEN_REG       (ESP_SLAVE_SLCHOST_BASE + 0x60)
 #define ESP_SLAVE_TOKEN_RDATA          (ESP_SLAVE_SLCHOST_BASE + 0x44)
 
-/* Scratch registers*/
 #define ESP_SLAVE_SCRATCH_REG_0        (ESP_SLAVE_SLCHOST_BASE + 0x6C)
 #define ESP_SLAVE_SCRATCH_REG_1        (ESP_SLAVE_SLCHOST_BASE + 0x70)
 #define ESP_SLAVE_SCRATCH_REG_2        (ESP_SLAVE_SLCHOST_BASE + 0x74)

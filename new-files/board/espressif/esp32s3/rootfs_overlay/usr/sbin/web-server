@@ -1,5 +1,4 @@
 #!/bin/sh
-# HTTP runs on demand as www-data, never as root. Content lives on JFFS2.
 set -e
 CONF=/etc/inetd.conf
 PORT=80
@@ -13,7 +12,6 @@ migrate() {
     test "$(id -u)" = 0
     id www-data >/dev/null
     test "$(id -u www-data)" != 0
-    # Only migrate our known httpd line. Never overwrite a different service.
     awk '$0 ~ /^#?80[ \t]/ && ($8 != "-i" || $9 != "-h" ||
         ($10 != "/www" && $10 != "/home/www") || $6 != "/usr/sbin/httpd") { exit 1 }' "$CONF" || {
         echo 'web-server: port 80 has a custom configuration; not changed' >&2

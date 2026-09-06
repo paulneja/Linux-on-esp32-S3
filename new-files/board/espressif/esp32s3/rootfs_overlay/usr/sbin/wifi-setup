@@ -1,12 +1,4 @@
 #!/bin/sh
-#
-# Back-compat shim. The real WiFi manager is now `wifi` (interactive scan +
-# picker, open/secured autodetect). This keeps the old scripted form working:
-#
-#   wifi-setup "SSID" "password"   ->   wifi connect "SSID" "password"
-#
-# For the friendly interactive flow just run:  wifi
-#
 
 if [ $# -ne 2 ]; then
 	echo "usage: $0 <ssid> <password>" >&2

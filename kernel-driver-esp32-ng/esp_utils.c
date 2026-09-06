@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/*
- * Espressif Systems Wireless LAN device driver
- *
- * SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD
- *
- */
+/* SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD */
 #include "utils.h"
 #include "esp_utils.h"
 

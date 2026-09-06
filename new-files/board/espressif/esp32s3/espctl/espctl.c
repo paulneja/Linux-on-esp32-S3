@@ -1,12 +1,4 @@
-/*
- * espctl - control real ESP32-S3 hardware (GPIO, I2C) from native Linux.
- *
- * Uses the Linux GPIO character-device uAPI (GPIO v2, /dev/gpiochip0) and
- * the standard i2c-dev interface (/dev/i2c-0) directly -- no extra
- * userspace library dependency (libgpiod etc.), just kernel headers.
- *
- * SPDX-License-Identifier: MIT
- */
+/* SPDX-License-Identifier: MIT */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,14 +13,6 @@
 
 #define GPIOCHIP_PATH "/dev/gpiochip0"
 
-/*
- * Allow-list of GPIO numbers safe to expose to userspace on the
- * esp32s3-devkit-c1 profile. Excludes: 0/3/45/46 (strapping pins -- can
- * force download mode or brownout detect on next reset), 6/7 (I2C0, already
- * owned by the i2c-gpio kernel driver), 10-13 (SPI2/microSD), 19/20 (USB
- * D-/D+), 26-32 (Octal PSRAM/flash -- touching these can hang or corrupt
- * the running system), 43/44 (UART0, the serial console).
- */
 static const int allowed_pins[] = {
 	1, 2, 4, 5, 8, 14, 15, 16, 17, 18, 21, 38, 39, 40, 41, 42, 47, 48
 };
@@ -157,15 +141,13 @@ static int cmd_i2c_scan(const char *bus_path)
 		if (addr % 16 == 0)
 			printf("%02x: ", addr);
 
-		/* Reserved/general-call ranges: skip probing, print blank. */
 		if (addr < 0x03 || addr > 0x77) {
 			printf("   ");
 		} else if (ioctl(fd, I2C_SLAVE, addr) < 0) {
 			printf("   ");
 		} else {
-			/* A 0-byte read is enough to detect NAK/ACK on most devices. */
 			unsigned char dummy;
-			if (read(fd, &dummy, 0) >= 0 || errno != 6 /* ENXIO */)
+			if (read(fd, &dummy, 0) >= 0 || errno != 6            )
 				printf("%02x ", addr);
 			else
 				printf("-- ");

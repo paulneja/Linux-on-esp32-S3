@@ -56,7 +56,6 @@ static void close_data_path(void)
 
 static irqreturn_t spi_data_ready_interrupt_handler(int irq, void *dev)
 {
-	/* ESP peripheral has queued buffer for transmission */
 	if (spi_context.spi_workqueue)
 		queue_work(spi_context.spi_workqueue, &spi_context.spi_work);
 
@@ -65,7 +64,6 @@ static irqreturn_t spi_data_ready_interrupt_handler(int irq, void *dev)
 
 static irqreturn_t spi_interrupt_handler(int irq, void *dev)
 {
-	/* ESP peripheral is ready for next SPI transaction */
 	if (spi_context.spi_workqueue)
 		queue_work(spi_context.spi_workqueue, &spi_context.spi_work);
 
@@ -135,13 +133,11 @@ static int write_packet(struct esp_adapter *adapter, struct sk_buff *skb)
 		esp_tx_pause(cb->priv);
 		dev_kfree_skb(skb);
 		skb = NULL;
-		/*esp_err("TX Pause busy");*/
 		if (spi_context.spi_workqueue)
 			queue_work(spi_context.spi_workqueue, &spi_context.spi_work);
 		return -EBUSY;
 	}
 
-	/* Enqueue SKB in tx_q */
 	if (payload_header->if_type == ESP_INTERNAL_IF) {
 		skb_queue_tail(&spi_context.tx_q[PRIO_Q_HIGH], skb);
 	} else if (payload_header->if_type == ESP_HCI_IF) {
@@ -182,12 +178,6 @@ int esp_validate_chipset(struct esp_adapter *adapter, u8 chipset)
 
 int esp_deinit_module(struct esp_adapter *adapter)
 {
-	/* Second & onward bootup cleanup:
-	 *
-	 * SPI is software and not a hardware based module.
-	 * When bootup event is received, we should discard all prior commands,
-	 * old messages pending at network and re-initialize everything.
-	 */
 	uint8_t prio_q_idx, iface_idx;
 
 	for (prio_q_idx = 0; prio_q_idx < MAX_PRIORITY_QUEUES; prio_q_idx++) {
@@ -225,7 +215,6 @@ static int process_rx_buf(struct sk_buff *skb)
 
 	offset = le16_to_cpu(header->offset);
 
-	/* Validate received SKB. Check len and offset fields */
 	if (offset != sizeof(struct esp_payload_header)) {
 		return -EINVAL;
 	}
@@ -241,16 +230,13 @@ static int process_rx_buf(struct sk_buff *skb)
 		return -EINVAL;
 	}
 
-	/* Trim SKB to actual size */
 	skb_trim(skb, len);
 
 
 	if (!data_path) {
-		/*esp_info("%u datapath closed\n", __LINE__);*/
 		return -EPERM;
 	}
 
-	/* enqueue skb for read_packet to pick it */
 	if (header->if_type == ESP_INTERNAL_IF)
 		skb_queue_tail(&spi_context.rx_q[PRIO_Q_HIGH], skb);
 	else if (header->if_type == ESP_HCI_IF)
@@ -258,7 +244,6 @@ static int process_rx_buf(struct sk_buff *skb)
 	else
 		skb_queue_tail(&spi_context.rx_q[PRIO_Q_LOW], skb);
 
-	/* indicate reception of new packet */
 	esp_process_new_packet_intr(spi_context.adapter);
 
 	return 0;
@@ -289,7 +274,6 @@ static void esp_spi_work(struct work_struct *work)
 				if (atomic_read(&tx_pending))
 					atomic_dec(&tx_pending);
 
-				/* resume network tx queue if bearable load */
 				cb = (struct esp_skb_cb *)tx_skb->cb;
 				if (cb && cb->priv && atomic_read(&tx_pending) < TX_RESUME_THRESHOLD) {
 					esp_tx_resume(cb->priv);
@@ -306,27 +290,16 @@ static void esp_spi_work(struct work_struct *work)
 			memset(&trans, 0, sizeof(trans));
 			trans.speed_hz = spi_context.spi_clk_mhz * NUMBER_1M;
 
-			/* Setup and execute SPI transaction
-			 *	Tx_buf: Check if tx_q has valid buffer for transmission,
-			 *		else keep it blank
-			 *
-			 *	Rx_buf: Allocate memory for incoming data. This will be freed
-			 *		immediately if received buffer is invalid.
-			 *		If it is a valid buffer, upper layer will free it.
-			 * */
 
-			/* Configure TX buffer if available */
 
 			if (tx_skb) {
 				trans.tx_buf = tx_skb->data;
-				/*print_hex_dump(KERN_ERR, "tx: ", DUMP_PREFIX_ADDRESS, 16, 1, trans.tx_buf, 32, 1);*/
 			} else {
 				tx_skb = esp_alloc_skb(SPI_BUF_SIZE);
 				trans.tx_buf = skb_put(tx_skb, SPI_BUF_SIZE);
 				memset((void *)trans.tx_buf, 0, SPI_BUF_SIZE);
 			}
 
-			/* Configure RX buffer */
 			rx_skb = esp_alloc_skb(SPI_BUF_SIZE);
 			rx_buf = skb_put(rx_skb, SPI_BUF_SIZE);
 
@@ -348,7 +321,6 @@ static void esp_spi_work(struct work_struct *work)
 				dev_kfree_skb(tx_skb);
 			} else {
 
-				/* Free rx_skb if received data is not valid */
 				if (process_rx_buf(rx_skb)) {
 					dev_kfree_skb(rx_skb);
 				}

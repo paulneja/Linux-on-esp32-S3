@@ -1,5 +1,4 @@
 #!/bin/sh
-# Bash when installed, otherwise the service shell remains available.
 if [ -x /bin/bash ]; then
     if [ "$#" -eq 0 ]; then exec /bin/bash -l; fi
     exec /bin/bash "$@"

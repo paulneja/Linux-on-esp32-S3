@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/*
- * Espressif Systems Wireless LAN device driver
- *
- * SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD
- *
- */
+/* SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD */
 #include "utils.h"
 #include <linux/init.h>
 #include <linux/module.h>
@@ -37,7 +32,6 @@ MODULE_PARM_DESC(raw_tp_mode, "Mode choosed to test raw throughput");
 static void deinit_adapter(struct esp_adapter *adapter);
 
 struct multicast_list mcast_list = {0};
-/*struct esp_device esp_dev;*/
 
 void esp_process_new_packet_intr(struct esp_adapter *adapter)
 {
@@ -59,7 +53,6 @@ static int process_tx_packet(struct sk_buff *skb)
 	u8 *pos = NULL;
 
 	c++;
-	/* Get the priv */
 	cb = (struct esp_skb_cb *) skb->cb;
 	priv = cb->priv;
 
@@ -80,21 +73,17 @@ static int process_tx_packet(struct sk_buff *skb)
 
 	len = skb->len;
 
-	/* Create space for payload header */
 	pad_len = sizeof(struct esp_payload_header);
 
 	total_len = len + pad_len;
 
-	/* Align buffer length */
 	pad_len += SKB_DATA_ADDR_ALIGNMENT - (total_len % SKB_DATA_ADDR_ALIGNMENT);
 
 	if (skb_headroom(skb) < pad_len) {
-		/* Headroom is not sufficient */
 		realloc_skb = 1;
 	}
 
 	if (realloc_skb || !IS_ALIGNED((unsigned long) skb->data, SKB_DATA_ADDR_ALIGNMENT)) {
-		/* Realloc SKB */
 		if (skb_linearize(skb)) {
 			priv->stats.tx_errors++;
 			dev_kfree_skb(skb);
@@ -114,19 +103,15 @@ static int process_tx_packet(struct sk_buff *skb)
 		pos = new_skb->data;
 		pos += pad_len;
 
-		/* Populate new SKB */
 		skb_copy_from_linear_data(skb, pos, skb->len);
 		skb_put(new_skb, skb->len + pad_len);
 
-		/* Replace old SKB */
 		dev_kfree_skb_any(skb);
 		skb = new_skb;
 	} else {
-		/* Realloc is not needed, Make space for interface header */
 		skb_push(skb, pad_len);
 	}
 
-	/* Set payload header */
 	payload_header = (struct esp_payload_header *) skb->data;
 	memset(payload_header, 0, pad_len);
 
@@ -143,7 +128,6 @@ static int process_tx_packet(struct sk_buff *skb)
 		ret = esp_send_packet(priv->adapter, skb);
 
 		if (ret) {
-/*			esp_err("Failed to send SKB");*/
 			priv->stats.tx_errors++;
 		} else {
 			priv->stats.tx_packets++;
@@ -227,21 +211,21 @@ static void print_reset_reason(uint32_t reason)
 {
 	switch (reason)
 	{
-		case 1: esp_info("POWERON_RESET\n"); break;          /**<1, Vbat power on reset*/
-		case 3: esp_info("SW_RESET\n"); break;               /**<3, Software reset digital core*/
-		case 4: esp_info("OWDT_RESET\n"); break;             /**<4, Legacy watch dog reset digital core*/
-		case 5: esp_info("DEEPSLEEP_RESET\n"); break;        /**<5, Deep Sleep reset digital core*/
-		case 6: esp_info("SDIO_RESET\n"); break;             /**<6, Reset by SLC module, reset digital core*/
-		case 7: esp_info("TG0WDT_SYS_RESET\n"); break;       /**<7, Timer Group0 Watch dog reset digital core*/
-		case 8: esp_info("TG1WDT_SYS_RESET\n"); break;       /**<8, Timer Group1 Watch dog reset digital core*/
-		case 9: esp_info("RTCWDT_SYS_RESET\n"); break;       /**<9, RTC Watch dog Reset digital core*/
-		case 10: esp_info("INTRUSION_RESET\n"); break;       /**<10, Instrusion tested to reset CPU*/
-		case 11: esp_info("TGWDT_CPU_RESET\n"); break;       /**<11, Time Group reset CPU*/
-		case 12: esp_info("SW_CPU_RESET\n"); break;          /**<12, Software reset CPU*/
-		case 13: esp_info("RTCWDT_CPU_RESET\n"); break;      /**<13, RTC Watch dog Reset CPU*/
-		case 14: esp_info("EXT_CPU_RESET\n"); break;         /**<14, for APP CPU, reseted by PRO CPU*/
-		case 15: esp_info("RTCWDT_BROWN_OUT_RESET\n"); break;/**<15, Reset when the vdd voltage is not stable*/
-		case 16: esp_info("RTCWDT_RTC_RESET\n"); break;      /**<16, RTC Watch dog reset digital core and rtc module*/
+		case 1: esp_info("POWERON_RESET\n"); break;
+		case 3: esp_info("SW_RESET\n"); break;
+		case 4: esp_info("OWDT_RESET\n"); break;
+		case 5: esp_info("DEEPSLEEP_RESET\n"); break;
+		case 6: esp_info("SDIO_RESET\n"); break;
+		case 7: esp_info("TG0WDT_SYS_RESET\n"); break;
+		case 8: esp_info("TG1WDT_SYS_RESET\n"); break;
+		case 9: esp_info("RTCWDT_SYS_RESET\n"); break;
+		case 10: esp_info("INTRUSION_RESET\n"); break;
+		case 11: esp_info("TGWDT_CPU_RESET\n"); break;
+		case 12: esp_info("SW_CPU_RESET\n"); break;
+		case 13: esp_info("RTCWDT_CPU_RESET\n"); break;
+		case 14: esp_info("EXT_CPU_RESET\n"); break;
+		case 15: esp_info("RTCWDT_BROWN_OUT_RESET\n"); break;
+		case 16: esp_info("RTCWDT_RTC_RESET\n"); break;
 		default: esp_info("Unknown[%u]\n", reason); break;
 	}
 }
@@ -273,7 +257,6 @@ int process_event_esp_bootup(struct esp_adapter *adapter, u8 *evt_buf, u8 len)
 	}
 
 	clear_bit(ESP_INIT_DONE, &adapter->state_flags);
-	/* Deinit module if already initialized */
 	esp_deinit_module(adapter);
 
 	pos = evt_buf;
@@ -365,7 +348,7 @@ static int esp_set_mac_address(struct net_device *ndev, void *data)
 	ret = cmd_set_mac(priv, sa->sa_data);
 
 	if (ret == 0)
-		eth_hw_addr_set(ndev, priv->mac_address/*mac_addr->sa_data*/);
+		eth_hw_addr_set(ndev, priv->mac_address                     );
 
 	return ret;
 }
@@ -381,7 +364,6 @@ static void esp_set_rx_mode(struct net_device *ndev)
 #endif
 	netdev_for_each_mc_addr(mac_addr, ndev) {
 		if (count < MAX_MULTICAST_ADDR_COUNT) {
-			/*esp_info("%d: "MACSTR"\n", count+1, MAC2STR(mac_addr->addr));*/
 			memcpy(&mcast_list.mcast_addr[count++], mac_addr->addr, ETH_ALEN);
 		}
 	}
@@ -390,7 +372,6 @@ static void esp_set_rx_mode(struct net_device *ndev)
 	mcast_list.addr_count = count;
 
 	if (priv->port_open) {
-		/*esp_info("Set Multicast list\n");*/
 		if (priv->adapter->mac_filter_wq)
 			queue_work(priv->adapter->mac_filter_wq, &priv->adapter->mac_flter_work);
 	}
@@ -420,7 +401,6 @@ static int esp_hard_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 
 	if (!priv->port_open) {
 		priv->stats.tx_dropped++;
-		/*esp_err("Port not yet open\n");*/
 		dev_kfree_skb(skb);
 		return NETDEV_TX_OK;
 	}
@@ -469,7 +449,6 @@ static int esp_add_network_ifaces(struct esp_adapter *adapter)
 	wdev = esp_cfg80211_add_iface(adapter->wiphy, "espsta%d", 1, NL80211_IFTYPE_STATION, NULL);
 	rtnl_unlock();
 
-	/* Return success if network added successfully */
 	if (wdev)
 		return 0;
 
@@ -488,9 +467,6 @@ int esp_add_card(struct esp_adapter *adapter)
 	RET_ON_FAIL(esp_add_wiphy(adapter));
 	RET_ON_FAIL(esp_add_network_ifaces(adapter));
 
-	/* BLE provisioning pipe (/dev/esp-ble). Unconditional: it does not
-	 * depend on the esp-hosted BT/HCI capabilities -- the BLE stack runs
-	 * on the ESP side, this is only the byte pipe to userspace. */
 	esp_ble_prov_init(adapter);
 
 	return 0;
@@ -545,7 +521,6 @@ static int stop_network_iface(struct esp_wifi_device *priv)
 	esp_mark_scan_done_and_disconnect(priv, false);
 	esp_port_close(priv);
 
-	/* stop and unregister network */
 	ndev = priv->ndev;
 
 	if (ndev) {
@@ -583,7 +558,6 @@ int esp_remove_card(struct esp_adapter *adapter)
 
 	esp_stop_network_ifaces(adapter);
 #ifdef CONFIG_ESP32_BT
-	/* BT may have been initialized after fw bootup event, deinit it */
 	esp_ble_prov_deinit();
 	esp_deinit_bt(adapter);
 #endif
@@ -675,7 +649,6 @@ static void process_rx_packet(struct esp_adapter *adapter, struct sk_buff *skb)
 	if (!skb)
 		return;
 
-	/* get the paload header */
 	payload_header = (struct esp_payload_header *) skb->data;
 
 	len = le16_to_cpu(payload_header->len);
@@ -697,12 +670,10 @@ static void process_rx_packet(struct esp_adapter *adapter, struct sk_buff *skb)
 		}
 	}
 
-	/* chop off the header from skb */
 	skb_pull(skb, offset);
 
 	if (payload_header->if_type == ESP_STA_IF || payload_header->if_type == ESP_AP_IF) {
 
-		/* retrieve priv based on payload header contents */
 		priv = get_priv_from_payload_header(adapter, payload_header);
 
 		if (!priv) {
@@ -728,8 +699,8 @@ static void process_rx_packet(struct esp_adapter *adapter, struct sk_buff *skb)
 			}
 
 			eth = (struct ethhdr *) skb_put(eap_skb, ETH_HLEN);
-			ether_addr_copy(eth->h_dest, /*skb->data*/priv->ndev->dev_addr);
-			ether_addr_copy(eth->h_source, /*skb->data+6*/ ap_bssid);
+			ether_addr_copy(eth->h_dest,              priv->ndev->dev_addr);
+			ether_addr_copy(eth->h_source,                 ap_bssid);
 			eth->h_proto = cpu_to_be16(ETH_P_PAE);
 
 			skb_put_data(eap_skb, skb->data, skb->len);
@@ -745,7 +716,6 @@ static void process_rx_packet(struct esp_adapter *adapter, struct sk_buff *skb)
 			skb->ip_summed = CHECKSUM_NONE;
 
 			priv->stats.rx_bytes += skb->len;
-			/* Forward skb to kernel */
 			NETIF_RX_NI(skb);
 			priv->stats.rx_packets++;
 		} else if (payload_header->packet_type == PACKET_TYPE_COMMAND_RESPONSE) {
@@ -786,7 +756,6 @@ static void process_rx_packet(struct esp_adapter *adapter, struct sk_buff *skb)
 #endif
 	} else if (payload_header->if_type == ESP_INTERNAL_IF) {
 
-		/* Queue event skb for processing in events workqueue */
 
 		if (adapter->events_wq) {
 			skb_queue_tail(&adapter->events_skb_q, skb);
@@ -796,9 +765,6 @@ static void process_rx_packet(struct esp_adapter *adapter, struct sk_buff *skb)
 		}
 
 	} else if (payload_header->if_type == ESP_BLE_PROV_IF) {
-		/* Bytes typed by a phone on the BLE link; hand them to
-		 * /dev/esp-ble for the provisioning daemon. The payload header
-		 * was already pulled above -- do not pull it again. */
 		esp_ble_prov_rx(skb);
 		return;
 	} else if (payload_header->if_type == ESP_TEST_IF) {
@@ -853,7 +819,6 @@ struct sk_buff *esp_alloc_skb(u32 len)
 	skb = netdev_alloc_skb(NULL, len + INTERFACE_HEADER_PADDING);
 
 	if (skb) {
-		/* Align SKB data pointer */
 		offset = ((unsigned long)skb->data) & (SKB_DATA_ADDR_ALIGNMENT - 1);
 
 		if (offset)
@@ -917,7 +882,6 @@ static int init_adapter(struct esp_adapter *adapter, const struct esp_if_ops *if
 
 	adapter->if_ops = if_ops;
 
-	/* Prepare interface RX work */
 	adapter->if_rx_workqueue = alloc_workqueue("ESP_IF_RX_WORK_QUEUE", 0, 0);
 
 	if (!adapter->if_rx_workqueue) {

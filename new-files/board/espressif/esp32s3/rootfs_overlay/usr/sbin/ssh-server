@@ -1,15 +1,4 @@
 #!/bin/sh
-#
-# Turn the SSH server (dropbear) on or off. SSH is OFF by default on this
-# board: telnet is the default way in, which is fine on a trusted home LAN and
-# far lighter than SSH on this hardware. This script flips the ssh line in
-# /etc/inetd.conf, which lives on the writable /etc partition, so the choice
-# survives a reboot. dropbear is launched with -R so it creates its host keys
-# on first use -- nothing to generate ahead of time.
-#
-# Note: SSH is slow on this board (the RSA hardware accelerator does not help
-# it -- modern SSH uses Curve25519, not RSA). Telnet is the recommended path.
-#
 
 CONF=/etc/inetd.conf
 SSH_LINE='ssh	stream	tcp	nowait	root	/usr/sbin/dropbear	dropbear -i -R -I 600'
@@ -27,10 +16,8 @@ on|enable)
 		exit 0
 	fi
 	if grep -q '^#ssh[ 	]' "$CONF"; then
-		# uncomment the existing (disabled) line
 		sed -i 's/^#ssh\([ 	]\)/ssh\1/' "$CONF"
 	else
-		# no ssh line at all: add one
 		printf '%s\n' "$SSH_LINE" >> "$CONF"
 	fi
 	restart_inetd

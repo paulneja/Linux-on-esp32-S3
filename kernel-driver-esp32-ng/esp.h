@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/*
- * Espressif Systems Wireless LAN device driver
- *
- * SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD
- *
- */
+/* SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD */
 #ifndef __esp__h_
 #define __esp__h_
 
@@ -23,17 +18,13 @@
 #define ESP_IF_TYPE_SDIO        1
 #define ESP_IF_TYPE_SPI         2
 
-/* Network link status */
 #define ESP_LINK_DOWN           0
 #define ESP_LINK_UP             1
 
 #define ESP_MAX_INTERFACE       1
-//#define ESP_MAX_INTERFACE       2
 #define ESP_STA_NW_IF           0
 #define ESP_AP_NW_IF            1
 
-/* ESP in sdkconfig has CONFIG_IDF_FIRMWARE_CHIP_ID entry.
- * supported values of CONFIG_IDF_FIRMWARE_CHIP_ID are - */
 enum chipset_type_e {
 	ESP_FIRMWARE_CHIP_UNRECOGNIZED = 0xff,
 	ESP_FIRMWARE_CHIP_ESP32 = 0x0,
@@ -57,10 +48,10 @@ struct esp_adapter;
 #define MAX_COUNTRY_LEN 3
 
 enum adapter_flags_e {
-	ESP_CLEANUP_IN_PROGRESS,    /* Driver unloading or ESP reseted */
-	ESP_CMD_INIT_DONE,          /* Cmd component is initialized with esp_commands_setup() */
-	ESP_DRIVER_ACTIVE,          /* kernel module __exit is not yet invoked */
-	ESP_INIT_DONE,              /* Driver init done */
+	ESP_CLEANUP_IN_PROGRESS,
+	ESP_CMD_INIT_DONE,
+	ESP_DRIVER_ACTIVE,
+	ESP_INIT_DONE,
 };
 
 enum priv_flags_e {
@@ -81,13 +72,10 @@ struct esp_adapter {
 	uint8_t                 if_type;
 	uint32_t                capabilities;
 
-	/* Possible types:
-	 * struct esp_sdio_context */
 	void                    *if_context;
 
 	const struct esp_if_ops *if_ops;
 
-	/* Private for each interface */
 	struct esp_wifi_device  *priv[ESP_MAX_INTERFACE];
 	struct hci_dev          *hcidev;
 
@@ -97,7 +85,6 @@ struct esp_adapter {
 	wait_queue_head_t       wait_for_cmd_resp;
 	uint8_t                 cmd_resp;
 
-	/* wpa supplicant commands structures */
 	struct command_node     *cmd_pool;
 	struct list_head        cmd_free_queue;
 	spinlock_t              cmd_free_queue_lock;
@@ -141,7 +128,6 @@ struct esp_wifi_device {
 	uint32_t                ssid_len;
 	uint8_t                 ssid[32];
 
-	/* This is needed to notify scan completion*/
 	struct cfg80211_scan_request *request;
 	struct cfg80211_bss     *bss;
 	uint8_t                 *assoc_req_ie;

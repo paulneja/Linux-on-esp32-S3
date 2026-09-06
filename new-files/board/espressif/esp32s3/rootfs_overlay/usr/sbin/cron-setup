@@ -1,5 +1,4 @@
 #!/bin/sh
-# Does not create or replace any user's crontab.
 set -e
 test "$(id -u)" = 0
 for directory in /etc/cron /etc/cron/crontabs; do
@@ -9,14 +8,11 @@ for directory in /etc/cron /etc/cron/crontabs; do
     if [ ! -e "$directory" ]; then mkdir -m "$mode" "$directory"; fi
     test -d "$directory"
     test "$(stat -c %u "$directory")" = 0
-    # Upgrade the private parent created by the first development image.
     if [ "$directory" = /etc/cron ] && [ "$(stat -c %a "$directory")" = 700 ]; then
         chmod 711 "$directory"
     fi
     test "$(stat -c %a "$directory")" = "$mode"
 done
-# BusyBox places the user-owned editor temporary next to crontabs, not inside.
-# Permit traversal of this parent only; schedules remain in the 0700 directory.
 if [ "${1:-}" = --prepare ]; then exit 0; fi
 test "$#" = 0
 if [ ! -e /etc/init.d/S50crond ] && [ ! -L /etc/init.d/S50crond ]; then
