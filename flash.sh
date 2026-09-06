@@ -1,19 +1,4 @@
 #!/bin/sh
-#
-# Flash Linux on an ESP32-S3 (native Xtensa build).
-#
-# Default: writes the single combined image to offset 0x0 — everything a bare
-# board needs (bootloader, partition table, WiFi firmware, /etc, kernel,
-# rootfs). Nothing else is required.
-#
-#   ./flash.sh                      # combined image, autodetected port
-#   ./flash.sh -p /dev/ttyUSB0      # pick the port
-#   ./flash.sh --erase              # full chip erase first (recommended once)
-#   ./flash.sh --parts              # flash the 6 pieces separately instead
-#
-# Requires esptool (pip install esptool) or an activated ESP-IDF environment.
-# Board: ESP32-S3 with 16 MB flash / 8 MB Octal PSRAM (N16R8).
-#
 set -eu
 
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -34,7 +19,6 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-# --- locate esptool -----------------------------------------------------
 if command -v esptool.py >/dev/null 2>&1; then
 	ESPTOOL="esptool.py"
 elif command -v esptool >/dev/null 2>&1; then
@@ -48,7 +32,6 @@ else
 	exit 1
 fi
 
-# --- locate the board ---------------------------------------------------
 if [ -z "$PORT" ]; then
 	for p in /dev/ttyACM0 /dev/ttyACM1 /dev/ttyUSB0 /dev/ttyUSB1; do
 		[ -e "$p" ] && { PORT="$p"; break; }
@@ -67,13 +50,6 @@ if [ "$ERASE" = 1 ]; then
 fi
 
 if [ "$PARTS" = 1 ]; then
-	# Read the offsets out of the partition-table CSV instead of repeating
-	# them here, so they cannot drift from the table the board is actually
-	# given. Typed by hand they did drift: for several releases this wrote
-	# /etc inside the firmware partition and the kernel 128K low -- a board
-	# that flashes without complaint and then never boots. The combined image
-	# is built from this same CSV by make-images.sh, which is why it was
-	# always right and nothing noticed.
 	CSV="$DIR/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r"
 	if [ ! -f "$CSV" ]; then
 		echo "error: partition table not found at $CSV" >&2
@@ -82,8 +58,6 @@ if [ "$PARTS" = 1 ]; then
 		exit 1
 	fi
 
-	# Fields: label, type, subtype, offset, size. Pre-set to empty so `set -u`
-	# does not turn a missing row into an unbound-variable message.
 	OFF_APP=""; OFF_ETC=""; OFF_LINUX=""; OFF_ROOTFS=""
 	eval "$(awk -F', *' '
 		/^[a-z]/ {
@@ -100,10 +74,6 @@ if [ "$PARTS" = 1 ]; then
 		exit 1
 	fi
 
-	# The two that are not in the CSV and cannot be: the ESP32-S3 ROM loads
-	# the bootloader from 0x0, and the bootloader looks for the partition
-	# table at 0x8000 (ESP-IDF's CONFIG_PARTITION_TABLE_OFFSET default, which
-	# this project does not change). A table cannot describe where it lives.
 	echo "==> Flashing the 6 images separately"
 	printf '    offsets from %s:\n' "$(basename "$CSV")"
 	printf '    firmware %s   etc %s   kernel %s   rootfs %s\n' \

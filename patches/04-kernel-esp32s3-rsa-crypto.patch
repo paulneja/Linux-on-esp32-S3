@@ -1,45 +1,7 @@
-Add the ESP32-S3 hardware RSA accelerator as a Linux Crypto API akcipher driver.
-
-The chip's RSA/MPI accelerator is the only crypto block Linux can safely claim:
-the WiFi firmware runs concurrently on the same die and uses the AES and SHA
-blocks for WPA2, but never RSA/MPI (WPA2-PSK does not need it). The firmware
-hands the block over by calling periph_module_enable(PERIPH_RSA_MODULE) once
-before linux_boot(), and is built with CONFIG_MBEDTLS_HARDWARE_MPI=n so it
-never touches it afterwards. The driver only writes RSA-specific registers, so
-there is no contention over shared clock/reset registers.
-
-It registers as "rsa" (driver name rsa-esp32s3) with priority 300, beating
-rsa-generic, and does Z = X^Y mod M in hardware for 1..128 words (up to
-4096-bit). Montgomery constants are computed in the kernel: M' by Newton
-iteration, RR via mpi_powm(). A boot-time self-test checks the hardware against
-mpi_powm() at 512 and 2048 bits.
-
-Signed-off-by: paulneja <jeremiasnejanky360@gmail.com>
----
-diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 --- a/drivers/crypto/esp32s3_rsa.c	1969-12-31 21:00:00.000000000 -0300
 +++ b/drivers/crypto/esp32s3_rsa.c	2026-07-16 22:55:12.410162550 -0300
-@@ -0,0 +1,549 @@
+@@ -0,0 +1,509 @@
 +// SPDX-License-Identifier: GPL-2.0-or-later
-+/*
-+ * ESP32-S3 RSA / big-number accelerator driver for the Linux Crypto API.
-+ *
-+ * Registers an "rsa" akcipher backed by the chip's hardware modular-
-+ * exponentiation unit, so kernel RSA consumers (X.509 verification, the
-+ * asymmetric key type, keyctl pkey_* from userspace) run on the accelerator
-+ * instead of the software mpi_powm path.
-+ *
-+ * Only the RSA/MPI block is used: the esp-hosted WiFi firmware drives the
-+ * AES and SHA accelerators for WPA2, but never RSA (WPA2-PSK has no RSA), so
-+ * this block is ours exclusively. The firmware enables its clock once at boot
-+ * (built with CONFIG_MBEDTLS_HARDWARE_MPI=n), so this driver never touches the
-+ * SYSTEM clock/reset registers shared with AES/SHA -- see PLAN.md, Stage 1.
-+ *
-+ * The math is Montgomery-domain modexp: Z = X^Y mod M. The Montgomery
-+ * constants M' = -M^-1 mod 2^32 and RR = R^2 mod M (R = 2^(32*nwords)) are
-+ * computed on the CPU (M' by Newton's iteration, RR via the kernel mpi lib)
-+ * and handed to the hardware with the operands.
-+ */
 +
 +#include <linux/delay.h>
 +#include <linux/io.h>
@@ -53,15 +15,13 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +#include <crypto/akcipher.h>
 +#include <crypto/algapi.h>
 +
-+/* --- ESP32-S3 physical addresses --- */
 +#define RSA_BASE	0x6003C000
 +#define RSA_SPAN	0x900
 +#define SYS_BASE	0x600C0000
 +#define SYS_SPAN	0x100
 +
-+/* RSA operand memory blocks (word arrays) and command/status registers */
 +#define RSA_M_MEM	0x000
-+#define RSA_Z_MEM	0x200	/* result Z out; RR (Rinv) in on entry */
++#define RSA_Z_MEM	0x200
 +#define RSA_Y_MEM	0x400
 +#define RSA_X_MEM	0x600
 +#define RSA_M_DASH	0x800
@@ -75,19 +35,16 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +#define RSA_SEARCH_POS	0x828
 +#define RSA_INT_ENA	0x82C
 +
-+/* SYSTEM: only the RSA-specific operand-memory power bit (not shared) */
 +#define SYS_RSA_PD_CTRL	0x40
 +#define RSA_MEM_PD_BIT	BIT(0)
 +
-+#define ESP_RSA_MAX_WORDS	128	/* 4096-bit */
++#define ESP_RSA_MAX_WORDS	128
 +
 +static void __iomem *rsa;
 +static void __iomem *sys;
-+static DEFINE_MUTEX(esp_rsa_lock);	/* serialises the single hardware block */
++static DEFINE_MUTEX(esp_rsa_lock);
 +
-+/* -------- word/byte helpers (hardware is little-endian 32-bit words) -------- */
 +
-+/* big-endian significant bytes -> zero-padded little-endian word array */
 +static void be_bytes_to_words(const u8 *be, unsigned len, u32 *w, int nwords)
 +{
 +	unsigned i;
@@ -97,7 +54,6 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +		w[i >> 2] |= (u32)be[len - 1 - i] << (8 * (i & 3));
 +}
 +
-+/* little-endian word array -> big-endian bytes (nwords*4, may lead with zeros) */
 +static void words_to_be_bytes(const u32 *w, int nwords, u8 *be)
 +{
 +	unsigned i, len = nwords * 4;
@@ -116,18 +72,16 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +	return 0;
 +}
 +
-+/* M' = -M^-1 mod 2^32, from the least-significant word of an odd modulus. */
 +static u32 compute_mprime(u32 m0)
 +{
-+	u32 inv = 1;	/* inv == m0^-1 mod 2^(2^k), doubling each step */
++	u32 inv = 1;
 +	int i;
 +
-+	for (i = 0; i < 5; i++)		/* 2 -> 4 -> 8 -> 16 -> 32 bits */
++	for (i = 0; i < 5; i++)
 +		inv *= 2 - m0 * inv;
-+	return (u32)(0 - inv);		/* negate mod 2^32 */
++	return (u32)(0 - inv);
 +}
 +
-+/* RR = R^2 mod n, R = 2^(32*nwords), computed with the kernel mpi library. */
 +static int compute_rr(MPI n, int nwords, u32 *rr_words)
 +{
 +	MPI two, exp, rr;
@@ -136,14 +90,14 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +	int sign, ret = -ENOMEM;
 +
 +	two = mpi_alloc_set_ui(2);
-+	exp = mpi_alloc_set_ui(64u * nwords);	/* R^2 = 2^(2*32*nwords) */
++	exp = mpi_alloc_set_ui(64u * nwords);
 +	rr = mpi_alloc(0);
 +	nbytes = nwords * 4;
 +	be = kzalloc(nbytes, GFP_KERNEL);
 +	if (!two || !exp || !rr || !be)
 +		goto out;
 +
-+	ret = mpi_powm(rr, two, exp, n);	/* rr = 2^(64*nwords) mod n */
++	ret = mpi_powm(rr, two, exp, n);
 +	if (ret)
 +		goto out;
 +
@@ -160,7 +114,6 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +	return ret;
 +}
 +
-+/* -------- the hardware engine: Z = X^Y mod M -------- */
 +
 +static void block_write(u32 off, const u32 *w, int nwords)
 +{
@@ -178,18 +131,13 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +		w[i] = readl(rsa + off + i * 4);
 +}
 +
-+/*
-+ * Z = X^Y mod M, all as nwords-long little-endian word arrays. M must be odd
-+ * (always true for RSA moduli and primes). rr_words = R^2 mod M and mprime =
-+ * -M^-1 mod 2^32 are supplied by the caller. Serialised by esp_rsa_lock.
-+ */
 +static int hw_modexp(u32 *z, const u32 *x, const u32 *y, const u32 *m,
 +		     const u32 *rr, u32 mprime, int nwords)
 +{
 +	int ybits = words_bitlen(y, nwords);
 +	int i, ret = -ETIMEDOUT;
 +
-+	if (ybits == 0) {		/* X^0 mod M = 1 */
++	if (ybits == 0) {
 +		memset(z, 0, nwords * sizeof(u32));
 +		z[0] = 1;
 +		return 0;
@@ -201,7 +149,7 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +	block_write(RSA_X_MEM, x, nwords);
 +	block_write(RSA_Y_MEM, y, nwords);
 +	block_write(RSA_M_MEM, m, nwords);
-+	block_write(RSA_Z_MEM, rr, nwords);	/* RR goes in the Z/RB block */
++	block_write(RSA_Z_MEM, rr, nwords);
 +	writel(mprime, rsa + RSA_M_DASH);
 +
 +	writel(0, rsa + RSA_CONSTANT_TIME);
@@ -227,12 +175,11 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +	return ret;
 +}
 +
-+/* -------- akcipher key context -------- */
 +
 +struct esp_rsa_key {
 +	int nwords;
 +	u32 mprime;
-+	MPI n_mpi;			/* kept for the payload range check */
++	MPI n_mpi;
 +	u32 n[ESP_RSA_MAX_WORDS];
 +	u32 e[ESP_RSA_MAX_WORDS];
 +	u32 d[ESP_RSA_MAX_WORDS];
@@ -248,7 +195,6 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +	k->nwords = 0;
 +}
 +
-+/* 1 < payload < n - 1, matching the software driver's conservative bound. */
 +static int check_payload(MPI x, MPI n)
 +{
 +	MPI n1;
@@ -265,7 +211,6 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +	return ret;
 +}
 +
-+/* Common path for both operations: exponent is e (encrypt/verify) or d. */
 +static int esp_rsa_op(struct akcipher_request *req, const u32 *exp)
 +{
 +	struct crypto_akcipher *tfm = crypto_akcipher_reqtfm(req);
@@ -340,7 +285,6 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +	return esp_rsa_op(req, k->d);
 +}
 +
-+/* Turn a parsed raw key into hardware word arrays + Montgomery constants. */
 +static int esp_rsa_setup(struct esp_rsa_key *k, const struct rsa_key *raw,
 +			 bool priv)
 +{
@@ -361,7 +305,7 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +	k->nwords = nwords;
 +
 +	be_bytes_to_words(raw->n, raw->n_sz, k->n, nwords);
-+	if (!(k->n[0] & 1)) {		/* modexp needs an odd modulus */
++	if (!(k->n[0] & 1)) {
 +		ret = -EINVAL;
 +		goto err;
 +	}
@@ -427,17 +371,16 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +	.base = {
 +		.cra_name = "rsa",
 +		.cra_driver_name = "rsa-esp32s3",
-+		.cra_priority = 300,	/* beat rsa-generic (100) */
++		.cra_priority = 300,
 +		.cra_module = THIS_MODULE,
 +		.cra_ctxsize = sizeof(struct esp_rsa_key),
 +	},
 +};
 +
-+/* -------- boot self-test: hardware modexp vs the software mpi_powm oracle -------- */
 +
 +static int selftest_one(int nbytes)
 +{
-+	u8 *nb, *xb, eb[3] = { 0x01, 0x00, 0x01 };	/* e = 65537 */
++	u8 *nb, *xb, eb[3] = { 0x01, 0x00, 0x01 };
 +	MPI n = NULL, x = NULL, e = NULL, ref = NULL;
 +	u32 *xw = NULL, *ew = NULL, *nw = NULL, *rr = NULL, *zw = NULL, *refw = NULL;
 +	int nwords = DIV_ROUND_UP(nbytes, 4), i, ret = -ENOMEM;
@@ -448,13 +391,13 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +	xb = kmalloc(nbytes, GFP_KERNEL);
 +	if (!nb || !xb)
 +		goto out;
-+	for (i = 0; i < nbytes; i++) {		/* deterministic pseudo-random */
++	for (i = 0; i < nbytes; i++) {
 +		nb[i] = (u8)(i * 37 + 11);
 +		xb[i] = (u8)(i * 13 + 7);
 +	}
-+	nb[0] |= 0x80;				/* modulus: full width */
-+	nb[nbytes - 1] |= 1;			/* modulus: odd */
-+	xb[0] = 0x02;				/* base < modulus */
++	nb[0] |= 0x80;
++	nb[nbytes - 1] |= 1;
++	xb[0] = 0x02;
 +
 +	n = mpi_read_raw_data(nb, nbytes);
 +	x = mpi_read_raw_data(xb, nbytes);
@@ -469,7 +412,7 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +	if (!n || !x || !e || !ref || !xw || !ew || !nw || !rr || !zw || !refw)
 +		goto out;
 +
-+	ret = mpi_powm(ref, x, e, n);		/* software oracle */
++	ret = mpi_powm(ref, x, e, n);
 +	if (ret)
 +		goto out;
 +
@@ -484,7 +427,6 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +	if (ret)
 +		goto out;
 +
-+	/* compare hardware result to the oracle, word for word */
 +	{
 +		u8 *refb = kzalloc(nwords * 4, GFP_KERNEL);
 +
@@ -506,7 +448,7 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +
 +static void esp_rsa_selftest(void)
 +{
-+	static const int sizes[] = { 64, 256 };	/* 512-bit, 2048-bit */
++	static const int sizes[] = { 64, 256 };
 +	int i, r;
 +
 +	for (i = 0; i < ARRAY_SIZE(sizes); i++) {
@@ -520,7 +462,6 @@ diff -Naur a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
 +{
 +	u32 v;
 +
-+	/* RSA-only operand-memory power bit; the shared clock is firmware-owned. */
 +	v = readl(sys + SYS_RSA_PD_CTRL);
 +	writel(v & ~RSA_MEM_PD_BIT, sys + SYS_RSA_PD_CTRL);
 +	while (readl(rsa + RSA_QUERY_CLEAN) != 1)
