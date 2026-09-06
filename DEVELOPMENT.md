@@ -37,8 +37,11 @@ configuration and user files. Hardware testing must back up a used board
 privately, flash the exact checksum-identified artifact, and distinguish a
 clean first boot from a later boot with restored user data.
 
-The pipeline does not flash or publish anything. Its first complete hardware
-verification is in progress. The remaining sections document the older base
+The pipeline does not flash or publish anything. The clean image built from
+`ee9e06d` passed 26/26 hardware checks on 2026-09-06; the
+[verification record](build/verification/2026-09-06.md) identifies its exact
+hash and limits. This is functional clean-build validation, not proof of
+bit-identical rebuilds. The remaining sections document the older base
 pipeline and historical 0.6 verification, not proof of the new userspace.
 
 ## Legacy base-only Docker build

@@ -20,9 +20,13 @@ notes and the binaries are on the
   functional directives/configuration/patch-matching data.
 - Added a clean, pinned-source container pipeline producing a complete
   16 MiB image and checksums.
-- Ship the factory `/home` formatted instead of erased. Without cleanmarkers
-  the first `mkdir` at boot had to erase the whole partition and the board
-  never reached the login prompt.
+- Ship the factory `/home` formatted instead of erased, fixing the observed
+  first-boot stall at `mkdir`. The clean image from `ee9e06d` passed 26/26
+  hardware checks; its exact hash and scope are recorded under `build/verification/`.
+- Check flashing inputs, sizes and partition layout before any erase; preserve
+  paths with spaces and document which modes overwrite `/etc` and `/home`.
+- Restore `flash.sh --help` and add host-only regression tests with a simulated
+  flasher. Distinguish functional clean-build validation from bit-identical builds.
 
 The entries below describe earlier releases and retain their original limits.
 

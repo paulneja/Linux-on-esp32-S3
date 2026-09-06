@@ -16,9 +16,10 @@ API, so it is usable by any program, not just one demo.
 >
 > The committed `images/` still contain the earlier 0.6 release. For the
 > complete current branch, use [the clean build pipeline](build/README.md).
-> Its first end-to-end build and exact-image hardware verification are in
-> progress; the earlier clean-build evidence applies to 0.6, not automatically
-> to this new image. This is a research project, not a production system.
+> The clean build of `ee9e06d` passed all 26 hardware checks on 2026-09-06;
+> see the [exact-image verification record](build/verification/2026-09-06.md).
+> This does not establish bit-for-bit reproducibility or validate later code
+> changes automatically. This is a research project, not a production system.
 
 > **Note on history.** This repo used to host an *emulated* approach (a RISC-V
 > RV32IMA interpreter running Linux on top of the ESP32-S3). That worked, but
@@ -50,7 +51,12 @@ bootloader, partition table, WiFi firmware, `/etc`, kernel and rootfs — with
 the unused space (the `/home` partition) padded to `0xff`. Flashing it erases
 and rewrites the whole chip in one shot, so this one file is a complete,
 self-contained install: no separate `--erase` step, nothing else to flash.
-(`--erase` still works and is harmless if you want a belt-and-suspenders wipe.)
+`--erase` explicitly wipes the chip first; omitting it does not preserve data
+when writing a full image. `--parts` preserves `/home` but overwrites `/etc`
+(accounts, passwords and network settings). `--parts --erase` also requires
+a generated `images/home.jffs2`, which is absent from the committed 0.6 set;
+missing inputs are rejected before erasing. The current branch's clean build
+formats `/home` in its new artifact; it does not replace these older images.
 
 Then open the console and log in:
 
