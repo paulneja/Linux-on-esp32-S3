@@ -1,0 +1,32 @@
+#!/bin/sh
+# Persistent per-user schedules, lightweight service shell, no mail daemon.
+set -e
+case "${1:-}" in
+    start)
+        [ ! -e /etc/cron/disabled ] || exit 0
+        /usr/sbin/cron-setup --prepare
+        # crond owns its pidfile; -n checks avoid stopping an unrelated PID.
+        if start-stop-daemon -K -t -q -p /var/run/crond.pid -n crond; then exit 0; fi
+        export SHELL=/bin/sh PATH=/usr/bin:/bin:/usr/sbin:/sbin
+        /usr/sbin/crond -b -l 8 -c /etc/cron/crontabs
+        for attempt in 1 2 3; do
+            sleep 1
+            if start-stop-daemon -K -t -q -p /var/run/crond.pid -n crond; then
+                echo 'Starting cron: OK'
+                exit 0
+            fi
+        done
+        echo 'cron did not become ready; check /var/log/messages' >&2
+        exit 1
+        ;;
+    stop)
+        start-stop-daemon -K -q -p /var/run/crond.pid -n crond || :
+        ;;
+    restart) "$0" stop; "$0" start ;;
+    status)
+        if start-stop-daemon -K -t -q -p /var/run/crond.pid -n crond; then
+            echo 'cron running; schedules: /etc/cron/crontabs'
+        else echo 'cron stopped'; exit 1; fi
+        ;;
+    *) echo 'Usage: S50crond {start|stop|restart|status}' >&2; exit 2 ;;
+esac

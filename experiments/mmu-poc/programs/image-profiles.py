@@ -87,9 +87,14 @@ def pack(selected, output):
         board = REPO / 'new-files/board/espressif/esp32s3'
         overlay = board / 'rootfs_overlay'
         for path in ('usr/sbin/web-server', 'usr/sbin/home-init', 'usr/sbin/home-users-setup',
+                     'usr/sbin/cron-setup', 'usr/sbin/cron-server', 'etc/init.d/S50crond',
                      'usr/bin/user-shell', 'usr/bin/session', 'etc/init.d/S06home-users'):
             install(overlay / path, tree / path)
         run('sh', board / 'prepare-home.sh', tree)
+        for directory, name in (('usr/bin', 'crontab'), ('usr/sbin', 'crond')):
+            path = tree / directory / name
+            remove(path)
+            path.symlink_to('../../bin/busybox')
         install(PROGRAMS / 'dtach', tree / 'usr/bin/dtach')
         install(PROGRAMS / 'dtach-b027c27b2439081064d07a86883c8e0b20a183c9/COPYING',
                 tree / 'usr/share/licenses/dtach/COPYING', 0o644)
