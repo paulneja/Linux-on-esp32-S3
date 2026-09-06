@@ -36,7 +36,7 @@ web_changed = False
 try:
     cmd('stty icrnl')
     cmd('home-users-setup; test ! -e /www; test "$(stat -c %a /bin/busybox)" = 4755; test "$(stat -c %a /home/root)" = 700')
-    cmd('sha256sum /home/root/sudoku.py /home/www/index.html; head -n 1 /home/root/README.txt')
+    cmd('sha256sum /home/www/index.html /home/root/README.txt; head -n 1 /home/root/README.txt')
     for user in ('hwchecka', 'hwcheckb'):
         cmd(f'! id {user} >/dev/null 2>&1 && test ! -e /home/{user}')
         cmd(f'adduser -D -s /usr/bin/user-shell {user}')
@@ -107,7 +107,7 @@ try:
     c.port.write(b'exit\r')
     c.until(rb'\nSESSION_RETURNED\n', 15)
     sessions.remove('hwcheck-bash')
-    cmd('test "$(cat /proc/sys/kernel/tainted)" = 0; sha256sum /home/root/sudoku.py; session list')
+    cmd('test "$(cat /proc/sys/kernel/tainted)" = 0; session list')
 finally:
     c.port.write(b'\x03\n')
     c.until(rb'(?:# |login: ?)', 15)
