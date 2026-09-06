@@ -13,6 +13,8 @@ parser = argparse.ArgumentParser(description='Test an explicitly flashed image o
 parser.add_argument('port')
 parser.add_argument('artifacts', type=Path)
 parser.add_argument('--output', type=Path, required=True)
+parser.add_argument('--reset-from-bootloader', action='store_true',
+                    help='Reset via RTS after a flash with --after no-reset; capture startup.')
 args = parser.parse_args()
 repo = Path(__file__).resolve().parent.parent
 exp = repo / 'experiments/mmu-poc'
@@ -49,7 +51,8 @@ def command(text, seconds=60, expected=None):
     with (args.output / 'commands.log').open('a') as log:
         log.write(output + '\n')
     if expected is not None:
-        assert expected in output, (text, expected)
+        for marker in expected if isinstance(expected, tuple) else (expected,):
+            assert marker in output, (text, marker)
     return output
 
 def verify_installed():
@@ -66,12 +69,24 @@ def external(name):
         subprocess.run([sys.executable, str(exp / 'programs' / (name + '.py')), args.port],
                        stdout=log, stderr=subprocess.STDOUT, check=True, timeout=600)
 
+def boot_from_flash():
+    console.port.rts = True
+    time.sleep(0.1)
+    console.port.rts = False
+    output, _ = console.until(rb'buildroot login: ?', 60)
+    (args.output / 'boot.log').write_bytes(output)
+    print(output.decode(errors='replace'), flush=True)
+
 try:
     console = probe.Console(args.port)
+    if args.reset_from_bootloader:
+        record('reset-and-boot', boot_from_flash)
     console.login()
     record('installed-kernel-and-rootfs-hashes', verify_installed)
     checks = [
-        ('boot', 'uname -a && id && mount && free && dmesg', None),
+        ('boot', 'uname -a && id && mount && free && dmesg',
+         ('6.11.0-forkbank', 'esp32s3-rsa: selftest 512-bit PASS',
+          'esp32s3-rsa: selftest 2048-bit PASS', 'Mounted root (cramfs filesystem) readonly')),
         ('shell-policy', 'test -n "$BASH_VERSION" && test "$(readlink /bin/sh)" = busybox && test "$HOME" = /home/root', None),
         ('excluded-programs', 'test ! -e /usr/bin/sqlite3 && test ! -e /usr/bin/sudo && test ! -e /usr/bin/doas && test ! -e /usr/bin/nvim && test ! -e /usr/bin/python3', None),
         ('mmu-executable-remap', 'mmu-run self-test', 'PASS: executable A -> B -> A -> B'),
