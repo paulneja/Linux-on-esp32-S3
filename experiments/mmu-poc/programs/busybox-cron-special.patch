@@ -1,0 +1,5 @@
+--- a/.config
++++ b/.config
+@@ -782 +782 @@
+-# CONFIG_FEATURE_CROND_D is not set
++CONFIG_FEATURE_CROND_D=y
