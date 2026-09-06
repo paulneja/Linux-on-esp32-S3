@@ -19,8 +19,10 @@ notes and the binaries are on the
 - Removed nonessential source comments while preserving licenses and
   functional directives/configuration/patch-matching data.
 - Added a clean, pinned-source container pipeline producing a complete
-  16 MiB image and checksums. End-to-end validation of that exact new image
-  is pending; prior board tests used incrementally built experimental images.
+  16 MiB image and checksums.
+- Ship the factory `/home` formatted instead of erased. Without cleanmarkers
+  the first `mkdir` at boot had to erase the whole partition and the board
+  never reached the login prompt.
 
 The entries below describe earlier releases and retain their original limits.
 

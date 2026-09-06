@@ -32,11 +32,13 @@ completed stages; it is not a second clean build.
 
 - `linux-esp32s3-native-full.bin`: exactly 16 MiB, intended for offset `0x0`.
 - Bootloader, partition table, firmware, kernel, rootfs and fresh `/etc` images.
+- `home.jffs2`: an empty but formatted `/home`, so the first write at boot
+  does not have to erase the whole partition.
 - `SHA256SUMS`, `build-manifest.json`, `rootfs.json` and `sources.lock`.
 - `configs/`: the actual toolchain, Buildroot, firmware, kernel and BusyBox
   configurations, with their hashes in the build manifest.
 
-The full image contains default settings and an empty `/home`, not a backup
+The full image contains default settings and a formatted empty `/home`, not a backup
 of the developer's board. Flashing it replaces existing configuration and
 user files. Back up a used board privately before any full-image test.
 Never publish raw board backups: they may contain credentials and user data.
