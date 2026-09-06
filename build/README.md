@@ -62,12 +62,20 @@ checksums and reads the installed kernel/rootfs through their MTD devices to
 compare their hashes. It then tests remapping, fork, process compatibility,
 the selected programs, job admission, benchmarks, users and permissions,
 HTTP, cron, detached sessions, COM reconnects and persistence across reboots.
+
 Functional program tests run from the Bash login. For the instrumented
 benchmark suite, the runner replaces that login temporarily with Dash,
 then logs back into Bash. Keeping an additional interactive Bash alive
 while measuring nested Bash pipelines exhausted RAM in the development run;
 that combination is not a supported concurrency guarantee. Services remain
 enabled during the measurements.
+
+Session tests use a Dash primary console, restored to Bash afterwards.
+Two detached Dash sessions with a Bash primary console could leave too little
+RAM even for `session list`; two interactive Bash consoles could not fork
+`id`. The separate `nohup` test runs from the normal Bash login, without the
+two sessions. This suite does not claim those combined workloads are safe.
+
 It creates temporary users and jobs and removes them on the normal cleanup
 path. It requires root access, the default Bash login policy, cron enabled
 and HTTP initially disabled; do not run it against an unrelated production
@@ -81,7 +89,10 @@ self-tests and the read-only cramfs mount in the kernel log.
 
 `results.json` records the exact image hash and each test's outcome/time.
 Logs and a failed result remain available if any check stops the run. These
-tests use the actual board and reboot it; they do not flash it, enable WiFi,
+results also record the hashes of the runner and its external test scripts.
+Only a fully passing run updates `build-manifest.json` with the hardware
+verification result and report location; image bytes are not changed.
+These tests use the actual board and reboot it; they do not flash it, enable WiFi,
 test an external WiFi connection or establish isolation from malicious code.
 
 ## Verification status

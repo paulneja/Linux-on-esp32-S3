@@ -15,6 +15,7 @@ parser.add_argument('port')
 args = parser.parse_args()
 c = probe.Console(args.port)
 c.login()
+attached = None
 
 def cmd(command, seconds=30):
     result = c.command(command, seconds)
@@ -22,13 +23,24 @@ def cmd(command, seconds=30):
     return result
 
 def attach(name):
+    global attached
     c.port.write(('session ' + name + '; echo SESSION_RETURNED\r').encode())
     c.until(rb'Detach: Ctrl-\]. Reattach:', 15)
+    attached = name
     cmd('echo INSIDE_SESSION')
 
 def detach():
+    global attached
     c.port.write(b'\x1d')
     c.until(rb'\nSESSION_RETURNED\n', 15)
+    attached = None
+
+def end_session():
+    global attached
+    c.port.write(b'exit\r')
+    c.until(rb'\nSESSION_RETURNED\n', 15)
+    sessions.remove(attached)
+    attached = None
 
 users = []
 sessions = []
@@ -75,6 +87,10 @@ try:
     if web_changed:
         cmd('web-server off')
         web_changed = False
+    c.port.write(b"export PS1='MMU_SHELL> '; exec /usr/bin/dash -i\r")
+    c.until(rb'\nMMU_SHELL> $', 15)
+    c.port.write(b'stty icrnl\n')
+    c.until(rb'\nMMU_SHELL> $', 15)
     for name in ('hwcheck-a', 'hwcheck-b'):
         cmd(f'test ! -e /tmp/dtach-0/{name} && session start {name}')
         sessions.append(name)
@@ -82,40 +98,43 @@ try:
         cmd(f'export SESSION_PROOF={name}')
         detach()
     cmd('session list')
-    cmd('test ! -e /tmp/home-nohup-gate')
-    cmd("nohup /bin/sh -c 'n=0; while test ! -e /tmp/home-nohup-gate; do sleep 1; n=$((n+1)); test $n -lt 45 || exit 1; done; echo NOHUP_COM_PASS > /tmp/home-nohup-check' >/tmp/home-nohup-log 2>&1 </dev/null & bg=$!")
-    before = cmd('cat /proc/sys/kernel/random/boot_id')
+    before = cmd('read -r boot_id < /proc/sys/kernel/random/boot_id; printf "%s\\n" "$boot_id"')
     boot = re.search(r'(?m)^[a-f0-9-]{36}$', before).group(0)
     c.close()
     time.sleep(4)
     c = probe.Console(args.port)
     c.login()
-    assert boot in cmd('cat /proc/sys/kernel/random/boot_id')
-    cmd('touch /tmp/home-nohup-gate; sleep 2')
-    cmd('test "$(cat /tmp/home-nohup-check)" = NOHUP_COM_PASS')
+    assert boot in cmd('read -r boot_id < /proc/sys/kernel/random/boot_id; printf "%s\\n" "$boot_id"')
     for name in list(sessions):
         attach(name)
         cmd(f'test "$SESSION_PROOF" = {name} && echo REATTACH_PASS')
-        c.port.write(b'exit\r')
-        c.until(rb'\nSESSION_RETURNED\n', 15)
-        sessions.remove(name)
-    print('PASS: two independent lightweight sessions, detach/reattach, COM reconnect, nohup', flush=True)
+        end_session()
+    print('PASS: two independent lightweight sessions, detach/reattach, COM reconnect, lightweight primary console', flush=True)
     cmd('session start hwcheck-bash /bin/bash --noprofile --norc')
     sessions.append('hwcheck-bash')
     attach('hwcheck-bash')
     cmd('test -n "$BASH_VERSION" && id && echo BASH_SESSION_PASS')
-    c.port.write(b'exit\r')
-    c.until(rb'\nSESSION_RETURNED\n', 15)
-    sessions.remove('hwcheck-bash')
+    end_session()
+    print('PASS: additional Bash session with lightweight primary console', flush=True)
+    c.port.write(b'exec /bin/bash -l\r')
+    c.until(rb'# $', 15)
+    cmd('test -n "$BASH_VERSION"')
     cmd('test "$(cat /proc/sys/kernel/tainted)" = 0 && session list')
 finally:
-    c.port.write(b'\x03\n')
-    c.until(rb'(?:# |login: ?)', 15)
-    if web_changed:
-        cmd('web-server off')
-    for user in reversed(users):
-        cmd(f'deluser {user}; rm -r /home/{user}')
-    cmd('rm -f /tmp/home-web-check /tmp/home-nohup-check /tmp/home-nohup-log /tmp/home-nohup-gate /tmp/dtach-proof-result')
-    c.close()
-    if sessions:
-        print('ATTENTION: test sessions may remain: ' + ', '.join(sessions), flush=True)
+    try:
+        c.port.write(b'\x03\n')
+        c.until(rb'(?:# |MMU_SHELL> |login: ?)', 15)
+        if attached is not None:
+            end_session()
+        for name in list(sessions):
+            attach(name)
+            end_session()
+        if web_changed:
+            cmd('web-server off')
+        for user in reversed(users):
+            cmd(f'deluser {user} && rm -r /home/{user}')
+        cmd('rm -f /tmp/home-web-check')
+    finally:
+        c.close()
+        if sessions:
+            print('ATTENTION: test sessions may remain: ' + ', '.join(sessions), flush=True)

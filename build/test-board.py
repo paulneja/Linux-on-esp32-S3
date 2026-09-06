@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -29,6 +30,13 @@ results = {'image_sha256': manifest['sha256']['linux-esp32s3-native-full.bin'],
            'source_commit': manifest['source_commit'],
            'test_runner_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
            'tests': [], 'status': 'running'}
+results['test_files_sha256'] = {
+    str(path.relative_to(repo)): hashlib.sha256(path.read_bytes()).hexdigest()
+    for path in [exp / 'serial-probe.py', *[
+        exp / 'programs' / (name + '.py')
+        for name in ('test-home-users-board', 'test-cron-board', 'test-com-reconnect', 'test-home-reboot')
+    ]]
+}
 console = None
 
 def record(name, operation):
@@ -135,7 +143,19 @@ try:
     console = None
     for name in ('test-home-users-board', 'test-cron-board', 'test-com-reconnect', 'test-home-reboot'):
         record(name, lambda name=name: external(name))
+    console = probe.Console(args.port)
+    console.login()
+    record('final-kernel-health', lambda: command('test "$(cat /proc/sys/kernel/tainted)" = 0 && ! dmesg | grep -E "Out of memory:|Kernel panic|BUG:|Oops:" && free'))
     results['status'] = 'pass'
+    results['finished_utc'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    manifest['board_verification'] = {
+        'status': 'pass', 'image_sha256': results['image_sha256'],
+        'finished_utc': results['finished_utc'],
+        'report': os.path.relpath(args.output.resolve() / 'results.json', args.artifacts.resolve()),
+        'test_runner_sha256': results['test_runner_sha256'],
+        'scope': 'Local COM, memory, programs, users, loopback network, cron and persistence; no external WiFi test',
+    }
+    (args.artifacts / 'build-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
 except BaseException:
     results['status'] = 'fail'
     raise
