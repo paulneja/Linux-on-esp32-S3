@@ -72,6 +72,8 @@ rootfs_base() {
     make -C "$base/buildroot" O="$br" esp32s3_devkit_c1_16m_defconfig
     "$base/buildroot/utils/config" --file "$br/.config" --set-str TOOLCHAIN_EXTERNAL_PATH "$base/crosstool-NG/builds/xtensa-esp32s3-linux-uclibcfdpic"
     "$base/buildroot/utils/config" --file "$br/.config" --set-str TOOLCHAIN_EXTERNAL_CUSTOM_PREFIX '$(ARCH)-esp32s3-linux-uclibcfdpic'
+    "$base/buildroot/utils/config" --file "$br/.config" --set-str PRIMARY_SITE 'https://sources.buildroot.net'
+    "$base/buildroot/utils/config" --file "$br/.config" --set-str WGET 'wget -nd -t 3 --timeout=20'
     test "$(git ls-remote https://github.com/jcmvbkbc/linux-xtensa.git "refs/tags/$LINUX_KERNEL_TAG^{}" | cut -f1)" = "$LINUX_KERNEL_REV"
     make -C "$base/buildroot" O="$br" BR2_JLEVEL="$JOBS"
     test -s "$br/images/rootfs.cramfs"
