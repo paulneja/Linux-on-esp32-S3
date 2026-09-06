@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/*
- * Espressif Systems Wireless LAN device driver
- *
- * SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD
- *
- */
+/* SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD */
 #ifndef _esp_api__h_
 #define _esp_api__h_
 
@@ -27,7 +22,6 @@ struct esp_wifi_device *get_priv_from_payload_header(struct esp_adapter *adapter
 struct sk_buff *esp_alloc_skb(u32 len);
 int esp_send_packet(struct esp_adapter *adapter, struct sk_buff *skb);
 
-/* BLE provisioning pipe (/dev/esp-ble) -- see esp_ble_prov.c */
 int esp_ble_prov_init(struct esp_adapter *adapter);
 void esp_ble_prov_deinit(void);
 void esp_ble_prov_rx(struct sk_buff *skb);

@@ -1,28 +1,9 @@
 #!/bin/sh
-#
-# wifi -- friendly WiFi manager for the STA (home) uplink.
-#
-#   wifi                     interactive: scan, list networks numbered, pick one.
-#                            Open networks connect straight away; secured ones
-#                            ask for the password.
-#   wifi scan                just list the networks in range.
-#   wifi connect "SSID"           connect to an open network (no password).
-#   wifi connect "SSID" "PASS"    connect to a WPA2-PSK network.
-#   wifi status              show the current connection / IP.
-#   wifi disconnect          bring the STA link down.
-#
-# The choice persists in /etc/wpa_supplicant.conf (writable jffs2), so it
-# survives a reboot. The AP side does not exist on this build (STA only).
 
 IFACE=espsta0
 CONF=/etc/wpa_supplicant.conf
 TAB=$(printf '\t')
 
-# --- scanning -----------------------------------------------------------
-# Emit one line per network:  <signal>\t<SEC|OPEN>\t<SSID>
-# Prefer wpa_cli when wpa_supplicant is already managing the interface;
-# otherwise fall back to a direct iw scan (works on a fresh, unconfigured
-# board where wpa_supplicant is not running yet).
 raw_scan() {
 	ip link set "$IFACE" up 2>/dev/null
 
@@ -51,12 +32,10 @@ raw_scan() {
 	fi
 }
 
-# Deduplicate by SSID (keep the strongest signal) and sort strongest first.
 scan_list() {
 	raw_scan | sort -t"$TAB" -k1,1 -rn | awk -F"$TAB" '!seen[$3]++'
 }
 
-# --- connecting ---------------------------------------------------------
 write_conf_open() {
 	cat > "$CONF" <<EOF
 network={
@@ -103,7 +82,6 @@ connect() {
 	apply_conf "$SSID"
 }
 
-# --- interactive picker -------------------------------------------------
 interactive() {
 	echo "Scanning for WiFi networks on $IFACE ..."
 	TMP=$(mktemp 2>/dev/null || echo /tmp/.wifi-scan.$$)
@@ -134,7 +112,6 @@ interactive() {
 		return 0
 	fi
 
-	# Extract the chosen line.
 	line=$(sed -n "${choice}p" "$TMP" 2>/dev/null)
 	rm -f "$TMP"
 	if [ -z "$line" ]; then
@@ -161,7 +138,6 @@ interactive() {
 	fi
 }
 
-# --- status -------------------------------------------------------------
 status() {
 	if iw dev "$IFACE" link 2>/dev/null | grep -q "Connected to"; then
 		iw dev "$IFACE" link 2>/dev/null | grep -E "Connected to|SSID|signal"
@@ -171,7 +147,6 @@ status() {
 	ip addr show "$IFACE" 2>/dev/null | grep -E "inet " || echo "No IP address."
 }
 
-# --- dispatch -----------------------------------------------------------
 case "${1:-}" in
 "")             interactive ;;
 scan|list)      scan_list | awk -F"$TAB" '{printf "  %5s  %-6s  %s\n", $1, ($2=="OPEN"?"open":"lock"), $3}' ;;

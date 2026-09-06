@@ -131,7 +131,6 @@ static int process_rx_buf(struct esp_wifi_shmem *hw, struct sk_buff *skb)
 
 	offset = le16_to_cpu(header->offset);
 
-	/* Validate received SKB. Check len and offset fields */
 	if (offset != sizeof(struct esp_payload_header)) {
 		pr_err("%s: bad offfset %d\n", __func__, offset);
 		return -EINVAL;
@@ -150,10 +149,8 @@ static int process_rx_buf(struct esp_wifi_shmem *hw, struct sk_buff *skb)
 		return -EINVAL;
 	}
 
-	/* Trim SKB to actual size */
 	skb_trim(skb, len);
 
-	/* enqueue skb for read_packet to pick it */
 	if (header->if_type == ESP_INTERNAL_IF)
 		skb_queue_tail(&hw->rx_q[PRIO_Q_HIGH], skb);
 	else if (header->if_type == ESP_HCI_IF)

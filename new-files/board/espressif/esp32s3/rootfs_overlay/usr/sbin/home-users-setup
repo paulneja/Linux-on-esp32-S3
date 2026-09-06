@@ -1,5 +1,4 @@
 #!/bin/sh
-# Run once after updating rootfs on an existing installation. No account resets.
 set -e
 test "$(id -u)" = 0
 if [ ! -e /etc/init.d/S06home-users ] && [ ! -L /etc/init.d/S06home-users ]; then

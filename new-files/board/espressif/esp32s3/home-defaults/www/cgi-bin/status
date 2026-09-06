@@ -1,6 +1,4 @@
 #!/usr/bin/lua
--- Live system status as JSON, for the board's web page. Reads only /proc, so
--- it never fork()s -- safe on this NOMMU system.
 
 local function slurp(p)
 	local f = io.open(p)

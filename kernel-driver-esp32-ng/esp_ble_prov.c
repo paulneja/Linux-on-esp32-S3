@@ -1,22 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/*
- * BLE provisioning pipe for Linux-on-ESP32-S3.
- *
- * Exposes /dev/esp-ble, a plain byte pipe between userspace and the BLE
- * (Nordic UART Service) link that the ESP32 firmware runs on core 0. A phone
- * connects over BLE, and whatever it types arrives here; whatever userspace
- * writes here goes back to the phone.
- *
- * The point is joining the board to a WiFi network with no PC and no serial
- * cable: a small daemon reads this device, runs the same scan/pick/password
- * dialog as the `wifi` command, and connects. The dialog lives in userspace
- * (not in the firmware) because Linux is what owns the WiFi connection --
- * having the firmware join on its own would desynchronise the driver state.
- *
- * Transport: packets tagged ESP_BLE_PROV_IF over the existing shmem link, so
- * this rides the multiplexing that is already there rather than adding a
- * second channel.
- */
 
 #include <linux/module.h>
 #include <linux/miscdevice.h>
@@ -32,8 +14,6 @@
 
 #define ESP_BLE_PROV_DEV_NAME	"esp-ble"
 #define ESP_BLE_PROV_MAX_WRITE	512
-/* Bound the backlog: a phone that spams while nothing reads must not be able
- * to exhaust memory on an 8MB board. */
 #define ESP_BLE_PROV_MAX_QUEUE	32
 
 static struct esp_adapter *ble_adapter;
@@ -41,13 +21,11 @@ static struct sk_buff_head rx_q;
 static wait_queue_head_t rx_wait;
 static atomic_t is_open = ATOMIC_INIT(0);
 
-/* --- called from the driver RX path (firmware -> us) --------------------- */
 void esp_ble_prov_rx(struct sk_buff *skb)
 {
 	if (!skb)
 		return;
 
-	/* Nobody listening, or backlog full: drop rather than grow. */
 	if (!atomic_read(&is_open) ||
 	    skb_queue_len(&rx_q) >= ESP_BLE_PROV_MAX_QUEUE) {
 		dev_kfree_skb_any(skb);
@@ -58,10 +36,8 @@ void esp_ble_prov_rx(struct sk_buff *skb)
 	wake_up_interruptible(&rx_wait);
 }
 
-/* --- file operations ----------------------------------------------------- */
 static int esp_ble_prov_open(struct inode *inode, struct file *file)
 {
-	/* Single reader: this is a provisioning console, not a shared bus. */
 	if (atomic_xchg(&is_open, 1))
 		return -EBUSY;
 
@@ -102,7 +78,6 @@ static ssize_t esp_ble_prov_read(struct file *file, char __user *buf,
 		return -EFAULT;
 	}
 
-	/* Short read: keep the remainder queued instead of losing it. */
 	if (len < skb->len) {
 		skb_pull(skb, len);
 		skb_queue_head(&rx_q, skb);
@@ -129,8 +104,6 @@ static ssize_t esp_ble_prov_write(struct file *file, const char __user *buf,
 	if (count > ESP_BLE_PROV_MAX_WRITE)
 		count = ESP_BLE_PROV_MAX_WRITE;
 
-	/* Same framing the other interfaces use: header first, payload
-	 * aligned after it. */
 	pad_len = sizeof(struct esp_payload_header);
 	total_len = count + pad_len;
 	pad_len += SKB_DATA_ADDR_ALIGNMENT - (total_len % SKB_DATA_ADDR_ALIGNMENT);
@@ -193,7 +166,6 @@ static struct miscdevice esp_ble_prov_misc = {
 	.mode	= 0600,
 };
 
-/* --- setup / teardown ---------------------------------------------------- */
 int esp_ble_prov_init(struct esp_adapter *adapter)
 {
 	int ret;

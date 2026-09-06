@@ -1,5 +1,4 @@
 #!/bin/sh
-# Populate only missing defaults on the mounted, writable home partition.
 set -e
 test "$(id -u)" = 0
 awk '$2 == "/home" && $3 == "jffs2" && $4 ~ /(^|,)rw(,|$)/ { found=1 }
@@ -16,7 +15,6 @@ fi
 if [ ! -e /home/www ] && [ ! -L /home/www ]; then
     umask 077
     seed=$(mktemp -d /home/.www-seed.XXXXXX)
-    # This archive is generated from repository-owned defaults, never a download.
     tar -xzf /usr/share/esp32-home/www.tar.gz -C "$seed"
     chown -R 0:0 "$seed/www"
     chmod 755 "$seed/www" "$seed/www/cgi-bin" "$seed/www/cgi-bin/status"

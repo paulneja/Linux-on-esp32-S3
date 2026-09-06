@@ -1,12 +1,5 @@
 #!/bin/sh
 
-# udhcpc script edited by Tim Riker <Tim@Rikers.org>
-#
-# Local change: this board is used on networks whose router advertises itself
-# as the DNS resolver but does not actually resolve (returns NXDOMAIN). Since a
-# resolver stops at the first NXDOMAIN, we put the public resolvers Cloudflare
-# (1.1.1.1) and Google (8.8.8.8) FIRST in resolv.conf, then any DHCP-supplied
-# ones, so name resolution works regardless of the local router.
 
 [ -z "$1" ] && echo "Error: should be called from udhcpc" && exit 1
 
@@ -15,7 +8,6 @@ RESOLV_CONF="/etc/resolv.conf"
 [ -e $RESOLV_CONF ] || touch $RESOLV_CONF
 [ -n "$broadcast" ] && BROADCAST="broadcast $broadcast"
 [ -n "$subnet" ] && NETMASK="netmask $subnet"
-# Handle stateful DHCPv6 like DHCPv4
 [ -n "$ipv6" ] && ip="$ipv6/128"
 
 if [ -z "${IF_WAIT_DELAY}" ]; then
@@ -41,8 +33,6 @@ case "$ACTION" in
 		/sbin/ifconfig $interface up
 		/sbin/ifconfig $interface 0.0.0.0
 
-		# drop info from this interface
-		# resolv.conf may be a symlink to /tmp/, so take care
 		TMPFILE=$(mktemp)
 		grep -vE "# $interface\$" $RESOLV_CONF > $TMPFILE
 		cat $TMPFILE > $RESOLV_CONF
@@ -68,9 +58,6 @@ case "$ACTION" in
 			wait_for_ipv6_default_route
 		fi
 
-		# RFC3442: If the DHCP server returns both a Classless
-		# Static Routes option and a Router option, the DHCP
-		# client MUST ignore the Router option.
 		if [ -n "$staticroutes" ]; then
 			echo "deleting routers"
 			route -n | while read dest gw mask flags metric ref use iface; do
@@ -78,7 +65,6 @@ case "$ACTION" in
 					route del -net "$dest" netmask "$mask" gw "$gw" dev "$interface"
 			done
 
-			# format: dest1/mask gw1 ... destn/mask gwn
 			set -- $staticroutes
 			while [ -n "$1" -a -n "$2" ]; do
 				route add -net "$1" gw "$2" dev "$interface"
@@ -95,14 +81,11 @@ case "$ACTION" in
 			done
 		fi
 
-		# drop info from this interface
-		# resolv.conf may be a symlink to /tmp/, so take care
 		TMPFILE=$(mktemp)
 		grep -vE "# $interface\$" $RESOLV_CONF > $TMPFILE
 		cat $TMPFILE > $RESOLV_CONF
 		rm -f $TMPFILE
 
-		# prefer rfc3397 domain search list (option 119) if available
 		if [ -n "$search" ]; then
 			search_list=$search
 		elif [ -n "$domain" ]; then
@@ -112,7 +95,6 @@ case "$ACTION" in
 		[ -n "$search_list" ] &&
 			echo "search $search_list # $interface" >> $RESOLV_CONF
 
-		# Public resolvers first (see header), then any DHCP-supplied ones.
 		echo "nameserver 1.1.1.1 # $interface" >> $RESOLV_CONF
 		echo "nameserver 8.8.8.8 # $interface" >> $RESOLV_CONF
 		for i in $dns ; do

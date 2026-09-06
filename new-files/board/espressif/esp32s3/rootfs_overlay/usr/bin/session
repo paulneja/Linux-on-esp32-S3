@@ -1,5 +1,4 @@
 #!/bin/sh
-# Named dtach sessions. Private socket directories; never delete a stale socket blindly.
 set -e
 uid=$(id -u)
 directory=/tmp/dtach-$uid
@@ -23,7 +22,6 @@ name=${1:-}
 case "$name" in ''|*[!a-zA-Z0-9_-]*) echo 'Session name: letters, digits, underscore or dash only' >&2; exit 2 ;; esac
 shift
 if [ "$#" -eq 0 ]; then
-    # Keep RAM for attaching and launching jobs; login itself remains Bash.
     if [ -x /usr/bin/dash ]; then set -- /usr/bin/dash -i
     else set -- /bin/sh -i; fi
 fi

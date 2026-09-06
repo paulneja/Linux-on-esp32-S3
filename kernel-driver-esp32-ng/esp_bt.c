@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/*
- * Espressif Systems Wireless LAN device driver
- *
- * SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD
- *
- */
+/* SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD */
 #include "utils.h"
 #include "esp_api.h"
 #include "esp_kernel_port.h"
@@ -75,24 +70,19 @@ static ESP_BT_SEND_FRAME_PROTOTYPE()
 		esp_err("Invalid args");
 		return -EINVAL;
 	}
-	//print_hex_dump(KERN_INFO, "bt_tx: ", DUMP_PREFIX_ADDRESS, 16, 1, skb->data, len, 1  );
 
-	/* Create space for payload header */
 	pad_len = sizeof(struct esp_payload_header);
 	total_len = len + sizeof(struct esp_payload_header);
 
-	/* Align buffer len */
 	pad_len += SKB_DATA_ADDR_ALIGNMENT - (total_len % SKB_DATA_ADDR_ALIGNMENT);
 
 	pkt_type = hci_skb_pkt_type(skb);
 
 	if (skb_headroom(skb) < pad_len) {
-		/* Headroom is not sufficient */
 		realloc_skb = 1;
 	}
 
 	if (realloc_skb || !IS_ALIGNED((unsigned long) skb->data, SKB_DATA_ADDR_ALIGNMENT)) {
-		/* Realloc SKB */
 		if (skb_linearize(skb)) {
 			hdev->stat.err_tx++;
 			return -EINVAL;
@@ -110,15 +100,12 @@ static ESP_BT_SEND_FRAME_PROTOTYPE()
 
 		pos += pad_len;
 
-		/* Populate new SKB */
 		skb_copy_from_linear_data(skb, pos, skb->len);
 		skb_put(new_skb, skb->len);
 
-		/* Replace old SKB */
 		dev_kfree_skb_any(skb);
 		skb = new_skb;
 	} else {
-		/* Realloc is not needed, Make space for interface header */
 		skb_push(skb, pad_len);
 	}
 
@@ -132,7 +119,6 @@ static ESP_BT_SEND_FRAME_PROTOTYPE()
 	hdr->offset = cpu_to_le16(pad_len);
 	pos = skb->data;
 
-	/* set HCI packet type */
 	*(pos + pad_len - 1) = pkt_type;
 
 	if (adapter->capabilities & ESP_CHECKSUM_ENABLED)

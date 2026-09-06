@@ -1,22 +1,4 @@
 #!/bin/sh
-#
-# WiFi provisioning over the BLE link (/dev/esp-ble).
-#
-# A phone connects to the board over BLE (it advertises as "Esp32-Linux",
-# Nordic UART Service) and gets this dialog: the networks in range, numbered;
-# pick one; open networks connect straight away, secured ones ask for the
-# password. The point is joining the board to a network with no PC and no
-# serial cable.
-#
-# The scan and the connection are done by the `wifi` command, not
-# reimplemented here: Linux owns the WiFi connection, so provisioning has to go
-# through the same path the serial console uses or the two would disagree.
-#
-# Written to fork as little as possible. This board has 8MB and no swap, and
-# `wifi scan` alone spawns iw+awk+sort+awk; an earlier version that read the
-# BLE pipe with `dd | tr` in a loop kept those alive across the scan and got
-# OOM-killed. So: the device is opened once on fd 3 and every read/write here
-# is a shell builtin.
 
 DEV=/dev/esp-ble
 IFACE=espsta0
@@ -25,14 +7,8 @@ CR=$(printf '\r')
 
 [ -e "$DEV" ] || exit 0
 
-# One open for the whole lifetime -- reopening would also drop anything the
-# phone sent while the device was closed.
 exec 3<> "$DEV" || exit 1
 
-# The firmware advertises as soon as its BLE stack syncs, which is before
-# Linux has finished booting. Connecting in that window is unreliable: core 0
-# is still bringing up WiFi. Give it a moment to settle rather than answering
-# a phone we cannot serve yet.
 n=0
 while [ ! -e "/sys/class/net/$IFACE" ]; do
 	n=$((n + 1))
@@ -44,7 +20,6 @@ say() {
 	printf '%s\r\n' "$1" >&3
 }
 
-# Reads one line into $LINE. Builtin only: no subshell, no pipeline.
 LINE=""
 read_line() {
 	IFS= read -r LINE <&3 || return 1
@@ -62,8 +37,6 @@ connect_and_report() {
 		wifi connect "$_ssid" >/dev/null 2>&1
 	fi
 
-	# DHCP takes a few seconds; report the address instead of leaving the
-	# user guessing whether it worked.
 	_n=0
 	_ip=""
 	while [ "$_n" -lt 20 ]; do
@@ -89,10 +62,6 @@ do_dialog() {
 	say ""
 	say "=== Linux on ESP32-S3 - WiFi setup ==="
 
-	# The BLE link comes up before Linux has finished booting, so a phone
-	# that connects straight away can land here before the WiFi interface
-	# exists. Wait for it instead of reporting "no networks", which looks
-	# like a failure when it is only a race.
 	_n=0
 	while [ ! -e "/sys/class/net/$IFACE" ]; do
 		[ "$_n" = 0 ] && say "WiFi is still starting up, hold on..."
@@ -106,9 +75,6 @@ do_dialog() {
 
 	say "Scanning, please wait..."
 
-	# Run the scan on its own, with nothing else of ours alive, so the
-	# pipeline it spawns has the memory it needs. Retry a couple of times:
-	# the radio can need a moment more even once the interface is there.
 	_try=0
 	while :; do
 		wifi scan > "$LIST" 2>/dev/null
@@ -151,7 +117,6 @@ do_dialog() {
 		return
 	fi
 
-	# `wifi scan` prints:  <signal>  <open|lock>  <ssid>
 	set -- $_sel
 	_sec="$2"
 	shift 2
@@ -172,7 +137,6 @@ do_dialog() {
 	fi
 }
 
-# Greet whoever connects, then one dialog per message they send.
 while read_line; do
 	do_dialog
 done
