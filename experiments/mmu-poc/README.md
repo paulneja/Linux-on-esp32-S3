@@ -130,9 +130,11 @@ Ante `FATAL`, conserva las páginas: **resetear la placa, no matar el proceso**.
 No se han inyectado fallos de caché para validar esa recuperación extrema.
 
 Consola por **COM**, 115200 baudios. `serial-probe.py --session` mantiene una
-sola conexión y recibe JSON. Evitar bucles complejos de hush: una prueba anterior
-acumuló procesos y causó OOM. `HISTFILE=/dev/null` sigue siendo una mitigación;
-la ruta general de escritura JFFS2 continúa pendiente.
+sola conexión y recibe JSON. Los primeros experimentos usaron `HISTFILE=/dev/null`
+tras problemas de hush y JFFS2. El userspace posterior corrige la recursión de
+hush y tiene pruebas nativas de persistencia en [home](programs/HOME-USERS.md)
+y [cron](programs/CRON.md). Esos resultados no validan todas las escrituras
+posibles desde un payload del runtime de remapeo.
 
 Referencias: [Espressif](https://docs.espressif.com/projects/esp-idf/en/v5.3.2/esp32s3/api-reference/system/mm.html),
 [MicroPython v1.26.0](https://github.com/micropython/micropython/tree/v1.26.0).

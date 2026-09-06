@@ -206,6 +206,23 @@ ps | grep ble-wifi-setup
 
 `/dev/esp-ble` allows a single reader; a second one gets `-EBUSY`.
 
+## Native userspace
+
+### Fork fails or processes are killed with several consoles open
+
+Fork support does not add RAM. In diagnostic tests, two interactive Bash
+consoles left too little memory for `id`; a Bash primary console with two
+detached Dash sessions could also fail while launching `session list`.
+For the tested multi-session setup, temporarily replace the primary console
+with `exec /usr/bin/dash -i`, and return with `exec /bin/bash -l` afterwards.
+Run additional background jobs separately. `jobq` can limit admission for
+its own jobs, but cannot reserve memory against unrelated processes.
+
+The instrumented benchmark suite likewise replaces the primary Bash rather
+than keeping another shell alive. Functional program tests still run from
+Bash. See [the verification conditions](build/README.md#hardware-tests);
+passing these bounded tests does not imply arbitrary concurrency is safe.
+
 ## Build
 
 Build failures have their own issue template, which asks for what is actually
