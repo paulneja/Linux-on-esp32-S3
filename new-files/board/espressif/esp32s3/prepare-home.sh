@@ -1,5 +1,4 @@
 #!/bin/sh
-# Post-build hook: defaults seed writable /home on first boot, not /www.
 set -e
 test "$#" = 1
 target=$1
@@ -14,5 +13,4 @@ install -m 755 "$board/rootfs_overlay/etc/init.d/S06home-users" "$target/usr/sha
 install -m 644 "$board/rootfs_overlay/etc/skel/.profile" "$target/usr/share/esp32-home/user.profile"
 install -d "$target/usr/share/esp32-cron"
 install -m 755 "$board/rootfs_overlay/etc/init.d/S50crond" "$target/usr/share/esp32-cron/S50crond"
-# Target was validated above; only the old, explicitly retired document root.
 if [ -e "$target/www" ] || [ -L "$target/www" ]; then rm -r -- "$target/www"; fi

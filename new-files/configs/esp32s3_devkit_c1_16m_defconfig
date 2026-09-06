@@ -12,13 +12,6 @@ BR2_SSP_NONE=y
 BR2_RELRO_NONE=y
 BR2_ROOTFS_OVERLAY="board/espressif/esp32s3/rootfs_overlay"
 BR2_GLOBAL_PATCH_DIR="board/espressif/esp32s3/package-patches"
-# setup-home.sh repoints root's home at /home/root. It has to run here, not
-# from the overlay: buildroot regenerates /etc/passwd after the overlay is
-# applied (it stamps the root password hash in), so an overlay copy of passwd
-# would be overwritten. Leaving it out of this line is not a cosmetic loss --
-# root lands in /root, on the read-only cramfs, instead of the writable jffs2.
-# no-open-wifi.sh deletes the default wpa_supplicant.conf the buildroot
-# package installs; it matches any open network and joins one on its own.
 BR2_ROOTFS_POST_BUILD_SCRIPT="board/espressif/esp32s3/trim-libs.sh board/espressif/esp32s3/setup-home.sh board/espressif/esp32s3/no-open-wifi.sh board/espressif/esp32s3/trim-target.sh board/espressif/esp32s3/prepare-home.sh"
 BR2_ROOTFS_POST_FAKEROOT_SCRIPT="board/espressif/esp32s3/mkfs-etc.sh"
 BR2_ROOTFS_POST_IMAGE_SCRIPT="board/espressif/esp32s3/post-build.sh"
@@ -26,11 +19,6 @@ BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_GIT=y
 BR2_LINUX_KERNEL_CUSTOM_REPO_URL="https://github.com/jcmvbkbc/linux-xtensa.git"
 BR2_LINUX_KERNEL_CUSTOM_REPO_VERSION="xtensa-6.11-esp32-tag"
-# The hardware RSA driver and the BLE provisioning pipe are not upstream.
-# Their directories are untracked by the kernel's own git repo, so a clean
-# re-extraction silently discards local edits made directly in the build tree
-# -- that happened twice. BR2_LINUX_KERNEL_PATCH makes buildroot re-apply the
-# patches after every extraction instead.
 BR2_LINUX_KERNEL_PATCH="board/espressif/esp32s3/patches/linux"
 BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="board/espressif/esp32s3/devkit_c1_16m_linux.config"
@@ -43,18 +31,9 @@ BR2_PACKAGE_DROPBEAR=y
 BR2_PACKAGE_IW=y
 BR2_PACKAGE_WIRELESS_REGDB=y
 BR2_PACKAGE_WPA_SUPPLICANT=y
-# This board is WiFi client (STA) only. There is no AP mode: hostapd needs
-# real fork() (os_unix.c), which this target's NOMMU uclibc-fdpic does not
-# declare, and the firmware's own SoftAP wedged the wifi task so the STA could
-# no longer scan -- so it was removed rather than shipped broken.
 BR2_PACKAGE_IPTABLES=y
-# The classic nano editor replaces busybox vi (disabled in busybox.config).
-# Pulls in ncurses; EDITOR/VISUAL are set to nano in /etc/profile.d/editor.sh.
 BR2_PACKAGE_NANO=y
 # BR2_PACKAGE_URANDOM_SCRIPTS is not set
-# Deliberately obvious "changeme" default (not a plausible-looking fake
-# secure password) so it's unambiguous this MUST be changed via `passwd`
-# before any real deployment. SSH/telnet no longer allow blank passwords.
 BR2_TARGET_GENERIC_ROOT_PASSWD="changeme123"
 BR2_TARGET_ROOTFS_CRAMFS=y
 BR2_TARGET_ROOTFS_CRAMFS_XIP=y

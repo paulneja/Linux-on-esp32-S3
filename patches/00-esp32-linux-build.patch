@@ -1,32 +1,19 @@
 diff --git a/rebuild-esp32s3-linux-wifi.sh b/rebuild-esp32s3-linux-wifi.sh
-index a04c363..36cd2c3 100755
 --- a/rebuild-esp32s3-linux-wifi.sh
 +++ b/rebuild-esp32s3-linux-wifi.sh
-@@ -16,6 +16,23 @@
+@@ -16,6 +16,11 @@
  
  SET_BAUDRATE='-b 2000000'
  
-+# If the host's default GCC is too new (15/16.x default to C23), the old
-+# companion-lib configure scripts break: GMP 6.2.1 fails with "too many
-+# arguments to function 'g'; expected 0". The workaround is a directory with
-+# gcc/g++ symlinks pointing at a gcc-14 (C17/gnu17 default), put first in PATH
-+# for the whole toolchain build. Set GCC14_SHIM to that directory, or create
-+# ~/esp/gcc14shim; on a host whose GCC is already old enough, skip it.
-+# The Docker image avoids this entirely (Debian 12 ships a suitable GCC).
 +: "${GCC14_SHIM:=$HOME/esp/gcc14shim}"
 +[ -d "$GCC14_SHIM" ] && export PATH="$GCC14_SHIM:$PATH"
 +
-+# This machine's CMake is also newer than these old buildroot host-tool
-+# packages expect (e.g. host-lzo's CMakeLists.txt requires a `cmake_minimum_
-+# required` below 3.5, which modern CMake refuses to honor at all). Fall back
-+# to policy version 3.5 globally so any such package configures instead of
-+# hard-erroring with "Compatibility with CMake < 3.5 has been removed".
 +export CMAKE_POLICY_VERSION_MINIMUM=3.5
 +
  CTNG_VER=xtensa-fdpic
  CTNG_CONFIG=xtensa-esp32s3-linux-uclibcfdpic
  BUILDROOT_VER=xtensa-2024.08-fdpic
-@@ -104,6 +121,7 @@ else
+@@ -104,6 +109,7 @@ else
  	git pull
  	popd
  fi
@@ -34,7 +21,7 @@ index a04c363..36cd2c3 100755
  if [ ! -d build-buildroot-$BUILDROOT_CONFIG ] ; then
  	nice make -C buildroot O=`pwd`/build-buildroot-$BUILDROOT_CONFIG ${BUILDROOT_CONFIG}_defconfig || die "Could not apply buildroot config ${BUILDROOT_CONFIG}_defconfig"
  	buildroot/utils/config --file build-buildroot-$BUILDROOT_CONFIG/.config --set-str TOOLCHAIN_EXTERNAL_PATH `pwd`/crosstool-NG/builds/xtensa-esp32s3-linux-uclibcfdpic
-@@ -125,6 +143,7 @@ nice make -C buildroot O=`pwd`/build-buildroot-$BUILDROOT_CONFIG
+@@ -125,6 +131,7 @@ nice make -C buildroot O=`pwd`/build-buildroot-$BUILDROOT_CONFIG
  # bootloader
  #
  [ -d esp-hosted ] || git clone https://github.com/jcmvbkbc/esp-hosted -b $ESP_HOSTED_VER
@@ -42,7 +29,7 @@ index a04c363..36cd2c3 100755
  pushd esp-hosted/esp_hosted_ng/esp/esp_driver
  cmake .
  cd esp-idf
-@@ -137,18 +156,16 @@ if [ -n "$reconfigure_boot" ] ; then
+@@ -137,18 +144,13 @@ if [ -n "$reconfigure_boot" ] ; then
  	cp sdkconfig $ESP_HOSTED_CONFIG
  fi
  idf.py build
@@ -54,9 +41,6 @@ index a04c363..36cd2c3 100755
  
  #
 -# flash
-+# flash — SKIPPED for unattended build (no board present). Images are ready;
-+# flashing (esp-hosted app + linux/rootfs/etc partitions) is done manually
-+# once the board is connected. See PLAN.md.
  #
 -parttool.py $SET_BAUDRATE write_partition --partition-name linux  --input build-buildroot-$BUILDROOT_CONFIG/images/xipImage
 -parttool.py $SET_BAUDRATE write_partition --partition-name rootfs --input build-buildroot-$BUILDROOT_CONFIG/images/rootfs.cramfs
