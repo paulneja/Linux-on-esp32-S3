@@ -22,6 +22,15 @@ the SHA256 manifests used by their build scripts. ESP-IDF pins its own
 submodules. The container base is pinned by digest; Debian package updates
 and host tools are not a promise of byte-identical output across future runs.
 
+Two clean builds of the same commit were compared file by file. The
+bootloader, partition table, firmware, kernel and the factory `/home` came
+out byte-identical, and so did every file in the rootfs except `/etc/shadow`:
+Buildroot hashes `BR2_TARGET_GENERIC_ROOT_PASSWD` with a fresh random salt on
+each run, and that one file changes `rootfs.cramfs`, `etc.jffs2` and the
+combined image with them. Compare extracted trees rather than image hashes,
+or pin an already-hashed password in the defconfig if identical images matter
+more than a per-build salt.
+
 Stages and logs are written to `stages/` and `logs/`. A failed stage stops the
 pipeline. Retrying inside that same isolated directory may reuse its own
 completed stages; it is not a second clean build.
