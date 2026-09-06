@@ -62,6 +62,12 @@ checksums and reads the installed kernel/rootfs through their MTD devices to
 compare their hashes. It then tests remapping, fork, process compatibility,
 the selected programs, job admission, benchmarks, users and permissions,
 HTTP, cron, detached sessions, COM reconnects and persistence across reboots.
+Functional program tests run from the Bash login. For the instrumented
+benchmark suite, the runner replaces that login temporarily with Dash,
+then logs back into Bash. Keeping an additional interactive Bash alive
+while measuring nested Bash pipelines exhausted RAM in the development run;
+that combination is not a supported concurrency guarantee. Services remain
+enabled during the measurements.
 It creates temporary users and jobs and removes them on the normal cleanup
 path. It requires root access, the default Bash login policy, cron enabled
 and HTTP initially disabled; do not run it against an unrelated production
