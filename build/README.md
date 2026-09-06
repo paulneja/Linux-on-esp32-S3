@@ -65,6 +65,12 @@ path. It requires root access, the default Bash login policy, cron enabled
 and HTTP initially disabled; do not run it against an unrelated production
 installation. Review cleanup if a test is interrupted or fails.
 
+If esptool left the freshly flashed board in its bootloader with
+`--after no-reset`, add `--reset-from-bootloader` to explicitly reset it via
+RTS and capture the complete startup log. Do not use that option on a running
+filesystem with unsaved changes. The suite also checks both hardware RSA
+self-tests and the read-only cramfs mount in the kernel log.
+
 `results.json` records the exact image hash and each test's outcome/time.
 Logs and a failed result remain available if any check stops the run. These
 tests use the actual board and reboot it; they do not flash it, enable WiFi,
