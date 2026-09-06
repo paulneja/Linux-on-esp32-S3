@@ -126,6 +126,7 @@ userspace() {
     python3 "$exp/programs/test-cron-image.py" "$work/artifacts/rootfs.cramfs"
     python3 "$exp/programs/test-process-tools.py"
     python3 "$exp/programs/test-strip-sections.py"
+    python3 "$exp/programs/test-home-init.py"
     python3 "$exp/fork/test-reclaim.py"
 }
 
