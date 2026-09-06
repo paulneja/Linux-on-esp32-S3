@@ -23,6 +23,12 @@ apply_program_patch "$source_dir" busybox-nc.patch
 apply_program_patch "$source_dir" busybox-login.patch
 apply_program_patch "$source_dir" busybox-users.patch
 apply_program_patch "$source_dir" busybox-stat.patch
+apply_program_patch "$source_dir" busybox-cron.patch
+apply_program_patch "$source_dir" busybox-cron-pidfile.patch
+cron_patch="$repo_dir/new-files/board/espressif/esp32s3/package-patches/busybox/0002-cron-private-environment.patch"
+if ! patch -d "$source_dir" -p1 -R --force --dry-run < "$cron_patch" >/dev/null 2>&1; then
+    patch -d "$source_dir" -p1 --forward --batch < "$cron_patch"
+fi
 # Use Buildroot's wrapper, which already supplies the board's ABI and sysroot.
 unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS LIBS
 make -C "$source_dir" ARCH=xtensa CROSS_COMPILE="$host_dir/bin/xtensa-esp32s3-linux-uclibcfdpic-" \

@@ -1,0 +1,19 @@
+--- a/miscutils/crond.c
++++ b/miscutils/crond.c
+@@ -159,4 +159,5 @@
+ 	char *env_var_user;
+ 	char *env_var_home;
+ 	char *env_var_shell;
++	char *env_var_path;
+ 	char *env_var_logname;
+@@ -666,2 +667,4 @@
+ 	/* POSIX requires crond to set up at least HOME, LOGNAME, PATH, SHELL.
+ 	 */
++	/* Never inherit another crontab's PATH when this job omits it. */
++	if (!path) path = "/usr/bin:/bin:/usr/sbin:/sbin";
+@@ -673 +676 @@
+-	if (path) safe_setenv(&G.env_var_shell, "PATH", path);
++	safe_setenv(&G.env_var_path, "PATH", path);
+@@ -679 +682 @@
+-	if (path) xsetenv("PATH", path);
++	xsetenv("PATH", path);
