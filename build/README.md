@@ -45,6 +45,31 @@ and every component's bytes inside the combined image. It leaves hardware
 verification explicitly `pending` until the exact image has been flashed
 and tested. A successful build alone is not proof that it boots.
 
+## Hardware tests
+
+After backing up the board and explicitly flashing the full BIN at `0x0`,
+run with a Python interpreter that has pyserial installed:
+
+```sh
+python3 build/test-board.py /dev/serial/by-id/YOUR_COM_ADAPTER \
+    build-output/reproduce.XXXXXX/artifacts --output build-output/board-check
+```
+
+The output directory must not exist. The runner verifies the local artifact
+checksums and reads the installed kernel/rootfs through their MTD devices to
+compare their hashes. It then tests remapping, fork, process compatibility,
+the selected programs, job admission, benchmarks, users and permissions,
+HTTP, cron, detached sessions, COM reconnects and persistence across reboots.
+It creates temporary users and jobs and removes them on the normal cleanup
+path. It requires root access, the default Bash login policy, cron enabled
+and HTTP initially disabled; do not run it against an unrelated production
+installation. Review cleanup if a test is interrupted or fails.
+
+`results.json` records the exact image hash and each test's outcome/time.
+Logs and a failed result remain available if any check stops the run. These
+tests use the actual board and reboot it; they do not flash it, enable WiFi,
+test an external WiFi connection or establish isolation from malicious code.
+
 ## Verification status
 
 The first end-to-end run of this integrated pipeline is in progress. Earlier

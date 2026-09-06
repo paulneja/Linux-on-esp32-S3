@@ -1,5 +1,7 @@
 # Runtime MMU experimental — ESP32-S3 Linux
 
+Imagen completa desde fuentes limpias: [construcción y pruebas](../../build/README.md).
+
 Estado más reciente del userspace: [recuperación de fork, mediciones, cola y perfiles](programs/USERSPACE-UPGRADE.md).
 El runtime descrito aquí sigue siendo independiente de ese backend del kernel.
 

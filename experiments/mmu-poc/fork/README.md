@@ -1,5 +1,8 @@
 # Fork experimental en Linux NOMMU del ESP32-S3
 
+Para compilar la imagen completa, usar [la ejecución integrada](../../../build/README.md).
+Los resultados siguientes conservan el historial de desarrollo del backend.
+
 Trabajo local en `mmu-poc`. Sin pushes. No modifica `images/` ni el árbol
 original de construcción. Requiere el kernel experimental; **no ejecutar
 `fork-test` ni utilizar esta biblioteca sobre el kernel NOMMU original**.
