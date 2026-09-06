@@ -4,6 +4,26 @@ Releases carry one flashable `.bin` for a 16 MB / 8 MB-PSRAM ESP32-S3. Full
 notes and the binaries are on the
 [releases page](https://github.com/paulneja/Linux-on-esp32-S3/releases).
 
+## Unreleased — native fork and expanded userspace
+
+- Native NOMMU fork with private software banks, last-owner backup recovery,
+  memory counters and quiet-by-default tracing. Not COW or a full MMU;
+  UP-only, no multithreaded fork, 512 KiB private-memory limit per fork.
+- Bash for user logins; BusyBox remains `/bin/sh` for services. Fixed hush
+  login-profile recursion and reduced Bash's initial PID-cache allocation.
+- Dash, GNU Make, MicroPython with fork/IPC, socat and nc under normal names.
+- Editable `/home/www`, private user homes, `su`/`passwd`, dtach sessions,
+  persistent per-user cron and working `@reboot`. No SQLite, sudo or doas.
+- Process compatibility tests, `programbench`, memory-aware `jobq`, selectable
+  image profiles and checked removal of ELF debug/section metadata.
+- Removed nonessential source comments while preserving licenses and
+  functional directives/configuration/patch-matching data.
+- Added a clean, pinned-source container pipeline producing a complete
+  16 MiB image and checksums. End-to-end validation of that exact new image
+  is pending; prior board tests used incrementally built experimental images.
+
+The entries below describe earlier releases and retain their original limits.
+
 ## 0.6 — the clock sets itself, the web page stays on (2026-07-31)
 
 **Two things that had to be redone after every single boot no longer do.** The

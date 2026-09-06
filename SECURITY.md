@@ -10,6 +10,18 @@ choice to accept them is yours and not a surprise.
 
 ## What the shipped image exposes
 
+The default-credential/network warnings apply to both the older images and
+the current branch. The new userspace adds private homes, `su`/`passwd` and
+per-user cron. BusyBox is SUID root for the applets that require it; ordinary
+applets drop privileges. HTTP runs as `www-data`, and web files are not
+world-writable. There is no sudo/doas or automatic wheel-group elevation.
+
+**These are Unix permission checks, not hardware memory isolation.** The
+NOMMU fork backend does not make untrusted native code safe. Use only trusted
+users/programs; do not expose cron, shells or editable CGI to hostile users.
+Raw flash backups can contain passwords, WiFi configuration and user files;
+keep them private and separate from distributable build artifacts.
+
 | | |
 |---|---|
 | **Root password** | `changeme123`, the same on every flashed board |

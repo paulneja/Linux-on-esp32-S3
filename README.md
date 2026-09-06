@@ -9,17 +9,16 @@ telnet or the serial console.
 The chip's **hardware RSA accelerator** is exposed to Linux through the Crypto
 API, so it is usable by any program, not just one demo.
 
-> **Status: working, validated on real hardware.** Flashed to a fully erased
-> ESP32-S3: it boots to a login prompt, the RSA accelerator passes its
-> self-tests, the rootfs mounts from flash, telnet comes up, the board joins
-> WiFi from nothing, sets its own clock and fetches over HTTPS — none of it
-> typed by hand. It is a hobby project, not a product — see
-> [What works](#what-works-and-what-does-not) for the honest list.
+> **Current branch: experimental native fork and expanded userspace.** Bash,
+> Dash, GNU Make, MicroPython, socat/nc, detached sessions, private user homes
+> and cron have passed tests on the ESP32-S3. The fork implementation uses
+> software memory banks; it is not a full MMU or hardware memory protection.
 >
-> **And reproduced from scratch, by the documented path:** clone, `docker
-> build`, `docker run`, `make-images.sh`, `flash.sh` — nothing else. The board
-> boots in 11 s, passes the RSA self-tests, joins WiFi and reaches the
-> internet. The images here are not something you have to take on trust.
+> The committed `images/` still contain the earlier 0.6 release. For the
+> complete current branch, use [the clean build pipeline](build/README.md).
+> Its first end-to-end build and exact-image hardware verification are in
+> progress; the earlier clean-build evidence applies to 0.6, not automatically
+> to this new image. This is a research project, not a production system.
 
 > **Note on history.** This repo used to host an *emulated* approach (a RISC-V
 > RV32IMA interpreter running Linux on top of the ESP32-S3). That worked, but
@@ -31,11 +30,13 @@ API, so it is usable by any program, not just one demo.
 
 - **ESP32-S3 with 16 MB flash and 8 MB Octal PSRAM** (an N16R8 module, e.g.
   DevKitC-1). The PSRAM is the system RAM — the 8 MB Octal part is required.
-- A USB cable. The console is the built-in USB-Serial-JTAG (`/dev/ttyACM0`).
+- A cable for the board's serial/COM connection. The device name depends on
+  the adapter and OS; use the port actually detected on your machine.
 
 ## Quick start (nothing to build)
 
-Prebuilt images are in `images/`. You only need `esptool`:
+The earlier 0.6 prebuilt images are in `images/`. They do not include the new
+fork/userspace work. You only need `esptool` to flash that release:
 
 ```bash
 pip install esptool          # or activate ESP-IDF: . $IDF_PATH/export.sh
@@ -80,6 +81,15 @@ command can be killed by the OOM killer — wait a few seconds and retry.
 
 **Works**
 
+- **Bash 5.2.37 for user logins**, with BusyBox `/bin/sh` retained for services.
+- **Native fork-enabled programs:** Dash 0.5.12, GNU Make 4.4.1, MicroPython
+  1.26.0 and socat 1.8.1.3. `make` runs build recipes; it is not a C compiler.
+  MicroPython is not CPython and does not provide general pip compatibility.
+- **nc/netcat**, cron/crontab, `jobq`, `programbench`, and process diagnostics.
+- **Private user homes and Unix permissions**, `su`/`passwd`, editable web
+  files in `/home/www`, and `session`/dtach for detachable consoles. No sudo
+  or doas. `nohup ... &` supports noninteractive jobs across a COM disconnect,
+  provided the console does not reset the board and power remains on.
 - Serial console and **telnet** (on by default).
 - **STA WiFi** with real internet access — run `wifi` for an interactive
   scan-and-pick, or `wifi connect "SSID" "PASS"` non-interactively.
@@ -149,10 +159,20 @@ byte for byte the one published in the releases.
 
 ## Constraints worth knowing
 
-For Linux's purposes the ESP32-S3 has **no MMU**, so this is a NOMMU build
-(`BINFMT_ELF_FDPIC`): there is **no `fork()`**, which rules out anything that
-depends on it (bash, python, nginx, hostapd...). BusyBox `hush` (the default
-shell here) and everything shipped work within that limit. The rootfs is a read-only **cramfs executed
+This remains a NOMMU Linux build (`BINFMT_ELF_FDPIC`). The experimental kernel
+implements native `fork()` using private software memory banks and restores
+their contents at context switches. It uses eager copies, not copy-on-write;
+the current backend is UP-only, rejects multithreaded fork and limits private
+memory per fork to 512 KiB. A successful fork needs additional RAM, and the
+MMU remap demonstration is a separate runtime, not a universal Linux loader.
+
+Only programs compiled for this Xtensa/FDPIC ABI can run natively. Arbitrary
+x86, ARM or desktop Linux binaries will not work. CPython and Neovim are not
+included; SQLite, sudo and doas were also deliberately excluded. Unix users
+and permissions do not make hostile code safe without memory protection.
+See [implementation and measured limits](experiments/mmu-poc/programs/USERSPACE-UPGRADE.md).
+
+The rootfs is a read-only **cramfs executed
 in place (XIP)** straight from flash, which is why it fits at all; `/etc` and
 `/home` are separate writable jffs2 partitions mounted over it.
 

@@ -18,7 +18,29 @@ script calls it right after each clone, so a clean build reproduces the shipped
 images. The sections below explain how that is wired and how to redo it by hand
 if the script is ever lost.
 
-## With Docker (recommended)
+## Complete current-branch build
+
+```sh
+JOBS=8 bash build/reproduce.sh
+```
+
+Use a clean committed checkout. This pipeline includes the fork kernel and
+all selected userspace, not only the base Buildroot image. It snapshots the
+source into a new output directory, compiles the Linux toolchain there,
+fetches pinned sources and builds a combined image without mounting any old
+experiment binaries or build tree. See [inputs, outputs and verification
+status](build/README.md).
+
+The final image is for offset 0x0 and replaces the whole flash, including
+configuration and user files. Hardware testing must back up a used board
+privately, flash the exact checksum-identified artifact, and distinguish a
+clean first boot from a later boot with restored user data.
+
+The pipeline does not flash or publish anything. Its first complete hardware
+verification is in progress. The remaining sections document the older base
+pipeline and historical 0.6 verification, not proof of the new userspace.
+
+## Legacy base-only Docker build
 
 Debian 12 is used deliberately: its GCC and CMake are old enough not to trip
 the "host tools too new" failures a rolling-release distro hits. From the root

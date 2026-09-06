@@ -154,7 +154,13 @@ its job, so running it again is a reasonable first move.
 
 ### `sh: bad number` after almost every command
 
-Harmless, and not your script. On the **interactive** shell every command
+This section records the earlier 0.6 BusyBox-login behavior. The current
+branch uses Bash for user logins and fixes hush's recursive profile loading
+during NOMMU re-execution. Persistent errors, growing chains of `sh`, or OOM
+in a current image are not expected: check the image/kernel version and run
+`/usr/bin/dash /usr/share/program-tests/hush-login-test.sh`.
+
+In the older **interactive** shell every command
 substitution prints it — one to three times, unpredictably — while producing
 the right value:
 
@@ -167,7 +173,7 @@ A=[hi]
 ```
 
 `$(echo hi)` runs no external program at all, so this is hush itself: on a
-NOMMU system it cannot fork, and re-executes busybox to run a subshell. The
+older NOMMU image it cannot fork, and re-executes busybox to run a subshell. The
 message comes out of that path.
 
 It is confined to shells whose stderr is a terminal. Scripts are unaffected —
