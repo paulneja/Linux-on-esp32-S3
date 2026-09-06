@@ -1,4 +1,3 @@
-/* Deliberately exceed one instruction page. The zero padding is never called. */
     .section .text.high,"ax",@progbits
     .space 65536, 0
     .align 4

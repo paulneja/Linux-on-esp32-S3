@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Host tests: actual children, admission refusal, failures and deadlines."""
 from pathlib import Path
 import subprocess
 

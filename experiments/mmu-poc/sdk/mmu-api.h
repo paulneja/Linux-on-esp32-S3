@@ -7,11 +7,10 @@ enum mmu_operation { MMU_WRITE = 1, MMU_READ, MMU_OPEN, MMU_CLOSE,
                      MMU_ALLOC, MMU_FREE, MMU_CLOCK_MS };
 struct mmu_api {
     uint32_t version, size;
-    uintptr_t entry, got; /* Host CALL0/FDPIC descriptor, consumed by call.S. */
+    uintptr_t entry, got;
     uint32_t argc;
     const char *const *argv;
 };
-/* Results: nonnegative success, negative errno; ALLOC returns NULL on failure. */
 intptr_t mmu_call(const struct mmu_api *, uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 static inline intptr_t mmu_write(const struct mmu_api *a, unsigned fd, const void *p, size_t n)
 { return mmu_call(a, MMU_WRITE, fd, (uintptr_t)p, n); }

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Host tests; does not open a serial port or require a board."""
 import importlib.util
 from pathlib import Path
 import re
@@ -24,7 +23,6 @@ assert module.terminal_text(b"\x1b[31merror\x1b[0m\r\n") == b"error\n"
 print("PASS serial: BusyBox and Bash Readline framing; command echo is not a result")
 
 if module.os.name == 'posix':
-    # DTR/RTS must be written in ONE TIOCMSET, preserving unrelated modem bits.
     port = module.ConsoleSerial(port=None)
     for dtr, rts in ((False, False), (True, True), (False, True), (True, False)):
         port.dtr, port.rts = dtr, rts

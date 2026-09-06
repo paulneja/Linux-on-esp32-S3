@@ -90,7 +90,7 @@ void gc_collect(void)
 {
     jmp_buf registers;
     uintptr_t sp, top = (uintptr_t)MP_STATE_THREAD(stack_top);
-    (void)setjmp(registers); /* Spill CALL0 callee-saved registers as GC roots. */
+    (void)setjmp(registers);
     __asm__ volatile("mov %0, a1" : "=a"(sp));
     gc_collect_start();
     gc_collect_root((void **)registers, sizeof(registers) / sizeof(uintptr_t));

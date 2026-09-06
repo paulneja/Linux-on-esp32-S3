@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Build experimental images separately. This script NEVER flashes or publishes.
 set -euo pipefail
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "$script_dir/../.." && pwd)

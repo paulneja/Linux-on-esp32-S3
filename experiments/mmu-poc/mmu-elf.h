@@ -12,7 +12,6 @@ struct mmu_image {
     unsigned page_mask;
     struct mmu_segment segments[ELF_LOAD_LIMIT];
 };
-/* Validate everything before copying. This validates format, NOT code safety. */
 const char *mmu_elf_validate(const unsigned char *file, size_t size,
                              struct mmu_image *image);
 const char *mmu_elf_validate_headers(const unsigned char *header, size_t header_size,

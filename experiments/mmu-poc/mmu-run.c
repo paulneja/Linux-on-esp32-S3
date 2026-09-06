@@ -109,9 +109,6 @@ done:
     return result;
 }
 
-/* CALL0 FDPIC function pointers point to {entry,GOT}. Payload has no GOT.
- * sigsetjmp saves the fully blocked mask: faults/timeouts return with it restored.
- */
 static int invoke(const struct program *program, uint32_t argument,
                   const struct mmu_api *api, uint32_t *value)
 {

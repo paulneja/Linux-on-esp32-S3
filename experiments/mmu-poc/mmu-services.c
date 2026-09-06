@@ -26,8 +26,6 @@ static intptr_t dispatch(uintptr_t op, uintptr_t x, uintptr_t y, uintptr_t z)
         struct stat st;
         int fd;
         if (!path || strnlen(path, 256) >= 256 || y > 1) return -EINVAL;
-        /* Flash writes currently hang on this image. Only new, flat /tmp/mmu-*
-         * files may be created. No traversal, overwrite or symlink following. */
         if (y && (strncmp(path, "/tmp/mmu-", 9) || !path[9] || strchr(path + 5, '/')))
             return -EPERM;
         for (i = 0; i < HANDLES && files[i] >= 0; ++i) {}
@@ -86,10 +84,6 @@ static intptr_t host_call(uintptr_t op, uintptr_t x, uintptr_t y, uintptr_t z)
 {
     sigset_t all, previous;
     intptr_t result;
-    /* Never longjmp out of malloc/free or while resource tracking is incomplete.
-     * File handles are regular files only; per-call IO is bounded to 4 KiB.
-     * Signals pending during a service are delivered after the tracking is safe.
-     */
     sigfillset(&all);
     if (sigprocmask(SIG_BLOCK, &all, &previous)) return -errno;
     result = dispatch(op, x, y, z);
@@ -102,7 +96,7 @@ void services_init(struct mmu_api *api, unsigned argc, char **argv)
     intptr_t (*function)(uintptr_t, uintptr_t, uintptr_t, uintptr_t) = host_call;
     const uintptr_t *descriptor = (const uintptr_t *)(void *)function;
 #else
-    const uintptr_t descriptor[2] = {0}; /* Host tests call host_call directly. */
+    const uintptr_t descriptor[2] = {0};
 #endif
     unsigned i;
     for (i = 0; i < HANDLES; ++i) files[i] = -1;

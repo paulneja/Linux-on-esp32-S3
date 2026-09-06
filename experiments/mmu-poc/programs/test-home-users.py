@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Inspect the packed image and exercise inetd migration in isolated fixtures."""
 import os
 from pathlib import Path
 import stat
@@ -14,8 +13,6 @@ repo = here.parents[2]
 board = repo / 'new-files/board/espressif/esp32s3'
 host = repo.parent / 'refs/esp32-linux-build/build/build-buildroot-esp32s3_devkit_c1_16m/host'
 image = Path(sys.argv[1]) if len(sys.argv) > 1 else here.parent / 'out/programs/rootfs-home-users-ready.cramfs'
-# cramfsck deliberately does not restore SUID when extracting as non-root.
-# Inspect the packed inode, not the safely downgraded host copy.
 data = image.read_bytes()
 assert struct.unpack_from('<I', data)[0] == 0x28CD3D45
 inode = struct.unpack_from('<III', data, 64)

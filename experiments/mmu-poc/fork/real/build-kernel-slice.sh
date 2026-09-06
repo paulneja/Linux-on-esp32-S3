@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Experimental fair-scheduler adjustment. Builds only; NEVER flashes.
 set -euo pipefail
 task_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "$task_dir/../../../.." && pwd)

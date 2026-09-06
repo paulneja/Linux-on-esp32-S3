@@ -23,8 +23,6 @@ ac_cv_lib_dl_dlopen=no ac_cv_func_dlopen=no ac_cv_func_dlsym=no ac_cv_func_dlclo
 CC_FOR_BUILD=cc CFLAGS_FOR_BUILD='-O2 -std=gnu17 -include stdint.h' ./configure --host=xtensa-linux --build="$(sh ./support/config.guess)" \
     --prefix=/usr --bindir=/bin --without-bash-malloc --with-curses \
     --disable-nls --disable-rpath --disable-profiling --enable-separate-helpfiles
-# No loadable builtin DSOs: ordinary scripts and external programs are unaffected.
-# Avoid exporting every internal Bash/Readline function solely for enable -f.
 make -j"${JOBS:-4}" LOCAL_LDFLAGS= bash
 make -C builtins helpdoc
 install -m 755 bash "$programs_out/bash.debug"

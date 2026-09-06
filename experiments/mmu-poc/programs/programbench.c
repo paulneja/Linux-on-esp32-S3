@@ -29,7 +29,7 @@ int main(int argc,char **argv) {
     if(optind==argc) {fprintf(stderr,"Usage: programbench [-t seconds] -- program [args...]\n");return 2;}
     signal(SIGINT,stop);signal(SIGTERM,stop);
     pid_t foreground=tcgetpgrp(STDIN_FILENO);
-    if(foreground!=getpgrp())foreground=-1;  /* Never seize another foreground job's TTY. */
+    if(foreground!=getpgrp())foreground=-1;
     long avail0=proc_field("/proc/meminfo","MemAvailable:");
     long shadow0=proc_field("/proc/meminfo","ForkShadow:");
     long recovered0=proc_field("/proc/meminfo","ForkRecovered:");
@@ -60,9 +60,6 @@ int main(int argc,char **argv) {
     char path[64];struct stat st;snprintf(path,sizeof path,"/proc/%ld/exe",(long)p);
     long elf_bytes=stat(path,&st)==0?(long)st.st_size:-1;
     long long exec_stop=monotonic_ms();
-    /* A separate group is needed for timeout cleanup, but leaving it in the
-     * background makes ordinary terminal ioctls stop it with SIGTTOU.
-     */
     if(foreground>=0) {
         if(set_foreground(p)<0) {perror("tcsetpgrp");kill(-p,SIGKILL);waitpid(p,&status,0);return 1;}
         saved_foreground=foreground;atexit(restore_foreground);

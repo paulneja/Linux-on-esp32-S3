@@ -1,4 +1,3 @@
-// Native Xtensa Linux FDPIC, not the freestanding MMU runtime.
 #define MICROPY_CONFIG_ROM_LEVEL (MICROPY_CONFIG_ROM_LEVEL_EXTRA_FEATURES)
 #include "variants/mpconfigvariant_common.h"
 #undef MICROPY_ASYNC_KBD_INTR

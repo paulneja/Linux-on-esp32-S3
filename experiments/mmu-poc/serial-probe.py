@@ -20,14 +20,7 @@ if os.name == 'posix':
 
 
 class ConsoleSerial(serial.Serial):
-    """Apply the two auto-reset lines together on POSIX, not sequentially.
-
-    pySerial's separate DTR/RTS updates can briefly assert EN on ESP boards.
-    These two hooks are from pySerial 3.x's POSIX backend; test on upgrades.
-    Other platforms retain pySerial's behavior (no no-reset guarantee).
-    """
     def _console_lines(self):
-        # Called inside open(), before pySerial marks is_open=True.
         status = struct.unpack('I', fcntl.ioctl(self.fd, termios.TIOCMGET,
                                               struct.pack('I', 0)))[0]
         for flag, enabled in ((termios.TIOCM_DTR, self.dtr),
@@ -45,7 +38,6 @@ class ConsoleSerial(serial.Serial):
 
 
 def terminal_text(data):
-    """Readline emits CSI bracketed-paste controls before command output."""
     data = re.sub(rb"\x1b\[[0-?]*[ -/]*[@-~]", b"", data)
     return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
 
@@ -114,7 +106,6 @@ class Console:
             raise RuntimeError("Could not create board RAM directory: " + result)
         remote = match.group(1) + "/mmu-probe"
         self.show(f"Uploading {len(payload)} bytes to {remote}")
-        # Acknowledge every short chunk: no large shell here-document or UART queue.
         for offset in range(0, len(payload), 384):
             chunk = base64.b64encode(payload[offset:offset + 384]).decode()
             self.command(f"echo '{chunk}' | base64 -d >> {remote}")

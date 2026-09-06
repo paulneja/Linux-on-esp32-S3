@@ -1,6 +1,3 @@
-/* External-memory window, not a Linux process MMU. Only this launcher owns it.
- * Interrupts/core 0 are paused for cache/table transactions, NEVER for payloads.
- */
 #ifndef MMU_WINDOW_H
 #define MMU_WINDOW_H
 #include "mmu-hw.h"
@@ -32,7 +29,6 @@ static int autoload_suspend(uint32_t reg, uint32_t saved)
     return 1;
 }
 
-/* Signals must be blocked by caller. On fatal error, retain ALL owned pages. */
 static int window_switch(struct mmu_window *w, struct mmu_memory *next)
 {
     uint32_t ps, prid, c0, c1, da, ia, daddr, dsize, iaddr, isize, start;
@@ -68,7 +64,6 @@ static int window_switch(struct mmu_window *w, struct mmu_memory *next)
     w->stage = 3;
     if (!autoload_suspend(DC_AUTO, da) || !autoload_suspend(IC_AUTO, ia)) goto fatal;
     w->stage = 4;
-    /* Flush dirty alias against its OLD mapping before changing the table. */
     for (p = 0; p < WINDOW_PAGES; ++p) {
         uint32_t alias = ALIAS_ADDRESS + p * PAGE_SIZE;
         void *oldpage = w->active ? w->active->pages[p] : NULL;
@@ -76,7 +71,6 @@ static int window_switch(struct mmu_window *w, struct mmu_memory *next)
         if (!oldpage && !newpage) continue;
         if (oldpage && !cache_operation(alias, line, 2u)) goto fatal;
         if (!cache_operation(alias, line, 1u) || !instruction_invalidate(p)) goto fatal;
-        /* Native addresses are only touched while their page is inactive. */
         if (newpage && (!cache_operation((uintptr_t)newpage, line, 2u) ||
                         !cache_operation((uintptr_t)newpage, line, 1u))) goto fatal;
     }

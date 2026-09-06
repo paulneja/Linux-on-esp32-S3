@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Check cron integration without extracting SUID binaries as root."""
 from pathlib import Path
 import subprocess
 import sys

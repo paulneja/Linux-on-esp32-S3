@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Verify the checked strip path and deliberately corrupt a runtime byte."""
 import importlib.util
 from pathlib import Path
 import shutil
@@ -23,7 +22,7 @@ with tempfile.TemporaryDirectory(prefix='elf-sections-test-') as tmp:
     data = bytearray(candidate.read_bytes())
     assert struct.unpack_from('<I', data, 32)[0] == 0
     assert struct.unpack_from('<HHH', data, 46) == (0, 0, 0)
-    data[4096] ^= 1  # Inside the executable PT_LOAD, never whitelisted metadata.
+    data[4096] ^= 1
     candidate.write_bytes(data)
     assert module.segments(source) != module.segments(candidate)
     print('PASS: section stripping preserves complete segments; executable byte corruption rejected')

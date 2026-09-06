@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
-# Builds in the private experiment tree; never flashes or changes data partitions.
 set -euo pipefail
 task_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 source "$task_dir/../programs/env.sh"
 kernel_dir="$experiment_dir/out/linux-fork"
-# Undo our optional outer patch before checking the underlying reclaim patch.
-# Keep the layering repeatable on both fresh and previously built trees.
 if patch -d "$kernel_dir" --force --dry-run -R -p1 < "$task_dir/quiet-trace.patch" >/dev/null 2>&1; then
     patch -d "$kernel_dir" --force --batch -R -p1 < "$task_dir/quiet-trace.patch"
 fi

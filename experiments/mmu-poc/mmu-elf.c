@@ -36,7 +36,6 @@ const char *mmu_elf_validate_headers(const unsigned char *f, size_t header_size,
         if (image.count == ELF_LOAD_LIMIT || filesz > memsz ||
             source > n || filesz > n - source)
             return "invalid LOAD size or file bounds";
-        /* GNU ld emits an empty data PHDR for code-only payloads. */
         if (!memsz)
             continue;
         if (align > 1 && ((align & (align - 1)) ||

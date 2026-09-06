@@ -37,5 +37,3 @@ test "$size" -le $((0x780000))
 "$host_dir/bin/cramfsck" "$image_dir/rootfs.cramfs"
 cp "$image_dir/rootfs.cramfs" "$output"
 sha256sum "$output"
-# Persistent /etc/passwd stays unchanged. Bash invoked as sh enters POSIX mode.
-# /bin/busybox sh remains available explicitly for recovery.

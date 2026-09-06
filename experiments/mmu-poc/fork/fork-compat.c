@@ -1,6 +1,3 @@
-/* Single-threaded fork entry for NOMMU uClibc, with bounded atfork callbacks.
- * The kernel still rejects fork from a multithreaded address space. This does
- * not repair arbitrary pthread locks or support unloading callback DSOs. */
 #define _GNU_SOURCE
 #include <errno.h>
 #include <pthread.h>

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Board test: three real COM closes, then allow the nohup job to finish."""
 import importlib.util
 from pathlib import Path
 import re

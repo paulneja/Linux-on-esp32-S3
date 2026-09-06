@@ -1,5 +1,4 @@
 #!/bin/sh
-# This BusyBox hush supports errexit, but not nounset.
 set -e
 case "${1:-}" in
     bash) test -x /bin/bash; target=/usr/bin/user-shell ;;

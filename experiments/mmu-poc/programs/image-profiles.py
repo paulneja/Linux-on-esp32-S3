@@ -56,7 +56,6 @@ def pack(selected, output):
     missing = [str(p) for p in sources if not p.is_file()]
     if missing:
         raise SystemExit('Missing compiled artifacts (nothing flashed):\n' + '\n'.join(missing))
-    # Never delete user paths: removal is confined to this freshly extracted tree.
     with tempfile.TemporaryDirectory(prefix='profile-', dir=PROGRAMS) as tmp:
         tree = Path(tmp) / 'tree'
         run(HOST / 'bin/cramfsck', '-x', tree, base)
@@ -73,8 +72,6 @@ def pack(selected, output):
         if 'make' in selected:
             for name in ('make-test.sh', 'peer.sh', 'Makefile.test'):
                 install(EXP / 'fork/real' / name, tree / 'usr/share/fork-real' / name, 0o644)
-        # BusyBox LTO booted init but rejected valid inittab entries on hardware.
-        # Keep the tested -Os build with the login fix; do not select LTO for it.
         install(PROGRAMS / 'busybox-with-netcat', tree / 'bin/busybox')
         for name in ('nc', 'netcat', 'stat'):
             path = tree / 'bin' / name
@@ -119,10 +116,7 @@ def pack(selected, output):
         assert (tree / 'bin/sh').is_symlink() and (tree / 'bin/sh').readlink() == Path('busybox')
         strip = BUILD / 'crosstool-NG/builds/xtensa-esp32s3-linux-uclibcfdpic/bin/xtensa-esp32s3-linux-uclibcfdpic-strip'
         run('python3', HERE / 'strip-rootfs.py', tree, '--strip', strip, '--section-headers')
-        # Writing/stripping may clear SUID: apply AFTER all ELF modifications.
-        # BusyBox's applet table retains it only for su/login/passwd-type applets.
         (tree / 'bin/busybox').chmod(0o4755)
-        # Bytes by installed component are real ELF sizes, not compressed flash claims.
         inventory = {name: {'path': '/' + PACKAGES[name]['binary'],
                            'elf_bytes': (tree / PACKAGES[name]['binary']).stat().st_size,
                            'sha256': hashlib.sha256((tree / PACKAGES[name]['binary']).read_bytes()).hexdigest()}
@@ -155,7 +149,7 @@ def main():
     unknown = set(selected) - PACKAGES.keys()
     if unknown: parser.error('Unknown programs: ' + ', '.join(sorted(unknown)))
     if {'make', 'micropython'} & set(selected) and 'dash' not in selected:
-        selected.append('dash')  # packaged regression tests use Dash explicitly
+        selected.append('dash')
     selected.sort()
     cache = HERE / 'profile-costs.json'
     if args.action == 'calibrate':
@@ -165,7 +159,6 @@ def main():
         base = results['base']['image_bytes']
         costs = {'base_bytes': base, 'marginal_bytes': {n: results[n]['image_bytes']-base for n in PACKAGES},
                  'note': 'Measured XIP cramfs marginal costs; alignment/deduplication makes totals approximate.'}
-        # Generated calibration is an output artifact; review/copy into the source manifest explicitly.
         (PROGRAMS / 'profile-costs.json').write_text(json.dumps(costs, indent=2)+'\n')
         return
     print('Programs:', ', '.join(selected) or '(base only)')

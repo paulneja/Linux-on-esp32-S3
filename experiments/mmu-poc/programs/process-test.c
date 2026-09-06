@@ -51,7 +51,6 @@ int main(int argc,char **argv) {
     printf("RECLAIM parent_kib before=%ld live=%ld after=%ld\n",before,during,after);
     pass("last child exit releases parent backup (host: counter absent)");
 
-    /* Descriptor table is private; open-file offset is shared, as POSIX requires. */
     char path[]="/tmp/process-test.XXXXXX";
     fd=mkstemp(path);CHECK(fd>=0);CHECK(unlink(path)==0);
     CHECK(write(fd,"abcdef",6)==6 && lseek(fd,0,SEEK_SET)==0);

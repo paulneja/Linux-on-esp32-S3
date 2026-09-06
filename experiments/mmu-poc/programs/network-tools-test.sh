@@ -15,7 +15,6 @@ socat -u OPEN:input OPEN:output,creat,trunc
 cmp input output
 echo 'PASS socat: file transfer'
 
-# Never expose test listeners beyond loopback.
 socat TCP4-LISTEN:49173,bind=127.0.0.1,reuseaddr,fork EXEC:/bin/cat > tcp.log 2>&1 &
 server=$!
 sleep 1

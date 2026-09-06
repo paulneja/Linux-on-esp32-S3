@@ -51,7 +51,6 @@ try:
     c.until(rb'Retype password: ?', 15)
     c.port.write(password.encode() + b'\n')
     c.until(rb'password for hwcheckb changed', 15)
-    # Authenticate from another unprivileged account; no password in command/log.
     c.port.write(b"su - hwchecka -c 'su - hwcheckb -c id'; echo AUTH_RETURNED\r")
     c.until(rb'Password: ?', 15)
     c.port.write(password.encode() + b'\n')
@@ -110,7 +109,6 @@ try:
     sessions.remove('hwcheck-bash')
     cmd('test "$(cat /proc/sys/kernel/tainted)" = 0; sha256sum /home/root/sudoku.py; session list')
 finally:
-    # Exact test-owned targets only; never remove an existing user/home.
     c.port.write(b'\x03\n')
     c.until(rb'(?:# |login: ?)', 15)
     if web_changed:

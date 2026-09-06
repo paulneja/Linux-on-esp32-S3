@@ -30,7 +30,6 @@ cron_patch="$repo_dir/new-files/board/espressif/esp32s3/package-patches/busybox/
 if ! patch -d "$source_dir" -p1 -R --force --dry-run < "$cron_patch" >/dev/null 2>&1; then
     patch -d "$source_dir" -p1 --forward --batch < "$cron_patch"
 fi
-# Use Buildroot's wrapper, which already supplies the board's ABI and sysroot.
 unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS LIBS
 make -C "$source_dir" ARCH=xtensa CROSS_COMPILE="$host_dir/bin/xtensa-esp32s3-linux-uclibcfdpic-" \
     HOSTCC='cc -std=gnu17' oldconfig < /dev/null
