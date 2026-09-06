@@ -5,8 +5,9 @@ this file is about rebuilding them.
 
 The project is not a normal source tree: it is a set of **patches and files
 applied on top of three upstream trees** (a kernel, buildroot, and the WiFi
-firmware), all cloned fresh by the build script. Nothing here is a fork; this
-repo holds only the delta. That is why the layout looks the way it does:
+firmware), all cloned fresh by the build script. This repository holds the
+delta, not complete mirrors of those upstream source trees. That is why the
+layout looks the way it does:
 
 - `patches/` — diffs against pristine upstream clones.
 - `new-files/` — whole files copied into those trees (board config, defconfig,
