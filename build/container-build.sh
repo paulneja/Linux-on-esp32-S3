@@ -23,6 +23,9 @@ clone_locked() {
         mkdir -p "$target"
         git -C "$target" init -q
         git -C "$target" remote add origin "$url"
+    fi
+    test "$(git -C "$target" remote get-url origin)" = "$url"
+    if ! git -C "$target" rev-parse --verify HEAD >/dev/null 2>&1; then
         git -C "$target" fetch --depth 1 origin "$revision"
         git -C "$target" checkout --detach FETCH_HEAD
     fi
