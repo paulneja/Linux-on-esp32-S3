@@ -22,7 +22,7 @@ def schedule(user, lines):
     cmd('printf "%s\\n" ' + ' '.join(shlex.quote(line) for line in lines) + f' | crontab -u {user} -')
 
 try:
-    cmd('cron-setup --prepare; test ! -e /etc/cron/disabled')
+    cmd('cron-setup --prepare && test ! -e /etc/cron/disabled')
     for user in ('cronalpha', 'cronbeta'):
         cmd(f'! id {user} >/dev/null 2>&1 && test ! -e /home/{user} && test ! -e /etc/cron/crontabs/{user}')
         cmd(f'adduser -D -s /usr/bin/user-shell {user}')
@@ -50,7 +50,7 @@ try:
     cmd('test "$(cat /home/cronalpha/env)" = "/home/cronalpha|/usr/bin/dash|/cron-alpha-only"')
     cmd('test "$(cat /home/cronbeta/env)" = "/home/cronbeta|/bin/sh|/usr/bin:/bin:/usr/sbin:/sbin"')
     print('PASS: real scheduled jobs, user UID/home ownership, crontab permissions, isolated PATH/SHELL', flush=True)
-    cmd('cron-server off; ! cron-server status; test -f /etc/cron/disabled')
+    cmd('cron-server off && ! cron-server status && test -f /etc/cron/disabled')
     cmd('cron-server on && cron-server status')
     cmd('rm -f /home/cronalpha/reboot-result; sync')
     c.port.write(b'reboot\n')

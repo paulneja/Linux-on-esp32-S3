@@ -35,15 +35,15 @@ sessions = []
 web_changed = False
 try:
     cmd('stty icrnl')
-    cmd('home-users-setup; test ! -e /www; test "$(stat -c %a /bin/busybox)" = 4755; test "$(stat -c %a /home/root)" = 700')
-    cmd('sha256sum /home/www/index.html /home/root/README.txt; head -n 1 /home/root/README.txt')
+    cmd('home-users-setup && test ! -e /www && test "$(stat -c %a /bin/busybox)" = 4755 && test "$(stat -c %a /home/root)" = 700')
+    cmd('sha256sum /home/www/index.html /home/root/README.txt && head -n 1 /home/root/README.txt')
     for user in ('hwchecka', 'hwcheckb'):
         cmd(f'! id {user} >/dev/null 2>&1 && test ! -e /home/{user}')
         cmd(f'adduser -D -s /usr/bin/user-shell {user}')
         users.append(user)
-        cmd(f'test "$(stat -c %a /home/{user})" = 700; test "$(stat -c %u /home/{user})" = "$(id -u {user})"')
+        cmd(f'test "$(stat -c %a /home/{user})" = 700 && test "$(stat -c %u /home/{user})" = "$(id -u {user})"')
     cmd("su - hwchecka -c 'test \"$(id -u)\" != 0 && test \"$HOME\" = /home/hwchecka && test ! -r /etc/shadow && test ! -r /home/root/README.txt && test ! -x /home/hwcheckb && touch own-file && test -O own-file && echo USER_PERMISSIONS_PASS'")
-    cmd('addgroup hwchecka wheel; groups hwchecka; delgroup hwchecka wheel; groups hwchecka')
+    cmd('addgroup hwchecka wheel && groups hwchecka && delgroup hwchecka wheel && groups hwchecka')
     password = secrets.token_urlsafe(18)
     c.port.write(b'passwd hwcheckb\r')
     c.until(rb'New password: ?', 15)
@@ -107,7 +107,7 @@ try:
     c.port.write(b'exit\r')
     c.until(rb'\nSESSION_RETURNED\n', 15)
     sessions.remove('hwcheck-bash')
-    cmd('test "$(cat /proc/sys/kernel/tainted)" = 0; session list')
+    cmd('test "$(cat /proc/sys/kernel/tainted)" = 0 && session list')
 finally:
     c.port.write(b'\x03\n')
     c.until(rb'(?:# |login: ?)', 15)
