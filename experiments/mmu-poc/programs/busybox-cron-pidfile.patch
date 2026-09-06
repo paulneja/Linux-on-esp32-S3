@@ -1,0 +1,7 @@
+--- a/.config
++++ b/.config
+@@ -24,2 +24,2 @@
+-# CONFIG_FEATURE_PIDFILE is not set
+-CONFIG_PID_FILE_PATH=""
++CONFIG_FEATURE_PIDFILE=y
++CONFIG_PID_FILE_PATH="/var/run"

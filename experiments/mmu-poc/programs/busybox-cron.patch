@@ -1,0 +1,14 @@
+--- a/.config
++++ b/.config
+@@ -783 +783 @@
+-# CONFIG_CROND is not set
++CONFIG_CROND=y
+@@ -786 +786 @@
+-# CONFIG_FEATURE_CROND_SPECIAL_TIMES is not set
++CONFIG_FEATURE_CROND_SPECIAL_TIMES=y
+@@ -787 +787 @@
+-CONFIG_FEATURE_CROND_DIR=""
++CONFIG_FEATURE_CROND_DIR="/etc/cron"
+@@ -788 +788 @@
+-# CONFIG_CRONTAB is not set
++CONFIG_CRONTAB=y
