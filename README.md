@@ -142,9 +142,14 @@ Everything needed to reproduce the images is here: the kernel patches (including
 the RSA driver), the buildroot configuration and overlay, and the firmware
 patches. They apply automatically on top of fresh upstream clones.
 
-Once a build finishes, `./make-images.sh /path/to/esp32-linux-build` collects
-the results into `images/` and merges them into the single flashable image —
-byte for byte the one published in the releases.
+For the current fork-enabled branch, run `JOBS=8 bash build/reproduce.sh`.
+The [complete build pipeline](build/README.md) produces a combined BIN and
+checksums in a new `build-output/reproduce.XXXXXX/artifacts/` directory,
+without replacing the committed stable images.
+
+`make-images.sh` remains the legacy base-system packager; by itself it does
+not add the fork backend or expanded userspace. Repackaging existing outputs
+can preserve their bytes, but does not demonstrate a fresh source build.
 
 ## Documentation
 
