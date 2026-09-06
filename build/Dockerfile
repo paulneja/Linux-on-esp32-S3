@@ -6,8 +6,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-serial python3-venv python3-yaml rsync texinfo unzip wget xxd \
     xz-utils zstd \
     && rm -rf /var/lib/apt/lists/*
-RUN python3 -m venv /opt/flash-tools && /opt/flash-tools/bin/pip install --no-cache-dir esptool==4.8.1
-ENV PATH="/opt/flash-tools/bin:$PATH"
+RUN python3 -m venv /opt/flash-tools \
+    && /opt/flash-tools/bin/pip install --no-cache-dir esptool==4.8.1 \
+    && ln -s /opt/flash-tools/bin/esptool.py /usr/local/bin/esptool
 ARG BUILDER_UID=1000
 ARG BUILDER_GID=1000
 RUN groupadd -g "$BUILDER_GID" builder && useradd -m -u "$BUILDER_UID" -g "$BUILDER_GID" builder
