@@ -135,9 +135,11 @@ Two things it does deliberately, both learned the hard way:
 Running it against the tree that produced the published release reproduces
 `linux-esp32s3-native-full.bin` byte for byte (same sha256).
 
-## Reproducibility caveats
+## Historical 0.6 reproducibility caveats
 
-Worth knowing before trusting a rebuild to match:
+The observations below describe the legacy pipeline and its 0.6 builds.
+The current integrated pipeline pins upstream revisions in `build/sources.lock`;
+its separate verification status is documented in [build/README.md](build/README.md).
 
 - **The upstream trees are tracked by branch, not by pinned commit.** The build
   driver clones `jcmvbkbc/buildroot -b xtensa-2024.08-fdpic`,
@@ -403,7 +405,7 @@ cp "$REPO/new-files/toplevel/devkit-c1-16m.conf" .
 The kernel driver applies itself via `BR2_LINUX_KERNEL_PATCH` once the defconfig
 above is in place — no additional manual step is required.
 
-**Status: validated on real hardware.** The combined image was flashed to a
+**Historical 0.6 status: validated on real hardware.** That combined image was flashed to a
 fully erased ESP32-S3 (N16R8) and it boots to a login prompt, the RSA
 accelerator passes its 512- and 2048-bit self-tests, the rootfs mounts from
 flash via XIP, and telnet comes up. Working: serial console, telnet, STA WiFi
@@ -412,7 +414,7 @@ RSA, the nano editor, Lua, an opt-in BusyBox httpd, and curl (HTTP solid,
 HTTPS with real certificate verification but experimental — see above). The
 board is STA only — there is no SoftAP.
 
-The patch/clone flow is reproducible against fresh clones, and the full
+That release's patch/clone flow was reproduced against fresh clones, and the full
 multi-hour compile has been run inside the container with the result booting on
 hardware. That first claim was made here once before it was true; it is not
 being made again without a booting board behind it.
