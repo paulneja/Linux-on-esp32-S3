@@ -82,13 +82,18 @@ with tempfile.TemporaryDirectory(prefix='final-rootfs-', dir=work) as directory:
     assert not list((tree / 'etc/cron/crontabs').iterdir())
     run(host / 'sbin/mkfs.jffs2', '-l', '-e', '65536', '-U', '-f',
         '--pad=' + str(parts['etc']['size']), '-d', tree / 'etc', '-o', out / 'etc.jffs2')
+    factory_home = Path(directory) / 'home'
+    factory_home.mkdir(mode=0o755)
+    run(host / 'sbin/mkfs.jffs2', '-l', '-e', '65536', '-U', '-f',
+        '--pad=' + str(parts['home']['size']), '-d', factory_home, '-o', out / 'home.jffs2')
     run(host / 'bin/mkcramfs', '-X', '-q', tree, out / 'rootfs.cramfs')
     run(host / 'bin/cramfsck', out / 'rootfs.cramfs')
 
 for name in ('bootloader.bin', 'partition-table.bin', 'network_adapter.bin'):
     shutil.copyfile(work / 'base-images' / name, out / name)
 shutil.copyfile(experiment / 'real-bins/xipImage-fork-quiet', out / 'xipImage')
-files = {'factory': 'network_adapter.bin', 'etc': 'etc.jffs2', 'linux': 'xipImage', 'rootfs': 'rootfs.cramfs'}
+files = {'factory': 'network_adapter.bin', 'etc': 'etc.jffs2', 'linux': 'xipImage',
+         'rootfs': 'rootfs.cramfs', 'home': 'home.jffs2'}
 for partition, filename in files.items():
     assert (out / filename).stat().st_size <= parts[partition]['size'], (partition, filename)
 
@@ -105,8 +110,13 @@ for partition, filename in files.items():
     payload = (out / filename).read_bytes()
     start = parts[partition]['offset']
     assert full[start:start + len(payload)] == payload
-home = parts['home']
-assert full[home['offset']:home['offset'] + home['size']] == b'\xff' * home['size']
+home = full[parts['home']['offset']:parts['home']['offset'] + parts['home']['size']]
+marker = home[:12]
+assert marker[:4] == b'\x85\x19\x03\x20', 'factory /home is not a formatted jffs2'
+assert len(home) % 65536 == 0
+for start in range(0, len(home), 65536):
+    assert home[start:start + 12] == marker, hex(start)
+    assert home[start + 12:start + 65536] == b'\xff' * (65536 - 12), hex(start)
 manifest = json.loads((out / 'rootfs.json').read_text())
 manifest.update(image_bytes=(out / 'rootfs.cramfs').stat().st_size,
                 free_bytes=parts['rootfs']['size'] - (out / 'rootfs.cramfs').stat().st_size,
