@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+case "${1:-status}" in
+    on|enable)
+        /usr/sbin/cron-setup --prepare
+        rm -f /etc/cron/disabled
+        /usr/sbin/cron-setup
+        ;;
+    off|disable)
+        /usr/sbin/cron-setup --prepare
+        test ! -L /etc/cron/disabled
+        : > /etc/cron/disabled
+        /etc/init.d/S50crond stop
+        echo 'cron disabled (persistent)'
+        ;;
+    status) /etc/init.d/S50crond status ;;
+    *) echo 'Usage: cron-server {on|off|status}' >&2; exit 2 ;;
+esac
