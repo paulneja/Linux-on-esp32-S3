@@ -47,7 +47,10 @@ config = (experiment / 'linux-fork/.config').read_text()
 match = re.search(r'^CONFIG_VECTORS_ADDR=(0x[0-9a-fA-F]+)$', config, re.M)
 assert match and vectors == int(match[1], 16), 'Firmware/kernel vector mismatch'
 assert 'CONFIG_XTENSA_NOMMU_FORK=y' in config
-assert '# CONFIG_MMU is not set' in config
+assert '# CONFIG_XTENSA_VARIANT_MMU is not set' in config
+assert not re.search(r'^CONFIG_MMU=[ym]$', config, re.M)
+autoconf = (experiment / 'linux-fork/include/generated/autoconf.h').read_text()
+assert not re.search(r'^#define CONFIG_MMU\s', autoconf, re.M)
 
 with tempfile.TemporaryDirectory(prefix='final-rootfs-', dir=work) as directory:
     tree = Path(directory) / 'tree'
