@@ -76,6 +76,20 @@ component below remains additionally available under its own original license.
      GNU nano       — GPLv3-or-later https://nano-editor.org
      ncurses        — X11/MIT-style  https://invisible-island.net/ncurses/
 
+   The current fork/userspace build additionally includes:
+
+     GNU Bash       — GPLv3-or-later https://www.gnu.org/software/bash/
+     GNU Make       — GPLv3-or-later https://www.gnu.org/software/make/
+     Dash           — BSD-style     https://git.kernel.org/pub/scm/utils/dash/dash.git/
+     MicroPython    — MIT            https://github.com/micropython/micropython
+     socat          — GPLv2          https://www.dest-unreach.org/socat/
+     dtach          — GPLv2          https://github.com/crigler/dtach
+
+   The image carries these programs' license files under /usr/share/licenses.
+   Source revisions, archive checksums and the local compatibility patches
+   are recorded by build/sources.lock and experiments/mmu-poc/. CPython,
+   Neovim and SQLite are not included in the selected image.
+
    These are separate programs aggregated on the same filesystem image, each
    distributed under its own license. Corresponding source is available from
    the upstream projects and from Buildroot, which fetches them verbatim.

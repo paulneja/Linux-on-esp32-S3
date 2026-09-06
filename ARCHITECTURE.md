@@ -1,11 +1,9 @@
 # Architecture — how Linux and the WiFi firmware share one ESP32-S3
 
-> **Status: verified on hardware.** Everything below is running on a real
-> board: flashed from a fully erased chip, it boots to a login prompt, mounts
-> the rootfs from flash via XIP, passes the RSA accelerator self-tests and
-> reaches the internet over WiFi, and the whole thing has been rebuilt from a
-> clean clone of this repo and booted again. See [README.md](README.md) for the
-> list of what works and what does not.
+> The native dual-core layout was verified from a clean build for 0.6.
+> The current branch adds a tested experimental fork backend and userspace;
+> its new combined-image clean-build verification is tracked in
+> [build/README.md](build/README.md). Do not conflate the two sets of evidence.
 
 ## The big picture: two cores, two operating systems, one chip
 
@@ -31,7 +29,8 @@ ESP32-S3 (single chip, two Xtensa LX7 cores)
     │   ├── espsta0 — STA netdev, joins the home WiFi (wpa_supplicant).
     │   │             STA only: the AP side was removed (see below).
     │   └── /dev/esp-ble — the other end of the BLE pipe (single reader)
-    ├── BusyBox userland (telnetd, dropbear/ssh, inetd) + nano editor
+    ├── BusyBox services + Bash user shell, nano, Dash and GNU Make
+    ├── MicroPython, socat/nc, cron, dtach sessions and process tools
     ├── wifi — interactive scan/connect helper for the STA uplink
     ├── ble-wifi-setup — runs the provisioning dialog over /dev/esp-ble,
     │                    through the same `wifi` command (see BLE.md)
@@ -98,11 +97,24 @@ it joins an existing network, it does not host one.
   `net80211_softap_funcs_init()` that overrides a weak symbol in the closed
   WiFi library, which is built to run STA-only.
 
-Restoring an AP would mean more than reverting this: it needs `hostapd`, and
-`hostapd` doesn't build here — its `os_unix.c` calls `fork()`, which this
-target's NOMMU C library (`uClibc-ng-fdpic`) does not declare at all. BusyBox's
-daemons (`inetd`, `dropbear`, `crond`) work only because BusyBox falls back to
-`vfork()` on NOMMU; `hostapd` upstream has no such fallback.
+Restoring an AP would require both radio-side support and a validated userspace
+configuration. The new fork backend removes one earlier userspace obstacle,
+but does not restore the removed AP driver/firmware operations or prove that
+hostapd fits and works. SoftAP remains unsupported.
+
+## Fork and memory banking
+
+Linux still runs in NOMMU mode. The fork patches keep private page backups
+and swap the resident contents on scheduling transitions. The final owner
+releases unnecessary backups; `/proc/meminfo` and `/proc/PID/status` expose
+the associated accounting. There is no copy-on-write or hardware isolation.
+The backend requires UP Linux, rejects multithreaded fork and limits private
+memory per fork to 512 KiB. `libfork.so.0` exposes the compatible userspace
+entry points; it does not replace the whole C library.
+
+`mmu-run` is separate: it loads constrained freestanding Xtensa payloads and
+switches owned remap pages. Ordinary Bash/Make/MicroPython processes use the
+Linux FDPIC loader and the fork backend, not `mmu-run`.
 
 ## Storage layout (devkit-c1-16m profile, 16MB flash / 8MB PSRAM)
 
@@ -157,6 +169,7 @@ flashed board.
 
 ## Known gaps
 
-Recovery mode, OTA, GitHub Actions CI and hardware-in-the-loop testing are all
-either deferred by design or simply not built yet. There is no SoftAP — the
+Recovery mode and OTA are not implemented. GitHub Actions exists for the
+earlier base pipeline; it is not hardware-in-the-loop verification of every
+new image. There is no SoftAP — the
 board is STA only (see above). curl's HTTPS support works but is experimental.
