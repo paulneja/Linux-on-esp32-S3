@@ -7,6 +7,10 @@ import sys
 path = Path(sys.argv[1])
 text = path.read_text()
 values = {
+    'CT_GCC_DEVEL_BRANCH': '""',
+    'CT_BINUTILS_DEVEL_BRANCH': '""',
+    'CT_UCLIBC_NG_DEVEL_BRANCH': '""',
+    'CT_LINUX_DEVEL_BRANCH': '""',
     'CT_GCC_DEVEL_REVISION': '"' + os.environ['GCC_REV'] + '"',
     'CT_BINUTILS_DEVEL_REVISION': '"' + os.environ['BINUTILS_REV'] + '"',
     'CT_UCLIBC_NG_DEVEL_REVISION': '"' + os.environ['UCLIBC_REV'] + '"',
