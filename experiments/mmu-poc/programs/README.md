@@ -1,5 +1,9 @@
 # Programas nativos: resultados del 2026-09-05
 
+Para construir el sistema completo desde fuentes limpias, ver
+[la ejecución integrada](../../../build/README.md). Los comandos y hashes
+de este documento describen las construcciones incrementales anteriores.
+
 Actualización posterior: [userspace, memoria y perfiles](USERSPACE-UPGRADE.md).
 Web editable, usuarios y sesiones: [uso y verificación](HOME-USERS.md).
 Ese documento describe el kernel nuevo, Bash solo para el usuario y la imagen
