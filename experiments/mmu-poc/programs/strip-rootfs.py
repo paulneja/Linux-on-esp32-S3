@@ -30,27 +30,20 @@ def runtime(path):
         if attrs & 2:
             payload = b"" if typ == 8 else data[offset:offset + size]
             allocated[name] = (typ, attrs, addr, size, align, entsize, payload)
-    # Program headers include file offsets, XIP mapping, permissions and stack size.
     return ((kind, machine, version, entry, flags, ehsize, phsize, phnum),
             data[phoff:phoff + phsize * phnum], allocated)
 
 
 def segments(path):
-    """Compare whole load segments, allowing only removal of the section directory.
-
-    FDPIC Linux, ld-uClibc and mkcramfs use program headers, not section headers.
-    Header directory fields are inside the first PT_LOAD, hence the narrow mask.
-    All offsets, segment sizes, dynamic tables, code and data must remain identical.
-    """
     data = bytearray(path.read_bytes())
     if data[:4] != b"\x7fELF":
         return None
-    runtime(path)  # Validate architecture/type and allocated Xtensa metadata.
+    runtime(path)
     h = struct.unpack_from("<16sHHIIIIIHHHHHH", data)
     phoff, phsize, phnum = h[5], h[9], h[10]
     headers = bytes(data[phoff:phoff+phsize*phnum])
-    data[32:36] = b"\0" * 4  # e_shoff only
-    data[46:52] = b"\0" * 6  # e_shentsize/e_shnum/e_shstrndx only
+    data[32:36] = b"\0" * 4
+    data[46:52] = b"\0" * 6
     payloads = []
     for i in range(phnum):
         typ, offset, _, _, filesz, _, _, _ = struct.unpack_from("<8I", headers, i*phsize)
@@ -89,14 +82,12 @@ def main():
                     options += ["--strip-section-headers", "-R", ".comment", "-R", ".xtensa.info"]
                 subprocess.run([args.strip, *options, str(candidate)], check=True)
                 if snapshot(candidate) != before:
-                    # Some freestanding payloads lose an empty PT_LOAD when stripped.
-                    # Keep the original instead of relaxing loader invariants.
                     print(f"KEEP {path.relative_to(root)}: runtime layout would change")
                     continue
                 reduction = path.stat().st_size - candidate.stat().st_size
                 if reduction < 0:
                     raise RuntimeError(f"ELF grew: {path}")
-                shutil.copyfile(candidate, path)  # Preserve mode, ownership and hard links.
+                shutil.copyfile(candidate, path)
                 saved += reduction
                 count += 1
                 print(f"{path.relative_to(root)}: -{reduction} bytes")

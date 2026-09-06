@@ -1,4 +1,3 @@
-/* Include the implementation to exercise the identical private dispatcher. */
 #include "mmu-services.c"
 #include <assert.h>
 int main(void)
@@ -29,7 +28,7 @@ int main(void)
     assert(!host_call(MMU_FREE, pointer, 0, 0));
     assert(host_call(MMU_FREE, pointer, 0, 0) == -EINVAL);
     assert(host_call(MMU_ALLOC, 4096, 0, 0));
-    services_cleanup(); /* Deliberately retain a file and allocation above. */
+    services_cleanup();
     assert(heap_used == 0 && files[h - 3] == -1);
     assert(!unlink(path));
     puts("PASS: services IO, write policy, heap bounds and resource cleanup");

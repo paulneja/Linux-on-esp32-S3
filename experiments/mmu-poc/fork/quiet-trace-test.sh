@@ -1,5 +1,4 @@
 #!/bin/bash
-# Run on the board; never clear dmesg or change the global console log level.
 set -e
 parameter=/sys/module/nommu/parameters/fork_bank_trace
 test -w "$parameter"

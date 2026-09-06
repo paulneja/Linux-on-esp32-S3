@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Physical cron test: per-user jobs, environment isolation and a real reboot."""
 import importlib.util
 from pathlib import Path
 import re
@@ -35,7 +34,6 @@ try:
         '* * * * * /usr/bin/id -u > /home/cronbeta/uid; echo "$HOME|$SHELL|$PATH" > /home/cronbeta/env'])
     cmd('cron-setup && cron-server status')
     cmd("su - cronalpha -c 'crontab -l >/dev/null && test ! -r /etc/cron/crontabs/cronbeta && ! crontab -u root -l >/dev/null 2>&1'")
-    # Check the applet's non-root install path, not only root's -u path.
     cmd("su - cronbeta -c 'crontab -l > /home/cronbeta/saved && crontab /home/cronbeta/saved'")
     result = cmd("su - cronalpha -c 'VISUAL=/bin/cat EDITOR=/bin/cat crontab -e'")
     assert 'Permission denied' not in result
@@ -54,7 +52,6 @@ try:
     print('PASS: real scheduled jobs, user UID/home ownership, crontab permissions, isolated PATH/SHELL', flush=True)
     cmd('cron-server off; ! cron-server status; test -f /etc/cron/disabled')
     cmd('cron-server on && cron-server status')
-    # A fresh boot must execute @reboot; a daemon restart is not a fresh boot.
     cmd('rm -f /home/cronalpha/reboot-result; sync')
     c.port.write(b'reboot\n')
     c.until(rb'buildroot login: ?', 45)

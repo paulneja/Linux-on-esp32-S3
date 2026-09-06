@@ -1,4 +1,3 @@
--- Run with nvim --headless -u NONE -i NONE -n -l /path/neovim-test.lua.
 vim.o.swapfile = false
 vim.o.undofile = false
 vim.o.shadafile = 'NONE'

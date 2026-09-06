@@ -61,7 +61,6 @@ int main(int argc, char **argv)
     BAD(68, 5); BAD(72, UINT32_MAX); BAD(76, 7); BAD(80, 3);
     BAD(92, PAYLOAD_DATA - 1); BAD(100, 13); BAD(104, DATA_CAPACITY + 1);
     reset(); put(sample + 92, CODE_ADDRESS); put(sample + 108, 5); reject(sizeof(sample));
-    /* Deterministic mutation smoke test; ASan/UBSan check validator+copy bounds. */
     for (i = 0; i < 50000; ++i) {
         unsigned j, changes = i % 8 + 1;
         reset();

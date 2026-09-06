@@ -1,4 +1,3 @@
-/* Local ESP32-S3/N16R8 experiment. MMU writes require --remap-esp32s3. */
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -150,7 +149,6 @@ static int inspect(int remap)
         printf("Owned page %u: native=%p size=65536 PASS\n", p, pages[p]);
     }
     for (i = 0; i < MMU_COUNT; ++i) {
-        /* Core 0 may temporarily map flash. PSRAM and alias must stay stable. */
         if (i >= 0x100 && table[i] != map[i]) {
             fputs("STOP: upper MMU map changed during inspection.\n", stderr);
             goto done;

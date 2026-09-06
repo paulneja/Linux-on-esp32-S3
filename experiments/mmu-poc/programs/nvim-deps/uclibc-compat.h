@@ -1,4 +1,3 @@
-/* Build the genuine uClibc Netlink implementation outside libc. */
 #include <features.h>
 #include <errno.h>
 #include <sys/types.h>

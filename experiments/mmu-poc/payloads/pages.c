@@ -5,7 +5,7 @@ uint32_t mmu_main(uint32_t argument)
 {
     uint32_t i, sum = 0;
     for (i = 0; i < sizeof(memory); ++i) {
-        if (memory[i]) return UINT32_MAX; /* ELF BSS must be zero. */
+        if (memory[i]) return UINT32_MAX;
         memory[i] = (unsigned char)(i ^ argument);
     }
     for (i = 0; i < sizeof(memory); ++i) sum += memory[i];

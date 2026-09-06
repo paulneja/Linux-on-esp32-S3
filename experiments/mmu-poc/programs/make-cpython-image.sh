@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Standalone sizing/boot experiment. Never replace the normal artifact.
 set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/env.sh"
 image_dir=$(mktemp -d "$programs_out/cpython-image.XXXXXX")

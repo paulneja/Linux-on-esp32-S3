@@ -1,7 +1,3 @@
-/* Bridge non-FDPIC CALL0 payload -> host FDPIC CALL0 function.
- * a2=api, a3=op, a4=x, a5=y, a6=z. Host expects a2..a5 and GOT in a11.
- * The host preserves CALL0 callee-saved a12..a15. a11 is caller-saved.
- */
     .text
     .align 4
     .global mmu_call

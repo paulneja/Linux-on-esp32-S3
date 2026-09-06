@@ -1,5 +1,4 @@
 #include <stdint.h>
-/* Iterative Fibonacci, explicitly bounded to the uint32_t range. */
 uint32_t mmu_main(uint32_t n)
 {
     uint32_t a = 0, b = 1;

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Package only; never flash, commit or publish.
 set -euo pipefail
 task_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "$task_dir/../../.." && pwd)

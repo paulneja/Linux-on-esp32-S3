@@ -54,9 +54,6 @@ int main(int argc,char **argv) {
             long avail=proc_field("/proc/meminfo","MemAvailable:");
             long own=process_field(getpid(),"PrivateRAM:");if(own<0)own=256;
             long long required=(long long)reserve+need+2LL*own;
-            /* Reserve the not-yet-used part of each running job's declared budget.
-             * This is conservative admission, not a kernel memory guarantee.
-             */
             for(unsigned i=0;i<next;i++)if(jobs[i].pid>0) {
                 long used=process_field(jobs[i].pid,"PrivateRAM:");
                 required+=used<0?need:used<need?need-used:0;

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Explicit board reboot; assert persistent home/account files are unchanged."""
 import importlib.util
 from pathlib import Path
 import re

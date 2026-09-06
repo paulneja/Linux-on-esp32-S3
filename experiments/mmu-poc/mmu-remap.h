@@ -1,7 +1,3 @@
-/* ESP32-S3-only laboratory backend. No ROM calls (Linux uses CALL0).
- * Register sequences follow ESP-IDF cpu.c and the S3 ROM cache item routines.
- * A transaction pauses core 0 and masks local interrupts; no libc in that interval.
- */
 #ifndef MMU_REMAP_H
 #define MMU_REMAP_H
 
@@ -15,9 +11,6 @@ struct remap_result {
     int fatal;
 };
 
-/* 0 = clean success, 1 = safely restored failure; fatal means reset required.
- * The caller must retain its allocations on fatal cache failure.
- */
 static int remap_pages(void **pages, struct remap_result *result)
 {
     volatile uint32_t *alias = (volatile uint32_t *)(uintptr_t)ALIAS_ADDRESS;
@@ -29,7 +22,7 @@ static int remap_pages(void **pages, struct remap_result *result)
     __asm__ volatile("rsr %0, prid" : "=a"(prid));
     if (((prid >> 13) & 1u) != 1u) {
         result->stage = 1;
-        return 1; /* Never stall the core executing this code. */
+        return 1;
     }
     for (p = 0; p < 2; ++p) {
         unsigned slot = ((uintptr_t)pages[p] - DATA_BASE) / PAGE_SIZE;
@@ -58,7 +51,6 @@ static int remap_pages(void **pages, struct remap_result *result)
         goto restore_core;
     line_size = 16u << line_mode;
 
-    /* Suspend automatic prefetch around aligned writeback (S3 erratum). */
     result->stage = 4;
     if (saved_auto & 4u) {
         register_write(DC_AUTO, saved_auto & ~4u);
@@ -77,8 +69,6 @@ static int remap_pages(void **pages, struct remap_result *result)
     if (!cache_operation(ALIAS_ADDRESS, line_size, 1u))
         goto cleanup;
 
-    /* First A/B passes write owned pages. Later A/B passes verify persistence
-     * through the SAME virtual address, comparing every 32-bit word. */
     for (phase = 0; phase < 4; ++phase) {
         p = phase & 1u;
         result->stage = 10 + phase;

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Compile the real bank functions with an UP allocator/scheduler test shim."""
 import os
 from pathlib import Path
 import subprocess

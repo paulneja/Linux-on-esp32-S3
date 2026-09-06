@@ -1,4 +1,3 @@
-/* Small, explicit POSIX extension for the experimental native Linux port. */
 #include "py/runtime.h"
 #include <errno.h>
 #include <stdio.h>

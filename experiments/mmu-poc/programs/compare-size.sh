@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Private build trees only. Variants never replace selected binaries automatically.
 set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/env.sh"
 for variant in baseline oz lto; do

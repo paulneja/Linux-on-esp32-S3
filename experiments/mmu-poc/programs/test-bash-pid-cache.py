@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Compile the actual patched bgp_resize with a host fixture."""
 from pathlib import Path
 import os
 import subprocess
@@ -54,6 +53,5 @@ int main(void) {
 subprocess.run(["cc", "-x", "c", "-std=c99", "-Wall", "-Wextra", "-Werror",
                 "-fsanitize=address,undefined", "-o", str(output), "-"],
                input=fixture + source[start:end] + test, text=True, check=True)
-# LeakSanitizer cannot inspect tasks under the desktop sandbox's ptrace layer.
 subprocess.run([str(output.resolve())], check=True,
                env={**os.environ, "ASAN_OPTIONS": "detect_leaks=0"})

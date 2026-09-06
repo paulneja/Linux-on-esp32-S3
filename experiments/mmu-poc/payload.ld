@@ -1,4 +1,3 @@
-/* Twelve independently owned 64 KiB pages; eight code and four data. */
 ENTRY(mmu_main)
 PHDRS { code PT_LOAD FLAGS(5); data PT_LOAD FLAGS(6); }
 MEMORY {

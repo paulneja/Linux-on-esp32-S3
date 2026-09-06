@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Work on a fresh staging copy; never change the source image or build binaries.
 set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/env.sh"
 input=${1:-"$programs_out/rootfs-programs.cramfs"}

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Check real packed profiles, dependency selection and overwrite protection."""
 import importlib.util
 import json
 from pathlib import Path

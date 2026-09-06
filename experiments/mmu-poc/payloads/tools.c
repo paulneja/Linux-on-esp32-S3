@@ -30,7 +30,7 @@ static uint32_t heap_test(const struct mmu_api *api)
         if (!blocks[i]) return 1;
         for (j = 0; j < 4096; ++j) blocks[i][j] = (unsigned char)(i ^ j);
     }
-    if (mmu_alloc(api, 1)) return 2; /* 128 KiB budget exhausted. */
+    if (mmu_alloc(api, 1)) return 2;
     for (i = 0; i < 32; ++i) {
         for (j = 0; j < 4096; ++j)
             if (blocks[i][j] != (unsigned char)(i ^ j)) return 3;
@@ -39,7 +39,7 @@ static uint32_t heap_test(const struct mmu_api *api)
     blocks[0] = mmu_alloc(api, 128 * 1024);
     if (!blocks[0]) return 5;
     if (mmu_free(api, blocks[0])) return 6;
-    if (mmu_free(api, blocks[0]) >= 0) return 7; /* Double free rejected. */
+    if (mmu_free(api, blocks[0]) >= 0) return 7;
     text(api, "PASS: 128 KiB heap, allocation limit, reuse and double-free rejection\n");
     return 0;
 }

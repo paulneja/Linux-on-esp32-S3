@@ -1,6 +1,4 @@
 #!/usr/bin/dash
-# Run in a quiet board. Times include instrumentation; global counters can
-# include background services. Requested polling interval is 10 ms, not a peak guarantee.
 set -eu
 echo 'BENCHMARK bash'
 programbench -- /bin/bash /usr/share/program-tests/bash-test.sh
@@ -15,7 +13,6 @@ rmdir "$work"
 echo 'BENCHMARK micropython'
 programbench -- /usr/bin/micropython /usr/share/program-tests/micropython-test.py
 echo 'BENCHMARK socat'
-# Benchmark a bounded fork+exec and transfer; terminal handoff has a separate test.
 programbench -t 5 -- /usr/bin/socat -T1 -u EXEC:'/bin/echo socat-bench',pipes OPEN:/dev/null
 echo 'BENCHMARK nc'
 programbench -- /bin/nc --help
