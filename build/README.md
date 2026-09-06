@@ -81,7 +81,17 @@ two sessions. This suite does not claim those combined workloads are safe.
 It creates temporary users and jobs and removes them on the normal cleanup
 path. It requires root access, the default Bash login policy, cron enabled
 and HTTP initially disabled; do not run it against an unrelated production
-installation. Review cleanup if a test is interrupted or fails.
+installation. Cleanup is best effort: when the console itself times out, the
+temporary accounts stay on the board and the next run stops on its own
+precondition check. Rewrite the two writable partitions to return the board
+to the factory state before retrying, which is faster than the full image and
+leaves the kernel and rootfs untouched:
+
+```sh
+esptool --chip esp32s3 --port YOUR_COM_ADAPTER \
+    --before default-reset --after no-reset \
+    write-flash 0xd0000 ARTIFACTS/etc.jffs2 0xcc0000 ARTIFACTS/home.jffs2
+```
 
 If esptool left the freshly flashed board in its bootloader with
 `--after no-reset`, add `--reset-from-bootloader` to explicitly reset it via
