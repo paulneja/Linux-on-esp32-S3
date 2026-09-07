@@ -33,6 +33,9 @@ notes and the binaries are on the
   for `home-init` and continues, and `web-server migrate` no longer writes to
   `/etc` on every boot. A board whose `/home` needed reclaim previously stopped
   reaching the login prompt.
+- Retry the ESP-IDF tool download and stop the build when it still fails. A
+  transient `504` from GitHub used to be ignored, and the run carried on until
+  the firmware stage died with an unrelated looking mesage.
 - Ship `images/home.jffs2` so `./flash.sh --parts --erase` can restore the
   factory `/home` after wiping the chip. It is byte-identical to the one the
   clean build produces.
