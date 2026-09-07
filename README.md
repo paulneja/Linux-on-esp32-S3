@@ -266,3 +266,5 @@ firmware. See [NOTICE](NOTICE) for third-party components and licenses.
 
 This project is licensed under the **GPLv3** (see [LICENSE](LICENSE)). Kernel
 code contributed here (`drivers/crypto/esp32s3_rsa.c`) is GPL-2.0-or-later.
+
+P.S: Sorry for the wait 🥲
