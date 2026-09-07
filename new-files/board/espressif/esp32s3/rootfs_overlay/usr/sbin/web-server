@@ -17,23 +17,19 @@ migrate() {
         echo 'web-server: port 80 has a custom configuration; not changed' >&2
         return 1
     }
-    if grep -q "^#\?80[ \t].*-h /home/www$" "$CONF"; then
-        return 0
-    fi
-    tmp=$(mktemp /etc/inetd.web.XXXXXX)
-    cp -p "$CONF" "$tmp"
-    awk '$0 ~ /^#?80[ \t]/ {
+    updated=$(awk '$0 ~ /^#?80[ \t]/ {
         prefix = substr($0,1,1)=="#" ? "#" : ""
         print prefix "80\tstream\ttcp\tnowait\twww-data\t/usr/sbin/httpd\thttpd -i -h /home/www"
         next
-    } {print}' "$CONF" > "$tmp"
-    if ! cmp -s "$CONF" "$tmp"; then
-        if [ ! -e /etc/inetd.conf.before-home-www ]; then cp -p "$CONF" /etc/inetd.conf.before-home-www; fi
-        mv "$tmp" "$CONF"
-        killall -HUP inetd 2>/dev/null || :
-    else
-        rm "$tmp"
+    } {print}' "$CONF")
+    if [ "$updated" = "$(cat "$CONF")" ]; then
+        return 0
     fi
+    tmp=$(mktemp /etc/inetd.web.XXXXXX)
+    printf '%s\n' "$updated" > "$tmp"
+    if [ ! -e /etc/inetd.conf.before-home-www ]; then cp -p "$CONF" /etc/inetd.conf.before-home-www; fi
+    mv "$tmp" "$CONF"
+    killall -HUP inetd 2>/dev/null || :
 }
 case "${1:-status}" in
     migrate) migrate ;;

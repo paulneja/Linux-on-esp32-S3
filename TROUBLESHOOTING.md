@@ -25,15 +25,16 @@ esptool --chip esp32s3 --port YOUR_COM_ADAPTER \
     write-flash 0xcc0000 ARTIFACTS/home.jffs2
 ```
 
-That erases whatever was in `/home`. Treat the partition as scratch space
-until the kernel side is fixed.
+That erases whatever was in `/home`. Treat the partition as scratch space.
 
 ### First boot stops after `Running sysctl: OK`
 
 The next line of a healthy boot is `Starting network (background): OK`. If it
-stops at `sysctl`, `S05home` is blocked on its first write to `/home`. Add
-`set -x` to `/etc/init.d/rcS` and to `S05home` on a test board and the trace
-ends at `mkdir -p /home/root`.
+stops at `sysctl`, an init script is blocked writing to `/home`. Add `set -x`
+to `/etc/init.d/rcS` and to the script on a test board to find the exact line.
+The original failure traced to `mkdir -p /home/root` in `S05home`; that script
+no longer writes, `home-init` creates the directory instead and `S06home-users`
+bounds it, so init continues even when the write is slow.
 
 A fully erased `home` partition carries no JFFS2 cleanmarkers. In the observed
 failure, the first `mkdir` stalled and login was not reached within four

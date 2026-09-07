@@ -1,0 +1,11 @@
+#!/bin/sh
+case "$1" in
+	start)
+		if ! mount | grep -q ' /home '; then
+			echo "S05home: /home is not mounted, skipping (see /home/README.txt)"
+		fi
+		;;
+	stop) : ;;
+	restart|reload) "$0" start ;;
+	*) echo "Usage: $0 {start|stop|restart}" >&2; exit 2 ;;
+esac
