@@ -29,10 +29,13 @@ notes and the binaries are on the
   flasher. Distinguish functional clean-build validation from bit-identical builds.
 - Two independent builds of the same commit differ only in `/etc/shadow`, from
   Buildroot's random password salt; everything else matches byte for byte.
-- Known limitation, not fixed: on the fork kernel any jffs2 operation that has
-  to erase and reuse blocks hangs, so `/home` stops accepting writes once it has
-  been rewritten enough, and the board then fails to boot. The stock kernel does
-  not do this. Shipping a formatted `/home` only removes the first-boot trigger.
+- Keep booting when `/home` is slow: `S06home-users` waits a bounded 45 seconds
+  for `home-init` and continues, and `web-server migrate` no longer writes to
+  `/etc` on every boot. A board whose `/home` needed reclaim previously stopped
+  reaching the login prompt.
+- Known limitation of the platform, not fixed here: once jffs2 has to reclaim
+  and erase used blocks, write throughput collapses. The published 0.6 kernel
+  behaves the same way, so this is not new in this branch.
 
 The entries below describe earlier releases and retain their original limits.
 
