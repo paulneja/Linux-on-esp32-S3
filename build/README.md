@@ -104,7 +104,11 @@ benchmark suite, the runner replaces that login temporarily with Dash,
 then logs back into Bash. Keeping an additional interactive Bash alive
 while measuring nested Bash pipelines exhausted RAM in the development run;
 that combination is not a supported concurrency guarantee. Services remain
-enabled during the measurements.
+enabled during the measurements, which is deliberate but means a background
+fork can arrive at the worst moment: measuring Bash drives available memory
+down to under 100 KiB, and a DHCP lease event running its script there has
+killed the measured program. A run killed that way is retried up to three
+times and each retry is printed; only repeated kills fail the step.
 
 Session tests use a Dash primary console, restored to Bash afterwards.
 Two detached Dash sessions with a Bash primary console could leave too little
