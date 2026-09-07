@@ -5,6 +5,26 @@ the slow way, so the diagnostic step is included rather than just the fix.
 
 ## Boot
 
+### Writes to `/home` hang once blocks have to be recycled
+
+Known limitation of the fork kernel, not yet fixed. Writing into clean jffs2
+blocks works; as soon as the filesystem has to erase and reuse blocks, the
+write never returns, the shell blocks in the kernel and the board stops
+booting at `S05home`. The stock `6.11.0` kernel does not do this on the same
+board and partition. Measurements and the suspected cause are in
+[the erase report](build/verification/2026-09-06-jffs2-erase.md).
+
+Recover by rewriting the factory `/home`:
+
+```sh
+esptool --chip esp32s3 --port YOUR_COM_ADAPTER \
+    --before default-reset --after no-reset \
+    write-flash 0xcc0000 ARTIFACTS/home.jffs2
+```
+
+That erases whatever was in `/home`. Treat the partition as scratch space
+until the kernel side is fixed.
+
 ### First boot stops after `Running sysctl: OK`
 
 The next line of a healthy boot is `Starting network (background): OK`. If it
