@@ -27,6 +27,12 @@ notes and the binaries are on the
   paths with spaces and document which modes overwrite `/etc` and `/home`.
 - Restore `flash.sh --help` and add host-only regression tests with a simulated
   flasher. Distinguish functional clean-build validation from bit-identical builds.
+- Two independent builds of the same commit differ only in `/etc/shadow`, from
+  Buildroot's random password salt; everything else matches byte for byte.
+- Known limitation, not fixed: on the fork kernel any jffs2 operation that has
+  to erase and reuse blocks hangs, so `/home` stops accepting writes once it has
+  been rewritten enough, and the board then fails to boot. The stock kernel does
+  not do this. Shipping a formatted `/home` only removes the first-boot trigger.
 
 The entries below describe earlier releases and retain their original limits.
 
