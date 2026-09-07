@@ -81,13 +81,19 @@ the actual adapter path in place of `/dev/ttyUSB0`.
 you need first.**
 
 ```sh
+./flash.sh -p /dev/ttyUSB0 --images build-output/reproduce.XXXXXX/artifacts
+```
+
+`flash.sh` checks every input, its size and the partition layout before it
+touches the board. Without `--images` it reads `images/`, which still holds
+the older 0.6 release, so pass the directory your build produced. The
+equivalent by hand:
+
+```sh
 esptool --chip esp32s3 --port /dev/ttyUSB0 --baud 460800 \
     write_flash --flash_mode dio --flash_size 16MB --flash_freq 80m \
     0x0 build-output/reproduce.XXXXXX/artifacts/linux-esp32s3-native-full.bin
 ```
-
-Do not use `./flash.sh` for this step unless you deliberately want its
-`images/` inputs: it does not automatically pick up the new build.
 
 ### 3. Log in and connect
 
@@ -201,14 +207,16 @@ For the previous release without the new fork/userspace work:
 ./flash.sh -p /dev/ttyUSB0
 ```
 
-The script reads `images/` and requires Python 3 and esptool. The combined
-image there is still 0.6; a separate formatted `images/home.jffs2` was added
-for factory resets with `--parts --erase`.
+The script reads `images/` unless `--images` points elsewhere, and requires
+Python 3 and esptool. Everything in `images/` belongs to the 0.6 release and
+matches the combined image there byte for byte.
 
 - Default full-image flashing replaces both `/etc` and `/home`.
 - `--parts` preserves `/home`, but replaces `/etc`, including accounts and
   network configuration.
-- `--parts --erase` wipes the chip and writes the factory home image too.
+- `--parts --erase` wipes the chip; it writes a factory `home.jffs2` when the
+  image directory has one, and otherwise leaves `/home` erased, which the
+  board formats on its first write.
 
 `make-images.sh` and the existing GitHub Actions workflow are the older
 base-system build path, not the complete fork-enabled pipeline.

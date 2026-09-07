@@ -36,9 +36,12 @@ notes and the binaries are on the
 - Retry the ESP-IDF tool download and stop the build when it still fails. A
   transient `504` from GitHub used to be ignored, and the run carried on until
   the firmware stage died with an unrelated looking mesage.
-- Ship `images/home.jffs2` so `./flash.sh --parts --erase` can restore the
-  factory `/home` after wiping the chip. It is byte-identical to the one the
-  clean build produces.
+- Take an image directory with `./flash.sh --images DIR`, so the same checked
+  flasher serves the committed 0.6 release and a freshly built artifacts
+  directory. `--parts --erase` writes a factory `home.jffs2` when the directory
+  has one and otherwise leaves `/home` erased, which the board formats on its
+  first write. `images/` keeps only the 0.6 release, matching its own combined
+  image byte for byte.
 - Known limitation of the platform, not fixed here: once jffs2 has to reclaim
   and erase used blocks, write throughput collapses. The published 0.6 kernel
   behaves the same way, so this is not new in this branch.

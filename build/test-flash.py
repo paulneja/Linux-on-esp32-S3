@@ -93,7 +93,7 @@ if 'write_flash' in sys.argv and os.environ.get('FAIL_WRITE') == '1':
 
     def test_missing_each_part_never_erases(self):
         for name in ('bootloader.bin', 'partition-table.bin', 'network_adapter.bin',
-                     'etc.jffs2', 'xipImage', 'rootfs.cramfs', 'home.jffs2'):
+                     'etc.jffs2', 'xipImage', 'rootfs.cramfs'):
             with self.subTest(name=name):
                 path = self.images / name
                 saved = path.with_suffix('.saved')
@@ -124,6 +124,28 @@ if 'write_flash' in sys.argv and os.environ.get('FAIL_WRITE') == '1':
         with (self.images / 'xipImage').open('wb') as stream:
             stream.truncate(0x400001)
         self.reject('--parts', '--erase')
+
+    def test_images_directory_can_be_overridden(self):
+        other = self.root / 'elsewhere dir'
+        other.mkdir()
+        for item in self.images.iterdir():
+            (other / item.name).write_bytes(item.read_bytes())
+        result, calls = self.run_flash('--images', str(other))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls[0][-2:], ['0x0', str(other / 'linux-esp32s3-native-full.bin')])
+
+    def test_missing_images_directory_never_accesses_device(self):
+        self.reject('--images', str(self.root / 'does not exist'))
+
+    def test_missing_home_writes_the_other_parts(self):
+        (self.images / 'home.jffs2').unlink()
+        result, calls = self.run_flash('--parts', '--erase')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(calls), 2)
+        self.assertIn('erase_flash', calls[0])
+        self.assertIn(str(self.images / 'rootfs.cramfs'), calls[1])
+        self.assertNotIn(str(self.images / 'home.jffs2'), calls[1])
+        self.assertIn('left erased', result.stdout)
 
     def test_truncated_home_never_erases(self):
         (self.images / 'home.jffs2').write_bytes(b'bad')
