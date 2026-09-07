@@ -64,8 +64,11 @@ cd Linux-on-esp32-S3
 ./run.sh --all -y        # check, build, verify, flash and test, no prompts
 ```
 
-It checks the environment before spending an hour on a build, finds an
-interpreter that actually has pyserial, picks an unused output directory,
+The build prints as it happens rather than sitting silent, and says up front
+that it takes roughly 40 minutes and about 21 GB; `-q` sends that output to
+the log only. It checks the environment before spending an hour on a build,
+finds an interpreter that actually has pyserial, picks an unused output
+directory,
 warns before anything that erases the board, and offers to close a console
 holding the serial port. `./run.sh --help` lists every action, including
 `--repro` for a two-build comparison and `--recover` to put a board back to
