@@ -22,16 +22,22 @@ the SHA256 manifests used by their build scripts. ESP-IDF pins its own
 submodules. The container base is pinned by digest; Debian package updates
 and host tools are not a promise of byte-identical output across future runs.
 
-The recorded comparison used a build of `8bf55fc`, subsequently repackaged
-with a formatted factory `/home`, and a clean build of `ee9e06d`. These were
-not two independent builds of the same commit. The comparison found identical
-bootloader, partition table, firmware, kernel and factory `/home` bytes;
-the reported extracted-tree difference was `/etc/shadow`. Buildroot hashes
-`BR2_TARGET_GENERIC_ROOT_PASSWD` with a fresh random salt on each run, which
-changes `rootfs.cramfs`, `etc.jffs2` and the combined image. This demonstrates
-a working clean-build path, not bit-for-bit reproducibility. A same-commit
-double build with controlled inputs and a full artifact comparison remains
-necessary before making that stronger claim.
+Two independent builds of `9226140` have now been compared, with separate
+work directories and downloads and the same pinned container image. Five of
+the eight artifacts came out byte-identical: bootloader, partition table,
+firmware, kernel and the factory `/home`. All five recorded build
+configurations matched. Of the 772 rootfs entries exactly one differed,
+`/etc/shadow`: Buildroot hashes `BR2_TARGET_GENERIC_ROOT_PASSWD` with a fresh
+random salt on each run, so the algorithm and the non-password fields match
+while the stored hash does not. That one file changes `rootfs.cramfs`,
+`etc.jffs2` and the combined image with them.
+
+The build reproduces its content but not its image hashes. Storing an
+already-hashed password in the defconfig would make all eight artifacts
+identical, at the cost of a fixed public salt for a password that is already
+a published default; that trade has not been made here. Reproduce the check
+with `build/compare-builds.py LEFT RIGHT`; the recorded run is in
+[the verification directory](verification/2026-09-06-reproducibility.json).
 
 Stages and logs are written to `stages/` and `logs/`. A failed stage stops the
 pipeline. Retrying inside that same isolated directory may reuse its own
