@@ -8,6 +8,7 @@ JOBS=${JOBS:-$( (nproc 2>/dev/null || echo 4) )}
 PORT=${PORT:-}
 ARTIFACTS=${ARTIFACTS:-}
 ASSUME_YES=0
+QUIET=0
 ACTION=""
 LOGDIR=${LOGDIR:-$(dirname "$REPO")}
 BOARD_ID_HINT="usb-1a86"
@@ -54,6 +55,7 @@ Actions:
 
 Options:
   -y, --yes            Do not prompt; assume yes
+  -q, --quiet          Send build output to the log only, not to the screen
   -j, --jobs N         Parallel build jobs (default: nproc)
   -p, --port PATH      Serial adapter (default: autodetect)
   -a, --artifacts DIR  Artifacts directory to use
@@ -256,14 +258,32 @@ do_build() {
 	fi
 	clean_tree_or_fix || return 1
 	local log="$LOGDIR/esp32-build-$(date +%Y%m%d-%H%M%S).log"
-	info "jobs: $JOBS"
-	info "log:  $log"
-	info "this takes on the order of 40 minutes"
-	JOBS="$JOBS" bash "$REPO/build/reproduce.sh" > "$log" 2>&1
-	local rc=$?
+	info "jobs:  $JOBS"
+	info "log:   $log"
+	echo
+	bold "This downloads and compiles a cross toolchain, the kernel, the"
+	bold "firmware and the userspace from source. It takes a long time:"
+	bold "roughly 40 minutes on 8 jobs, longer on fewer, and it needs"
+	bold "about 21 GB. The build output scrolls below as it happens."
+	echo
+	[ "$QUIET" = 1 ] && info "(quiet: output only goes to the log)"
+	ask "  Start the build?" || { info "cancelled"; return 1; }
+	echo
+	local started rc elapsed
+	started=$(date +%s)
+	if [ "$QUIET" = 1 ]; then
+		JOBS="$JOBS" bash "$REPO/build/reproduce.sh" > "$log" 2>&1
+		rc=$?
+	else
+		JOBS="$JOBS" bash "$REPO/build/reproduce.sh" 2>&1 | tee "$log"
+		rc=${PIPESTATUS[0]}
+	fi
+	elapsed=$(( $(date +%s) - started ))
+	echo
+	info "elapsed: $((elapsed / 60))m $((elapsed % 60))s"
 	if [ "$rc" -ne 0 ]; then
 		red "the build failed (code $rc)"
-		info "last lines:"
+		info "last lines of $log:"
 		tail -15 "$log" | sed 's/^/      /'
 		return 1
 	fi
@@ -419,6 +439,7 @@ EOF
 while [ $# -gt 0 ]; do
 	case "$1" in
 		-y|--yes)        ASSUME_YES=1; shift ;;
+		-q|--quiet)      QUIET=1; shift ;;
 		-j|--jobs)       JOBS="${2:?-j needs a number}"; shift 2 ;;
 		-p|--port)       PORT="${2:?-p needs a path}"; shift 2 ;;
 		-a|--artifacts)  ARTIFACTS="${2:?-a needs a directory}"; shift 2 ;;
