@@ -22,6 +22,12 @@ the SHA256 manifests used by their build scripts. ESP-IDF pins its own
 submodules. The container base is pinned by digest; Debian package updates
 and host tools are not a promise of byte-identical output across future runs.
 
+ESP-IDF downloads its own tools from GitHub releases. That step is retried,
+and from the third attempt it goes through Espressif's asset mirror by setting
+`IDF_GITHUB_ASSETS`, because GitHub returns `504` on those assets often enough
+to stop a build. The mirror changes where the bytes come from, not which ones:
+`idf_tools.py` still checks every archive against the SHA-256 in `tools.json`.
+
 Two independent builds of `9226140` have now been compared, with separate
 work directories and downloads and the same pinned container image. Five of
 the eight artifacts came out byte-identical: bootloader, partition table,
