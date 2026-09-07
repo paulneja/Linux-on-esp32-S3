@@ -105,7 +105,17 @@ def benchmarks():
     print(text, flush=True)
     (args.output / 'benchmarks.log').write_text(text)
     console.login()
-    assert re.search(r'(?m)^BENCHMARK COMPLETE$', text), text
+    if not re.search(r'(?m)^BENCHMARK COMPLETE$', text):
+        if re.search(r'oom-kill:|Out of memory: Killed', text):
+            killer = re.search(r'(?m)^\[[^]]*\] (\S+) invoked oom-killer', text)
+            raise AssertionError(
+                'a measured program was killed by the OOM killer'
+                + (f', triggered by {killer.group(1)}' if killer else '')
+                + '; the suite retries a killed run, so this means it happened repeatedly.'
+                  ' Full transcript in benchmarks.log')
+        raise AssertionError(text)
+    for retry in re.findall(r'(?m)^BENCH RETRY .*$', text):
+        print('  note:', retry, flush=True)
     command('test -n "$BASH_VERSION"')
 
 try:

@@ -36,6 +36,10 @@ notes and the binaries are on the
 - Retry the ESP-IDF tool download and stop the build when it still fails. A
   transient `504` from GitHub used to be ignored, and the run carried on until
   the firmware stage died with an unrelated looking mesage.
+- Retry a benchmark whose measured program is killed by the OOM killer, up to
+  three times, printing each retry. Measuring Bash leaves under 100 KiB free,
+  so a DHCP lease event forking its script there was enough to kill it and
+  abort the whole benchmark step. A non-kill failure still fails immediately.
 - Stream the build to the terminal instead of hiding it in a log, state its
   cost before starting, and report elapsed time; `-q` restores the quiet form.
 - Add `./run.sh`, a menu-driven driver for the whole path: environment checks,
