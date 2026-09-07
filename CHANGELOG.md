@@ -36,6 +36,11 @@ notes and the binaries are on the
 - Retry the ESP-IDF tool download and stop the build when it still fails. A
   transient `504` from GitHub used to be ignored, and the run carried on until
   the firmware stage died with an unrelated looking mesage.
+- Add `./run.sh`, a menu-driven driver for the whole path: environment checks,
+  clean build, checksums, flashing, the board suite, a two-build reproducibility
+  comparison and a factory restore. Every step is also a flag, so it runs
+  unattended. It finds an interpreter with pyserial, avoids reusing an output
+  directory, and offers to close a console holding the serial port.
 - Take an image directory with `./flash.sh --images DIR`, so the same checked
   flasher serves the committed 0.6 release and a freshly built artifacts
   directory. `--parts --erase` writes a factory `home.jffs2` when the directory

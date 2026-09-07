@@ -52,6 +52,27 @@ not a loader for arbitrary desktop binaries. See [limits](#limits) below.
 **The combined BIN committed in `images/` is still 0.6.** It does not contain
 the new fork backend or programs. Build `mmu-poc` to get the current system.
 
+### The scripted way
+
+`./run.sh` drives the whole path and is the shortest route. With no arguments
+it opens a menu; each step is also a flag, so it works unattended:
+
+```sh
+git clone --branch mmu-poc https://github.com/paulneja/Linux-on-esp32-S3.git
+cd Linux-on-esp32-S3
+./run.sh                 # menu
+./run.sh --all -y        # check, build, verify, flash and test, no prompts
+```
+
+It checks the environment before spending an hour on a build, finds an
+interpreter that actually has pyserial, picks an unused output directory,
+warns before anything that erases the board, and offers to close a console
+holding the serial port. `./run.sh --help` lists every action, including
+`--repro` for a two-build comparison and `--recover` to put a board back to
+its factory `/etc` and `/home`.
+
+The rest of this section is the same path by hand.
+
 ### 1. Build from a clean checkout
 
 On a Linux host with Git and Docker access, as a regular user:
