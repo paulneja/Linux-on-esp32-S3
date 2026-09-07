@@ -19,37 +19,45 @@ warn()  { printf '  ! %s\n' "$*" >&2; }
 info()  { printf '  %s\n' "$*"; }
 die()   { red "error: $*"; exit 1; }
 
+read_reply() {
+	if { : < /dev/tty; } 2>/dev/null; then
+		read -r "$1" < /dev/tty
+	else
+		read -r "$1"
+	fi
+}
+
 ask() {
 	[ "$ASSUME_YES" = 1 ] && return 0
-	local reply
-	printf '%s [s/N] ' "$1"
-	read -r reply </dev/tty 2>/dev/null || return 1
-	case "$reply" in [sSyY]*) return 0 ;; *) return 1 ;; esac
+	local reply=""
+	printf '%s [y/N] ' "$1"
+	read_reply reply || return 1
+	case "$reply" in [yY]*) return 0 ;; *) return 1 ;; esac
 }
 
 usage() {
 	cat <<'EOF'
-Uso: ./run.sh [opciones] [accion]
+Usage: ./run.sh [options] [action]
 
-Sin accion abre el menu interactivo.
+With no action it opens the interactive menu.
 
-Acciones:
-  --check        Comprobar el entorno y arreglar lo que se pueda
-  --build        Compilar todo desde fuentes limpias
-  --verify       Comprobar los checksums de una compilacion
-  --flash        Escribir la imagen en la placa (BORRA /etc y /home)
-  --test         Ejecutar la bateria de pruebas en la placa
-  --all          check, build, verify, flash y test, en ese orden
-  --repro        Dos compilaciones del mismo commit y comparacion
-  --recover      Devolver /etc y /home de la placa al estado de fabrica
-  --status       Mostrar compilaciones existentes y estado de la placa
+Actions:
+  --check        Check the environment and fix what can be fixed
+  --build        Build everything from clean sources
+  --verify       Check the checksums of a build
+  --flash        Write the image to the board (ERASES /etc and /home)
+  --test         Run the board test suite
+  --all          check, build, verify, flash and test, in that order
+  --repro        Two builds of the same commit and a comparison
+  --recover      Put the board's /etc and /home back to factory
+  --status       Show existing builds and the state of the board
 
-Opciones:
-  -y, --yes            No preguntar; asumir que si
-  -j, --jobs N         Trabajos paralelos de compilacion (por defecto: nproc)
-  -p, --port RUTA      Adaptador serie (por defecto: autodeteccion)
-  -a, --artifacts DIR  Directorio de artefactos a usar
-  -h, --help           Esta ayuda
+Options:
+  -y, --yes            Do not prompt; assume yes
+  -j, --jobs N         Parallel build jobs (default: nproc)
+  -p, --port PATH      Serial adapter (default: autodetect)
+  -a, --artifacts DIR  Artifacts directory to use
+  -h, --help           This help
 EOF
 }
 
@@ -101,18 +109,18 @@ free_port() {
 	port=$1
 	pids=$(port_holders "$port")
 	[ -z "$pids" ] && return 0
-	warn "el puerto esta ocupado por:"
+	warn "the port is held by:"
 	for pid in $pids; do
 		info "  pid $pid  $(ps -o args= -p "$pid" 2>/dev/null | cut -c1-70)"
 	done
-	warn "una consola abierta roba bytes y ademas resetea la placa al abrirse"
-	if ask "  Cerrar esos procesos?"; then
+	warn "an open console steals bytes and also resets the board when it opens"
+	if ask "  Close those processes?"; then
 		for pid in $pids; do kill "$pid" 2>/dev/null; done
 		sleep 1
 		for pid in $(port_holders "$port"); do kill -9 "$pid" 2>/dev/null; done
 		sleep 1
-		[ -z "$(port_holders "$port")" ] && { green "  puerto liberado"; return 0; }
-		warn "no pude liberarlo"
+		[ -z "$(port_holders "$port")" ] && { green "  port released"; return 0; }
+		warn "could not release it"
 		return 1
 	fi
 	return 1
@@ -132,83 +140,83 @@ clean_tree_or_fix() {
 	local dirty stray f
 	dirty=$(git -C "$REPO" status --porcelain 2>/dev/null)
 	[ -z "$dirty" ] && return 0
-	warn "el arbol no esta limpio y reproduce.sh toma la instantanea de HEAD:"
+	warn "the tree is not clean and reproduce.sh snapshots HEAD:"
 	printf '%s\n' "$dirty" | sed 's/^/      /'
 	stray=$(printf '%s\n' "$dirty" | awk '$1=="??" && $2 ~ /\.log$/ {print $2}')
 	if [ -n "$stray" ]; then
-		if ask "  Mover los .log sueltos fuera del repositorio?"; then
+		if ask "  Move the stray .log files out of the repository?"; then
 			for f in $stray; do
-				mv "$REPO/$f" "$LOGDIR/" 2>/dev/null && info "movido: $f -> $LOGDIR/"
+				mv "$REPO/$f" "$LOGDIR/" 2>/dev/null && info "moved: $f -> $LOGDIR/"
 			done
 		fi
 	fi
 	dirty=$(git -C "$REPO" status --porcelain 2>/dev/null)
-	[ -z "$dirty" ] && { green "  arbol limpio"; return 0; }
-	warn "quedan cambios sin commitear; commitealos o guardalos antes de compilar"
+	[ -z "$dirty" ] && { green "  tree is clean"; return 0; }
+	warn "there are uncommitted changes; commit or stash them before building"
 	return 1
 }
 
 check_env() {
-	bold "== Entorno =="
+	bold "== Environment =="
 	local problems=0 py free port
 
 	for c in git docker python3 sha256sum awk; do
-		if have "$c"; then info "ok       $c"; else red "  falta    $c"; problems=$((problems+1)); fi
+		if have "$c"; then info "ok       $c"; else red "  missing  $c"; problems=$((problems+1)); fi
 	done
 
 	if docker info >/dev/null 2>&1; then
-		info "ok       docker responde"
+		info "ok       docker responds"
 	else
-		red "  problema docker no responde (servicio parado o falta permiso de grupo)"
-		info "         probá: systemctl --user start docker  |  sudo usermod -aG docker \$USER"
+		red "  problem  docker does not respond (service stopped or missing group permission)"
+		info "         try: systemctl --user start docker  |  sudo usermod -aG docker \$USER"
 		problems=$((problems+1))
 	fi
 
 	if have esptool || have esptool.py; then
 		info "ok       esptool"
 	else
-		red "  falta    esptool"
-		info "         instalá con: pipx install esptool   (o pip install --user esptool)"
+		red "  missing  esptool"
+		info "         install with: pipx install esptool   (or pip install --user esptool)"
 		problems=$((problems+1))
 	fi
 
 	if py=$(python_with_pyserial); then
-		info "ok       pyserial en $py"
+		info "ok       pyserial on $py"
 	else
-		red "  falta    pyserial (lo necesita la bateria de pruebas)"
-		info "         instalá con: pipx inject esptool pyserial   (o pip install --user pyserial)"
+		red "  missing  pyserial (the board test suite needs it)"
+		info "         install with: pipx inject esptool pyserial   (or pip install --user pyserial)"
 		problems=$((problems+1))
 	fi
 
 	free=$(disk_free_gb)
 	if [ -n "$free" ] && [ "$free" -ge 25 ] 2>/dev/null; then
-		info "ok       disco: ${free} GB libres"
+		info "ok       disk: ${free} GB free"
 	else
-		red "  problema disco: ${free:-?} GB libres; una compilacion ocupa ~21 GB"
+		red "  problem  disk: ${free:-?} GB free; one build takes about 21 GB"
 		problems=$((problems+1))
 	fi
 
 	if port=$(detect_port); then
-		info "ok       placa en $port"
-		[ -n "$(port_holders "$port")" ] && warn "el puerto esta ocupado (ver opcion de liberar)"
+		info "ok       board on $port"
+		[ -n "$(port_holders "$port")" ] && warn "the port is busy (see the release option)"
 	else
-		warn "no se detecta ningun adaptador serie; conectá la placa para flashear"
+		warn "no serial adapter detected; connect the board to flash it"
 	fi
 
 	if [ -d "$REPO/.git" ]; then
-		info "ok       commit $(git -C "$REPO" rev-parse --short HEAD 2>/dev/null) en $(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+		info "ok       commit $(git -C "$REPO" rev-parse --short HEAD 2>/dev/null) on $(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null)"
 	fi
 
 	echo
-	if [ "$problems" -eq 0 ]; then green "Sin problemas."; else red "$problems problema(s) que hay que resolver."; fi
+	if [ "$problems" -eq 0 ]; then green "No problems."; else red "$problems problem(s) to resolve."; fi
 	return "$problems"
 }
 
 do_status() {
-	bold "== Compilaciones =="
+	bold "== Builds =="
 	local a manifest
 	if [ -z "$(builds)" ]; then
-		info "ninguna todavia"
+		info "none yet"
 	else
 		while IFS= read -r a; do
 			manifest="$a/build-manifest.json"
@@ -219,91 +227,91 @@ import json, sys
 m = json.load(open(sys.argv[1]))
 v = m.get('board_verification')
 print('      commit', m.get('source_commit', '?')[:12],
-      '| imagen', m.get('sha256', {}).get('linux-esp32s3-native-full.bin', '?')[:16],
-      '| placa', v if isinstance(v, str) else v.get('status', '?'))
+      '| image', m.get('sha256', {}).get('linux-esp32s3-native-full.bin', '?')[:16],
+      '| board', v if isinstance(v, str) else v.get('status', '?'))
 PY
 			fi
 		done < <(builds)
 	fi
 	echo
-	bold "== Placa =="
+	bold "== Board =="
 	local port
 	if port=$(detect_port); then
-		info "puerto $port"
+		info "port $port"
 		local h; h=$(port_holders "$port")
-		[ -n "$h" ] && warn "ocupado por: $h" || info "libre"
+		[ -n "$h" ] && warn "held by: $h" || info "free"
 	else
-		info "no detectada"
+		info "not detected"
 	fi
 }
 
 do_build() {
-	bold "== Compilar desde fuentes limpias =="
-	have docker || die "falta docker"
-	docker info >/dev/null 2>&1 || die "docker no responde"
+	bold "== Build from clean sources =="
+	have docker || die "docker is missing"
+	docker info >/dev/null 2>&1 || die "docker does not respond"
 	local free; free=$(disk_free_gb)
 	if [ -n "$free" ] && [ "$free" -lt 25 ] 2>/dev/null; then
-		warn "solo ${free} GB libres y la compilacion ocupa ~21 GB"
-		ask "  Continuar igual?" || return 1
+		warn "only ${free} GB free and the build takes about 21 GB"
+		ask "  Continue anyway?" || return 1
 	fi
 	clean_tree_or_fix || return 1
 	local log="$LOGDIR/esp32-build-$(date +%Y%m%d-%H%M%S).log"
 	info "jobs: $JOBS"
 	info "log:  $log"
-	info "esto tarda del orden de 40 minutos"
+	info "this takes on the order of 40 minutes"
 	JOBS="$JOBS" bash "$REPO/build/reproduce.sh" > "$log" 2>&1
 	local rc=$?
 	if [ "$rc" -ne 0 ]; then
-		red "la compilacion fallo (codigo $rc)"
-		info "ultimas lineas:"
+		red "the build failed (code $rc)"
+		info "last lines:"
 		tail -15 "$log" | sed 's/^/      /'
 		return 1
 	fi
 	ARTIFACTS=$(builds | head -1)
-	green "listo: ${ARTIFACTS#$REPO/}"
+	green "done: ${ARTIFACTS#$REPO/}"
 }
 
 do_verify() {
-	bold "== Comprobar checksums =="
-	local a; a=$(latest_artifacts) || { red "no hay artefactos; compilá primero"; return 1; }
+	bold "== Check checksums =="
+	local a; a=$(latest_artifacts) || { red "no artifacts; build first"; return 1; }
 	info "${a#$REPO/}"
-	[ -f "$a/SHA256SUMS" ] || { red "falta SHA256SUMS"; return 1; }
+	[ -f "$a/SHA256SUMS" ] || { red "SHA256SUMS is missing"; return 1; }
 	if ( cd "$a" && sha256sum -c SHA256SUMS ) | sed 's/^/  /'; then
-		green "todos los artefactos coinciden"
+		green "every artifact matches"
 		return 0
 	fi
-	red "hay artefactos que no coinciden con su checksum"
+	red "some artifacts do not match their checksum"
 	return 1
 }
 
 do_flash() {
-	bold "== Flashear =="
+	bold "== Flash =="
 	local a port
-	a=$(latest_artifacts) || { red "no hay artefactos; compilá primero"; return 1; }
-	port=$(detect_port) || { red "no se detecta la placa; pasá -p RUTA"; return 1; }
-	info "imagen: ${a#$REPO/}"
-	info "puerto: $port"
-	red   "esto BORRA /etc y /home de la placa"
-	ask "  Escribir la imagen?" || { info "cancelado"; return 1; }
-	free_port "$port" || { red "liberá el puerto y volvé a intentar"; return 1; }
+	a=$(latest_artifacts) || { red "no artifacts; build first"; return 1; }
+	port=$(detect_port) || { red "no board detected; pass -p PATH"; return 1; }
+	info "image: ${a#$REPO/}"
+	info "port:  $port"
+	red   "this ERASES /etc and /home on the board"
+	ask "  Write the image?" || { info "cancelled"; return 1; }
+	free_port "$port" || { red "release the port and try again"; return 1; }
 	"$REPO/flash.sh" -p "$port" --images "$a"
 	local rc=$?
-	[ "$rc" -eq 0 ] && green "flasheo terminado" || red "el flasheo fallo (codigo $rc)"
+	[ "$rc" -eq 0 ] && green "flashing finished" || red "flashing failed (code $rc)"
 	return "$rc"
 }
 
 do_test() {
-	bold "== Bateria de pruebas en la placa =="
+	bold "== Board test suite =="
 	local a port py out n
-	a=$(latest_artifacts) || { red "no hay artefactos"; return 1; }
-	port=$(detect_port) || { red "no se detecta la placa"; return 1; }
-	py=$(python_with_pyserial) || { red "no hay python con pyserial"; info "instalá con: pipx inject esptool pyserial"; return 1; }
+	a=$(latest_artifacts) || { red "no artifacts"; return 1; }
+	port=$(detect_port) || { red "no board detected"; return 1; }
+	py=$(python_with_pyserial) || { red "no python with pyserial"; info "install with: pipx inject esptool pyserial"; return 1; }
 	free_port "$port" || return 1
 	out="$REPO/build-output/board-check"
 	n=2
 	while [ -e "$out" ]; do out="$REPO/build-output/board-check-$n"; n=$((n+1)); done
-	info "salida: ${out#$REPO/}"
-	info "26 pruebas, unos 5 minutos"
+	info "output: ${out#$REPO/}"
+	info "26 tests, about 5 minutes"
 	"$py" "$REPO/build/test-board.py" "$port" "$a" --output "$out" --reset-from-bootloader
 	local rc=$?
 	if [ -f "$out/results.json" ]; then
@@ -311,66 +319,66 @@ do_test() {
 import json, sys
 r = json.load(open(sys.argv[1]))
 bad = [t['name'] for t in r['tests'] if t['status'] != 'pass']
-print(f"  {r['status'].upper()}: {len(r['tests'])} pruebas, {len(bad)} fallidas")
+print(f"  {r['status'].upper()}: {len(r['tests'])} tests, {len(bad)} failed")
 for name in bad:
-    print('    falla:', name)
+    print('    failed:', name)
 PY
 	fi
 	if [ "$rc" -ne 0 ]; then
-		red "la bateria no paso"
-		warn "si se corto a la mitad quedan usuarios de prueba en la placa;"
-		warn "usá la opcion de recuperar antes de reintentar"
+		red "the suite did not pass"
+		warn "if it was cut short, test users are left on the board;"
+		warn "use the recover option before retrying"
 		return 1
 	fi
-	green "todas las pruebas pasaron"
+	green "every test passed"
 }
 
 do_recover() {
-	bold "== Devolver /etc y /home al estado de fabrica =="
+	bold "== Restore /etc and /home to factory =="
 	local a port
-	a=$(latest_artifacts) || { red "no hay artefactos de donde sacar las particiones"; return 1; }
-	port=$(detect_port) || { red "no se detecta la placa"; return 1; }
+	a=$(latest_artifacts) || { red "no artifacts to take the partitions from"; return 1; }
+	port=$(detect_port) || { red "no board detected"; return 1; }
 	for f in etc.jffs2 home.jffs2; do
-		[ -f "$a/$f" ] || { red "falta $a/$f"; return 1; }
+		[ -f "$a/$f" ] || { red "$a/$f is missing"; return 1; }
 	done
-	red "esto borra los datos actuales de /etc y /home de la placa"
-	ask "  Continuar?" || return 1
+	red "this erases the current /etc and /home on the board"
+	ask "  Continue?" || return 1
 	free_port "$port" || return 1
 	local tool; tool=$(have esptool && echo esptool || echo esptool.py)
 	"$tool" --chip esp32s3 --port "$port" --baud 460800 \
 		--before default-reset --after no-reset \
 		write-flash 0xd0000 "$a/etc.jffs2" 0xcc0000 "$a/home.jffs2"
 	local rc=$?
-	[ "$rc" -eq 0 ] && green "particiones restauradas" || red "fallo la restauracion"
+	[ "$rc" -eq 0 ] && green "partitions restored" || red "the restore failed"
 	return "$rc"
 }
 
 do_repro() {
-	bold "== Reproducibilidad: dos compilaciones del mismo commit =="
+	bold "== Reproducibility: two builds of the same commit =="
 	local first second
 	first=$(builds | head -1)
 	if [ -z "$first" ]; then
-		info "no hay ninguna compilacion; hago la primera"
+		info "no build yet; making the first one"
 		do_build || return 1
 		first=$(builds | head -1)
 	else
-		info "primera: ${first#$REPO/}"
+		info "first: ${first#$REPO/}"
 	fi
-	info "ahora la segunda, del mismo commit"
+	info "now the second one, same commit"
 	do_build || return 1
 	second=$(builds | head -1)
-	if [ "$second" = "$first" ]; then red "no aparecio una segunda compilacion"; return 1; fi
-	bold "== Comparacion =="
+	if [ "$second" = "$first" ]; then red "a second build did not appear"; return 1; fi
+	bold "== Comparison =="
 	python3 "$REPO/build/compare-builds.py" "${first%/artifacts}" "${second%/artifacts}"
 }
 
 do_all() {
-	check_env || { ask "  Hay problemas. Continuar igual?" || return 1; }
+	check_env || { ask "  There are problems. Continue anyway?" || return 1; }
 	do_build   || return 1
 	do_verify  || return 1
 	do_flash   || return 1
 	do_test    || return 1
-	green "camino completo terminado"
+	green "complete path finished"
 }
 
 menu() {
@@ -378,20 +386,20 @@ menu() {
 		echo
 		bold "=== Linux on ESP32-S3 ==="
 		cat <<'EOF'
-  1) Comprobar el entorno
-  2) Compilar todo desde fuentes limpias
-  3) Comprobar checksums de una compilacion
-  4) Flashear la placa
-  5) Ejecutar la bateria de pruebas
-  6) TODO: compilar, comprobar, flashear y probar
-  7) Reproducibilidad: dos compilaciones y comparar
-  8) Recuperar la placa (restaurar /etc y /home)
-  9) Estado
-  0) Salir
+  1) Check the environment
+  2) Build everything from clean sources
+  3) Check the checksums of a build
+  4) Flash the board
+  5) Run the board test suite
+  6) EVERYTHING: build, check, flash and test
+  7) Reproducibility: two builds and a comparison
+  8) Recover the board (restore /etc and /home)
+  9) Status
+  0) Quit
 EOF
-		printf 'Opcion: '
-		local choice
-		read -r choice </dev/tty 2>/dev/null || return 0
+		printf 'Choice: '
+		local choice=""
+		read_reply choice || { echo; return 0; }
 		case "$choice" in
 			1) check_env ;;
 			2) do_build ;;
@@ -403,7 +411,7 @@ EOF
 			8) do_recover ;;
 			9) do_status ;;
 			0|q|Q) return 0 ;;
-			*) warn "opcion invalida" ;;
+			*) warn "invalid choice" ;;
 		esac
 	done
 }
@@ -411,18 +419,18 @@ EOF
 while [ $# -gt 0 ]; do
 	case "$1" in
 		-y|--yes)        ASSUME_YES=1; shift ;;
-		-j|--jobs)       JOBS="${2:?-j necesita un numero}"; shift 2 ;;
-		-p|--port)       PORT="${2:?-p necesita una ruta}"; shift 2 ;;
-		-a|--artifacts)  ARTIFACTS="${2:?-a necesita un directorio}"; shift 2 ;;
+		-j|--jobs)       JOBS="${2:?-j needs a number}"; shift 2 ;;
+		-p|--port)       PORT="${2:?-p needs a path}"; shift 2 ;;
+		-a|--artifacts)  ARTIFACTS="${2:?-a needs a directory}"; shift 2 ;;
 		-h|--help)       usage; exit 0 ;;
 		--check|--build|--verify|--flash|--test|--all|--repro|--recover|--status)
 		                 ACTION="${1#--}"; shift ;;
-		*)               red "opcion desconocida: $1"; usage; exit 1 ;;
+		*)               red "unknown option: $1"; usage; exit 1 ;;
 	esac
 done
 
 if [ -n "$ARTIFACTS" ] && [ ! -d "$ARTIFACTS" ]; then
-	die "no existe el directorio de artefactos: $ARTIFACTS"
+	die "artifacts directory does not exist: $ARTIFACTS"
 fi
 
 case "$ACTION" in
