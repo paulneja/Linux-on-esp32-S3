@@ -1,204 +1,236 @@
-# Linux on an ESP32-S3 — natively, with WiFi
+# Linux on an ESP32-S3 — native Linux, fork and a usable shell
 
-A real Linux 6.11 kernel, compiled for **Xtensa** and running **natively on the
-ESP32-S3's own cores** — no emulator in between. WiFi keeps working while it
-runs: the Espressif firmware lives on the same die and Linux talks to it, so
-the board joins your network, reaches the internet, and you get a shell over
-telnet or the serial console.
+Linux 6.11 running **natively on the ESP32-S3's Xtensa cores**, with WiFi,
+Bash, MicroPython and writable storage. Linux is not emulated: Espressif's
+firmware runs alongside it on the same chip and handles WiFi and flash access.
+All of this runs on one N16R8 board, without extra RAM, an SD card or a second
+computer attached to keep it running.
 
-The chip's **hardware RSA accelerator** is exposed to Linux through the Crypto
-API, so it is usable by any program, not just one demo.
+## What's new in the current version
 
-> **Current branch: experimental native fork and expanded userspace.** Bash,
-> Dash, GNU Make, MicroPython, socat/nc, detached sessions, private user homes
-> and cron have passed tests on the ESP32-S3. The fork implementation uses
-> software memory banks; it is not a full MMU or hardware memory protection.
->
-> The committed `images/` still contain the earlier 0.6 release, plus the
-> factory `/home` that `./flash.sh --parts --erase` writes back after wiping
-> the chip. For the complete current branch, use
-> [the clean build pipeline](build/README.md).
-> The clean build of `ee9e06d` passed all 26 hardware checks on 2026-09-06;
-> see the [exact-image verification record](build/verification/2026-09-06.md).
-> Two independant builds of the same commit differ only in a password salt and
-> a git version string, with no compiled code changed; see the
-> [reproducibility record](build/verification/2026-09-07-clone-build.md).
-> Later code changes are not validated automatically. This is a research
-> project, not a production system.
+The `mmu-poc` branch expands the earlier 0.6 system with **native `fork()`
+support and a larger userspace**. It is the current experimental development
+version, not a new numbered stable release.
 
-> **Note on history.** This repo used to host an *emulated* approach (a RISC-V
-> RV32IMA interpreter running Linux on top of the ESP32-S3). That worked, but
-> was inherently slow and limited. This is the same project, continued: the
-> native Xtensa build replaces it and improves on it in every way. The old
-> approach remains in the git history and in the `0.1` release.
+- **Native fork-enabled programs.** Software memory banks let parent and child
+  keep independent private state, with backup memory reclaimed when it is no
+  longer shared. This unlocks tested process workflows that the previous
+  NOMMU system could not run.
+- **Bash for the user, a lightweight shell for services.** Bash 5.2.37 is the
+  login shell; BusyBox remains `/bin/sh`. Dash 0.5.12 is also available.
+- **More real programs under their normal names.** GNU Make 4.4.1, MicroPython
+  1.26.0 with fork/IPC support, socat 1.8.1.3 and `nc`/`netcat`.
+  Make executes build recipes; it is not a C compiler.
+- **An editable web page and private user homes.** Web content lives in
+  `/home/www`; root gets a welcome README in `/home/root`. Users have their
+  own homes, Unix permissions and `su`/`passwd`.
+- **Scheduled jobs and detachable sessions.** Persistent per-user
+  `cron`/`crontab`, `@reboot` jobs, `session`/dtach consoles and
+  `nohup ... &` for background work.
+- **Tools for working within 8 MiB of RAM.** `jobq` limits job concurrency
+  and checks available memory; `programbench` measures program costs.
+  Image profiles select programs, and checked ELF stripping saves flash.
+- **A complete clean-build pipeline.** Toolchain, kernel, firmware and
+  userspace are built from downloaded sources. Images have checksums and
+  partition checks; the board test suite ties results to one exact image.
+  Boot initialization avoids unnecessary writes and has a bounded wait for
+  slow home setup.
+
+**Fork is not a full MMU.** This remains NOMMU Linux, with no hardware process
+memory protection. The switchable MMU-remap experiment is a separate runtime,
+not a loader for arbitrary desktop binaries. See [limits](#limits) below.
 
 ## Hardware
 
-- **ESP32-S3 with 16 MB flash and 8 MB Octal PSRAM** (an N16R8 module, e.g.
-  DevKitC-1). The PSRAM is the system RAM — the 8 MB Octal part is required.
-- A cable for the board's serial/COM connection. The device name depends on
-  the adapter and OS; use the port actually detected on your machine.
+- **ESP32-S3 with 16 MB flash and 8 MB Octal PSRAM**: an N16R8 module such as
+  the corresponding DevKitC-1.
+- Power and a serial/COM connection for flashing and the console. Use your
+  board's actual adapter port; no additional peripherals are required.
 
-## Quick start (nothing to build)
+## Get the current version
 
-The earlier 0.6 prebuilt images are in `images/`. They do not include the new
-fork/userspace work. You only need `esptool` to flash that release:
+**The combined BIN committed in `images/` is still 0.6.** It does not contain
+the new fork backend or programs. Build `mmu-poc` to get the current system.
 
-```bash
-pip install esptool          # or activate ESP-IDF: . $IDF_PATH/export.sh
-./flash.sh                   # write the one full-flash image — that is all
-```
+### 1. Build from a clean checkout
 
-`flash.sh` finds esptool and the serial port on its own (`-p /dev/ttyXXX` to
-override). It writes `images/linux-esp32s3-native-full.bin`, a single
-**full-flash 16 MB image** for offset `0x0` that contains everything —
-bootloader, partition table, WiFi firmware, `/etc`, kernel and rootfs — with
-the unused space (the `/home` partition) padded to `0xff`. Flashing it erases
-and rewrites the whole chip in one shot, so this one file is a complete,
-self-contained install: no separate `--erase` step, nothing else to flash.
-`--erase` explicitly wipes the chip first; omitting it does not preserve data
-when writing a full image. `--parts` preserves `/home` but overwrites `/etc`
-(accounts, passwords and network settings). `--parts --erase` also requires
-a generated `images/home.jffs2`, which is absent from the committed 0.6 set;
-missing inputs are rejected before erasing. The current branch's clean build
-formats `/home` in its new artifact; it does not replace these older images.
-
-Then open the console and log in:
-
-```bash
-screen /dev/ttyACM0 115200   # or: picocom -b 115200 /dev/ttyACM0
-```
-
-Login is **`root`** / **`changeme123`** — change it with `passwd`.
-
-A fresh flash has no WiFi configured. `Starting network (background): OK` in
-the boot log only means the step was launched — it runs behind the login prompt
-and what it actually did lands in `/var/log/network.log`. Join your network
-with:
+On a Linux host with Git and Docker access, as a regular user:
 
 ```sh
-wifi                                      # interactive: scans, lists networks,
-                                          # pick a number; open ones connect
-                                          # straight away, secured ones ask for
-                                          # the password
-wifi connect "YOUR SSID" "YOUR PASSWORD"  # or do it non-interactively
+git clone --branch mmu-poc https://github.com/paulneja/Linux-on-esp32-S3.git
+cd Linux-on-esp32-S3
+JOBS=8 bash build/reproduce.sh
 ```
 
-From then on the board gets an IP over DHCP and you can `telnet` to it from
-your LAN. Right after boot RAM is tight while services start, so an occasional
-command can be killed by the OOM killer — wait a few seconds and retry.
+Allow time for downloads and compilation, and substantial free disk space.
+The build uses its own directory and does not reuse the development machine's
+toolchain or overwrite the older committed images.
 
-## What works, and what does not
+The output is `build-output/reproduce.XXXXXX/artifacts/`, containing the
+16 MiB `linux-esp32s3-native-full.bin`, its component images,
+`SHA256SUMS` and `build-manifest.json`. Replace `XXXXXX` with the directory
+printed by your run. See the [complete build instructions](build/README.md).
 
-**Works**
+### 2. Flash the image you just built
 
-- **Bash 5.2.37 for user logins**, with BusyBox `/bin/sh` retained for services.
-- **Native fork-enabled programs:** Dash 0.5.12, GNU Make 4.4.1, MicroPython
-  1.26.0 and socat 1.8.1.3. `make` runs build recipes; it is not a C compiler.
-  MicroPython is not CPython and does not provide general pip compatibility.
-- **nc/netcat**, cron/crontab, `jobq`, `programbench`, and process diagnostics.
-- **Private user homes and Unix permissions**, `su`/`passwd`, editable web
-  files in `/home/www`, and `session`/dtach for detachable consoles. No sudo
-  or doas. `nohup ... &` supports noninteractive jobs across a COM disconnect,
-  provided the console does not reset the board and power remains on.
-- Serial console and **telnet** (on by default).
-- **STA WiFi** with real internet access — run `wifi` for an interactive
-  scan-and-pick, or `wifi connect "SSID" "PASS"` non-interactively.
-- **WiFi setup over Bluetooth** — the board advertises as `Esp32-Linux`; connect
-  from a phone with any BLE serial terminal and pick a network, no PC and no
-  cable needed. Wait ~30 s after power-on before connecting. See **[BLE.md](BLE.md)**.
-- **nano** as the editor (the busybox `vi` applet is disabled; `vi` is a
-  symlink to `nano`).
-- **Hardware RSA accelerator** — `rsa-esp32s3` in the Crypto API, with a
-  boot-time self-test at 512 and 2048 bits. The kernel stacks
-  `pkcs1pad(rsa-esp32s3,sha256)` on top, so X.509 verification uses it.
-- **SSH** (dropbear) — present but **off by default**: `ssh-server on|off|status`.
-  It is slow here, and the RSA accelerator does not help it (modern SSH uses
-  Curve25519, not RSA).
-- **Lua**, and a BusyBox **httpd** serving an editable status page (`/home/www`) —
-  **off by default**: `web-server on|off|status`, the same idea as
-  `ssh-server`. Turn it on and browse to the board's IP; the setting survives a
-  reboot, and while nobody is looking at the page nothing is running.
-- **curl** over plain HTTP.
-- **The clock sets itself.** There is no RTC on this board, so it powers on
-  believing it is 1 Jan 1970 — and until that is fixed *every* HTTPS request
-  fails, because every certificate is "not valid before" a date still in the
-  future. It now asks NTP as soon as the interface gets an address. That is
-  *after* the login prompt, not before — the prompt comes up at ~11 s and the
-  clock lands around 20–35 s in, once WiFi has associated — so if you log
-  straight in, `date` can still say 1970 for a moment. What it did is in
-  `/var/log/network.log`. On a network with no internet it stays in 1970;
-  `date -s "2026-07-31 10:00:00"` still works by hand.
+Install esptool on the host, close any console holding the COM port, and use
+the actual adapter path in place of `/dev/ttyUSB0`.
 
-**Partly works**
+**A full-image write replaces configuration and user files, including
+`/etc` and `/home`, even without a separate erase command. Back up anything
+you need first.**
 
-- **curl over HTTPS** — real certificate verification against a curated CA
-  bundle, checked against github, google and example.com, but **experimental**:
-  the bundle is trimmed to 34 major roots because the full 140-cert set
-  exhausts mbedTLS's memory on this board, TLS is 1.2 only, and RAM is tight.
-  Fine for light fetches, not a robust tool.
+```sh
+esptool --chip esp32s3 --port /dev/ttyUSB0 --baud 460800 \
+    write_flash --flash_mode dio --flash_size 16MB --flash_freq 80m \
+    0x0 build-output/reproduce.XXXXXX/artifacts/linux-esp32s3-native-full.bin
+```
 
-**Removed**
+Do not use `./flash.sh` for this step unless you deliberately want its
+`images/` inputs: it does not automatically pick up the new build.
 
-- **SoftAP** (the board acting as an access point) — **removed on purpose.**
-  The closed WiFi blob beaconed as **WEP** instead of WPA2 (clients reject it),
-  and bringing the AP up wedged the firmware so the STA could no longer scan or
-  associate. It was disabled first and has now been taken out of both the
-  kernel driver and the firmware entirely, along with the `ap` command. This
-  board is **STA only**: it joins an existing network, it does not host one.
+### 3. Log in and connect
 
-## Build from source
+Open your serial terminal at **115200 baud**, using the same COM adapter.
+For example:
 
-Everything needed to reproduce the images is here: the kernel patches (including
-the RSA driver), the buildroot configuration and overlay, and the firmware
-patches. They apply automatically on top of fresh upstream clones.
+```sh
+screen /dev/ttyUSB0 115200
+```
 
-For the current fork-enabled branch, run `JOBS=8 bash build/reproduce.sh`.
-The [complete build pipeline](build/README.md) produces a combined BIN and
-checksums in a new `build-output/reproduce.XXXXXX/artifacts/` directory,
-without replacing the committed stable images.
+Log in as **`root` / `changeme123`**, then run `passwd` to change the
+password. A factory image has no WiFi configured:
 
-`make-images.sh` remains the legacy base-system packager; by itself it does
-not add the fork backend or expanded userspace. Repackaging existing outputs
-can preserve their bytes, but does not demonstrate a fresh source build.
+```sh
+wifi
+```
+
+The interactive menu scans and lets you choose a network. Alternatively,
+use `wifi connect "YOUR SSID" "YOUR PASSWORD"`.
+
+`Starting network (background): OK` only means startup was launched, not
+that WiFi connected. Check `/var/log/network.log` for the result. NTP sets
+the clock after networking comes up; until then, HTTPS certificate checks
+can fail because the board has no battery-backed clock.
+
+Telnet is enabled by default and sends credentials in clear text. Use a
+trusted LAN and read [SECURITY.md](SECURITY.md) before connecting.
+
+## Things to try
+
+- Run a script with `micropython /home/root/script.py`. This is MicroPython,
+  not CPython; general `pip` compatibility is not provided.
+- Edit `/home/www/index.html`, run `web-server on`, then open the board's IP
+  in a browser. `web-server off` disables it; the setting survives reboot.
+- Use `crontab -e` to schedule jobs for your user.
+- Run `session work` to create or reattach a lightweight shell. Detach with
+  **Ctrl-]** and list sessions with `session list`.
+- Use `nohup command > /tmp/job.log 2>&1 &` for a noninteractive job that
+  should survive closing the console. It does not survive a reboot or power
+  loss; make sure closing the terminal does not reset the board.
+
+More commands, measurements and examples are in the
+[userspace guide](experiments/mmu-poc/programs/USERSPACE-UPGRADE.md).
+
+## Features carried forward from 0.6
+
+- **STA WiFi and BLE provisioning.** Join an existing network over the
+  console or through the `Esp32-Linux` BLE service. See [BLE.md](BLE.md).
+  SoftAP was removed; the board does not host a WiFi access point.
+- **nano and Lua.** `vi` points to nano rather than the disabled BusyBox vi
+  applet.
+- **Hardware RSA acceleration.** The `rsa-esp32s3` Linux Crypto API driver
+  has boot-time 512-bit and 2048-bit self-tests.
+- **Optional SSH and HTTP services.** Dropbear is controlled with
+  `ssh-server on|off|status`; HTTP with `web-server on|off|status`.
+  Both are off by default. SSH is slow on this hardware; the RSA driver does
+  not accelerate its Curve25519 operations.
+- **NTP and curl.** Plain HTTP works. HTTPS uses certificate verification
+  with a trimmed CA bundle and TLS 1.2, but remains experimental under the
+  board's RAM constraints.
+
+## Build and test status
+
+The build and hardware evidence are recorded separately:
+
+- A clean build and a later **local-clone build** passed **26/26 hardware
+  checks**, covering fork, programs, users, cron and session persistence.
+  See the [clean-image record](build/verification/2026-09-06.md) and
+  [clone-build record](build/verification/2026-09-07-clone-build.md).
+- Two independent builds of **the same commit, `9226140`**, produced five
+  byte-identical artifacts out of eight. Of 772 rootfs entries, only
+  `/etc/shadow` differed because of the random password salt. See the
+  [comparison](build/verification/2026-09-06-reproducibility.json).
+- The separate clone comparison also found an embedded Git-version metadata
+  difference in the firmware. **These results do not establish bit-for-bit
+  reproducibility of the complete BIN.**
+- The corrected source at **`7b8a4d0`** completed the full clean pipeline and
+  host tests. Its new combined image still requires its own hardware run;
+  earlier 26/26 results must not be attributed to it.
+
+A build succeeding is not the same as a board test passing. Consult the
+image's `build-manifest.json` and matching `results.json`. The board suite
+does not test an external WiFi connection or sustained flash reclaim.
+
+## Limits
+
+- **8 MiB RAM is a real constraint.** Fork eagerly copies private memory;
+  it is not copy-on-write. The backend is UP-only, rejects multithreaded fork
+  and limits private memory per fork to 512 KiB. Several Bash sessions or
+  large pipelines can run out of memory; detached sessions default to Dash.
+- **Native binaries must target Xtensa/FDPIC.** Arbitrary x86, ARM or desktop
+  Linux binaries do not run. CPython, Neovim, SQLite, sudo and doas are not
+  included.
+- **Writable flash can become extremely slow.** `/etc` and `/home` use
+  JFFS2. Large writes and block reclaim caused severe slowdowns in tests,
+  including with fork disabled and with the 0.6 kernel. Startup changes
+  mitigate the boot impact; they do not fix write throughput. Avoid heavy
+  rewrites and keep important data backed up. See the
+  [flash-write investigation](build/verification/2026-09-06-jffs2-erase.md).
+- **Permissions are not memory isolation.** Use trusted programs and users.
+  This is a research project, not a hardened production system.
+- **The rootfs is read-only XIP cramfs.** Executing directly from flash is
+  essential to fitting the system in RAM. Build through the full pipeline;
+  matching extracted files alone does not validate a manually repacked image.
+
+## Older 0.6 prebuilt images
+
+For the previous release without the new fork/userspace work:
+
+```sh
+./flash.sh -p /dev/ttyUSB0
+```
+
+The script reads `images/` and requires Python 3 and esptool. The combined
+image there is still 0.6; a separate formatted `images/home.jffs2` was added
+for factory resets with `--parts --erase`.
+
+- Default full-image flashing replaces both `/etc` and `/home`.
+- `--parts` preserves `/home`, but replaces `/etc`, including accounts and
+  network configuration.
+- `--parts --erase` wipes the chip and writes the factory home image too.
+
+`make-images.sh` and the existing GitHub Actions workflow are the older
+base-system build path, not the complete fork-enabled pipeline.
 
 ## Documentation
 
-| | |
-|---|---|
-| **[ARCHITECTURE.md](ARCHITECTURE.md)** | How two operating systems share one chip, the boot flow, the flash layout |
-| **[DEVELOPMENT.md](DEVELOPMENT.md)** | Building from source, the patch system, packaging, reproducibility caveats |
-| **[BLE.md](BLE.md)** | The Bluetooth provisioning link |
-| **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** | Symptoms seen on hardware, and what caused them |
-| **[SECURITY.md](SECURITY.md)** | What a flashed board exposes — read this before putting one on a network |
-| **[CHANGELOG.md](CHANGELOG.md)** | What changed in each release |
+- [Build pipeline](build/README.md): clean builds, artifacts and board tests.
+- [Architecture](ARCHITECTURE.md): shared chip, boot flow and flash layout.
+- [Development](DEVELOPMENT.md): patches, upstream sources and the legacy build.
+- [Userspace](experiments/mmu-poc/programs/USERSPACE-UPGRADE.md): programs,
+  fork implementation and measured limits.
+- [Troubleshooting](TROUBLESHOOTING.md), [security](SECURITY.md),
+  [Bluetooth setup](BLE.md) and [changelog](CHANGELOG.md).
 
-## Constraints worth knowing
+## History, credits and license
 
-This remains a NOMMU Linux build (`BINFMT_ELF_FDPIC`). The experimental kernel
-implements native `fork()` using private software memory banks and restores
-their contents at context switches. It uses eager copies, not copy-on-write;
-the current backend is UP-only, rejects multithreaded fork and limits private
-memory per fork to 512 KiB. A successful fork needs additional RAM, and the
-MMU remap demonstration is a separate runtime, not a universal Linux loader.
+The original 0.1 approach emulated a RISC-V machine. The current project runs
+native Xtensa Linux; the older approach remains in Git history.
 
-Only programs compiled for this Xtensa/FDPIC ABI can run natively. Arbitrary
-x86, ARM or desktop Linux binaries will not work. CPython and Neovim are not
-included; SQLite, sudo and doas were also deliberately excluded. Unix users
-and permissions do not make hostile code safe without memory protection.
-See [implementation and measured limits](experiments/mmu-poc/programs/USERSPACE-UPGRADE.md).
-
-The rootfs is a read-only **cramfs executed
-in place (XIP)** straight from flash, which is why it fits at all; `/etc` and
-`/home` are separate writable jffs2 partitions mounted over it.
-
-## Credits and license
-
-Built on the Xtensa Linux, buildroot and esp-hosted work of
+Built on the Xtensa Linux, Buildroot and esp-hosted work of
 [**jcmvbkbc**](https://github.com/jcmvbkbc) (Max Filippov), and on Espressif's
-esp-hosted firmware. See [NOTICE](NOTICE) for the full list of third-party
-components and their licenses.
+firmware. See [NOTICE](NOTICE) for third-party components and licenses.
 
 This project is licensed under the **GPLv3** (see [LICENSE](LICENSE)). Kernel
-code contributed here (`drivers/crypto/esp32s3_rsa.c`) is GPL-2.0-or-later, as
-kernel code must be.
+code contributed here (`drivers/crypto/esp32s3_rsa.c`) is GPL-2.0-or-later.
