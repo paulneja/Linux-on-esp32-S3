@@ -1,0 +1,196 @@
+{
+  "left_directory": "reproduce.BJDdGS",
+  "right_directory": "reproduce.syJRXQ",
+  "source_commits": [
+    "9226140ace5b08be07787706743cfe7f892d5a54",
+    "9226140ace5b08be07787706743cfe7f892d5a54"
+  ],
+  "same_source_commit": true,
+  "container_image_ids": [
+    "sha256:258e532a658f16ac1c4957dca0d81874d347f87365b153f18ab358d9fdd64dd5",
+    "sha256:258e532a658f16ac1c4957dca0d81874d347f87365b153f18ab358d9fdd64dd5"
+  ],
+  "all_artifacts_identical": false,
+  "artifacts": {
+    "bootloader.bin": {
+      "identical": true,
+      "left": {
+        "sha256": "35f47b8de37f62e586909550ae65cc3341c59a29c918e1a567b3e57fadb0681a",
+        "bytes": 18304
+      },
+      "right": {
+        "sha256": "35f47b8de37f62e586909550ae65cc3341c59a29c918e1a567b3e57fadb0681a",
+        "bytes": 18304
+      }
+    },
+    "partition-table.bin": {
+      "identical": true,
+      "left": {
+        "sha256": "179d3538915f707bb54d184293706c5e173b7c28963aeb4842511188369c1d5c",
+        "bytes": 3072
+      },
+      "right": {
+        "sha256": "179d3538915f707bb54d184293706c5e173b7c28963aeb4842511188369c1d5c",
+        "bytes": 3072
+      }
+    },
+    "network_adapter.bin": {
+      "identical": true,
+      "left": {
+        "sha256": "6771366f786b6d093c3a217d42b489b71c749f5fd549f76c2fc64887a40c4866",
+        "bytes": 687040
+      },
+      "right": {
+        "sha256": "6771366f786b6d093c3a217d42b489b71c749f5fd549f76c2fc64887a40c4866",
+        "bytes": 687040
+      }
+    },
+    "etc.jffs2": {
+      "identical": false,
+      "left": {
+        "sha256": "7284a8a443ca8129cc9af188c2f203a998add097ccbcbe3cd3d5bd1762d6008b",
+        "bytes": 458752
+      },
+      "right": {
+        "sha256": "8a4a246c624f232a3076afe8569046e3d640b585d0a51a27f36b1e7df9154345",
+        "bytes": 458752
+      }
+    },
+    "xipImage": {
+      "identical": true,
+      "left": {
+        "sha256": "9a34a1f500fa1ed17b64b020bc091d92f046f9f5e0fb26befbcdfc38f4e35050",
+        "bytes": 3432520
+      },
+      "right": {
+        "sha256": "9a34a1f500fa1ed17b64b020bc091d92f046f9f5e0fb26befbcdfc38f4e35050",
+        "bytes": 3432520
+      }
+    },
+    "rootfs.cramfs": {
+      "identical": false,
+      "left": {
+        "sha256": "74b92aba4d2415bba3b56f32e51e203a7945a904f86dcc9d88a67d06c213aa72",
+        "bytes": 7815168
+      },
+      "right": {
+        "sha256": "83a1f3df1829f18cc4c3006e9204b9995fb006ce56023e2e4d157f00710fe81f",
+        "bytes": 7815168
+      }
+    },
+    "home.jffs2": {
+      "identical": true,
+      "left": {
+        "sha256": "7eace189baab9a39f235b8036ace6d03e0d250dfdb343c390228571b14b3559d",
+        "bytes": 3407872
+      },
+      "right": {
+        "sha256": "7eace189baab9a39f235b8036ace6d03e0d250dfdb343c390228571b14b3559d",
+        "bytes": 3407872
+      }
+    },
+    "linux-esp32s3-native-full.bin": {
+      "identical": false,
+      "left": {
+        "sha256": "7bd8ef85b96dd998c791e8c9bcf04cbea97c89b9ac7fc503b23670ab3bba29e5",
+        "bytes": 16777216
+      },
+      "right": {
+        "sha256": "beedc5c5e832547858a1e07c3978b4c786957fdf34efd8868e696919361b797f",
+        "bytes": 16777216
+      }
+    }
+  },
+  "configurations": {
+    "firmware.config": {
+      "identical": true,
+      "sha256": [
+        "66db661cf52439460eebbc8e9dd14712f738cd7ce96dea713a386298773838b5",
+        "66db661cf52439460eebbc8e9dd14712f738cd7ce96dea713a386298773838b5"
+      ]
+    },
+    "toolchain.config": {
+      "identical": true,
+      "sha256": [
+        "2d8eb9c68054c25c2a59b8e690b87e7db57a03aeb5f7a0a6b824e4604a5ec96b",
+        "2d8eb9c68054c25c2a59b8e690b87e7db57a03aeb5f7a0a6b824e4604a5ec96b"
+      ]
+    },
+    "kernel.config": {
+      "identical": true,
+      "sha256": [
+        "99dada44bc161093861bfb3c9104429afa036bc869bb38554ede7f91c7e28612",
+        "99dada44bc161093861bfb3c9104429afa036bc869bb38554ede7f91c7e28612"
+      ]
+    },
+    "buildroot.config": {
+      "identical": true,
+      "sha256": [
+        "4d7acc49fc877a710450a02d54c01410ffff73139484f7147f5e7f3c64485097",
+        "4d7acc49fc877a710450a02d54c01410ffff73139484f7147f5e7f3c64485097"
+      ]
+    },
+    "busybox.config": {
+      "identical": true,
+      "sha256": [
+        "a41a59f8b855295b676a70f200851315eddb5249cdc98f97d142b04e67b4192f",
+        "a41a59f8b855295b676a70f200851315eddb5249cdc98f97d142b04e67b4192f"
+      ]
+    }
+  },
+  "rootfs_entry_counts": [
+    772,
+    772
+  ],
+  "rootfs_differences": {
+    "/etc/shadow": {
+      "left": {
+        "mode": "0o100600",
+        "uid": 0,
+        "gid": 0,
+        "size": 197,
+        "sha256": "5f29cc3e82ffcdd16dd56e28c3479b880183f8f44e2d9915b6e8483fe058ad2d"
+      },
+      "right": {
+        "mode": "0o100600",
+        "uid": 0,
+        "gid": 0,
+        "size": 191,
+        "sha256": "268e3ca59ad0ab9ef6e624a1b0f004faf366fd0d3f667132582e6171d013759b"
+      }
+    }
+  },
+  "shadow_differences_redacted": {
+    "root": {
+      "present_in_both": true,
+      "non_password_fields_equal": true,
+      "hash_algorithm_ids": [
+        "5",
+        "5"
+      ]
+    }
+  },
+  "etc_jffs2_node_counts": [
+    127,
+    127
+  ],
+  "etc_jffs2_node_differences": [
+    {
+      "key": [
+        "inode",
+        23,
+        1
+      ],
+      "left": {
+        "sha256": "07eeb49efa84847c8da7a6eab8fa10d4891612c25029a0a6ab153cf0bda2fe54",
+        "bytes": 209,
+        "path": "/shadow"
+      },
+      "right": {
+        "sha256": "e96934b2499d8d97109f78b7497e024a8bcc929b333ceb62241086ef621aea9f",
+        "bytes": 203,
+        "path": "/shadow"
+      }
+    }
+  ]
+}
