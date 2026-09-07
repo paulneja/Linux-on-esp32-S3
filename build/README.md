@@ -66,13 +66,13 @@ of the developer's board. Flashing it replaces existing configuration and
 user files. Back up a used board privately before any full-image test.
 Never publish raw board backups: they may contain credentials and user data.
 
-The repository's `flash.sh` reads `images/`, not this new artifacts directory.
-Its default combined-image write replaces `/etc` and `/home` even without
-`--erase`. `--parts` preserves `/home` but still replaces `/etc`, including
-accounts, password hashes and network configuration. `--parts --erase` resets
-both and requires `images/home.jffs2`; the older committed 0.6 images do not
-include that separate file. Missing files, invalid sizes or inconsistent
-partition layouts now stop the script before any esptool invocation.
+Point `flash.sh` at this directory with `--images`; without it the script
+reads `images/`, which holds the older 0.6 release. Its default combined-image
+write replaces `/etc` and `/home` even without `--erase`. `--parts` preserves
+`/home` but still replaces `/etc`, including accounts, password hashes and
+network configuration. `--parts --erase` resets both, writing `home.jffs2`
+when the directory has one. Missing files, invalid sizes or inconsistent
+partition layouts stop the script before any esptool invocation.
 
 Run the host-only flasher regression tests with `python3 build/test-flash.py`.
 They use temporary images and a simulated esptool, never a serial device.

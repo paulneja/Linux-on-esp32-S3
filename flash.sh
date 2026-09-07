@@ -9,17 +9,22 @@ PARTS=0
 
 usage() {
 	cat <<'EOF'
-Usage: ./flash.sh [-p PORT] [--parts] [--erase]
+Usage: ./flash.sh [-p PORT] [--images DIR] [--parts] [--erase]
 
-Requires Python 3 and esptool. Images are read from images/ beside this script.
+Requires Python 3 and esptool. Images come from images/ beside this script
+unless --images points somewhere else, such as a build-output artifacts
+directory.
   -p, --port PORT  Serial/COM adapter (otherwise autodetected)
-  --parts         Write separate images; preserve /home unless --erase is used
-  --erase         Erase the entire chip before writing; destroys all board data
-  -h, --help      Show this help
+  --images DIR     Read the images from DIR instead of images/
+  --parts          Write separate images; preserve /home unless --erase is used
+  --erase          Erase the entire chip before writing; destroys all board data
+  -h, --help       Show this help
 
 The default full-image write overwrites /etc and /home even without --erase.
 --parts also overwrites /etc, including accounts and network configuration.
---parts --erase requires home.jffs2. All inputs are checked before device access.
+--parts --erase writes home.jffs2 when the directory has one; without it the
+partition is left erased, which the board formats on its first write.
+All inputs are checked before device access.
 EOF
 	exit "${1:-0}"
 }
@@ -27,6 +32,7 @@ EOF
 while [ $# -gt 0 ]; do
 	case "$1" in
 	-p|--port) PORT="${2:?-p needs a port}"; shift 2 ;;
+	--images)  IMG="${2:?--images needs a directory}"; shift 2 ;;
 	--erase)   ERASE=1; shift ;;
 	--parts)   PARTS=1; shift ;;
 	-h|--help) usage 0 ;;
@@ -98,8 +104,10 @@ try:
             raise ValueError('partition-table.bin does not match CSV partition names/offsets/sizes')
         for name, filename in zip(required, ('network_adapter.bin', 'etc.jffs2',
                                              'xipImage', 'rootfs.cramfs', 'home.jffs2')):
-            if name != 'home' or erase == '1':
-                check_image(filename, parts[name][1], exact=(name == 'home'))
+            if name != 'home':
+                check_image(filename, parts[name][1])
+            elif erase == '1' and (image_dir / filename).exists():
+                check_image(filename, parts[name][1], exact=True)
         print(' '.join(str(parts[name][0]) for name in required))
 except (OSError, ValueError, struct.error) as error:
     sys.exit(f'error: preflight failed: {error}; no board data was changed')
@@ -114,7 +122,11 @@ if [ "$PARTS" = 1 ]; then
 		"$OFF_APP" "$IMG/network_adapter.bin" "$OFF_ETC" "$IMG/etc.jffs2" \
 		"$OFF_LINUX" "$IMG/xipImage" "$OFF_ROOTFS" "$IMG/rootfs.cramfs"
 	if [ "$ERASE" = 1 ]; then
-		set -- "$@" "$OFF_HOME" "$IMG/home.jffs2"
+		if [ -f "$IMG/home.jffs2" ]; then
+			set -- "$@" "$OFF_HOME" "$IMG/home.jffs2"
+		else
+			echo "Note: no home.jffs2 here; /home is left erased and formatted on first write."
+		fi
 		echo "Warning: --parts --erase resets /etc and /home; all board data will be lost."
 	else
 		echo "Warning: --parts preserves /home but overwrites /etc (accounts and configuration)."
