@@ -30,7 +30,7 @@ jobs:
 
       - name: Check the shell scripts parse
         run: |
-          for f in flash.sh make-images.sh build/reproduce.sh; do
+          for f in flash.sh make-images.sh build/reproduce.sh run.sh; do
             sh -n "$f" 2>/dev/null || bash -n "$f"
           done
 
