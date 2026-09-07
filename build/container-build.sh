@@ -90,7 +90,10 @@ firmware() {
     cmake .
     cd esp-idf
     for attempt in 1 2 3 4 5 6; do
-        python3 tools/idf_tools.py --non-interactive --targets=esp32s3 install && break
+        if [ "$attempt" -ge 3 ]; then
+            export IDF_GITHUB_ASSETS=dl.espressif.com/github_assets
+        fi
+        python3 tools/idf_tools.py --non-interactive install && break
         if [ "$attempt" -ge 6 ]; then
             echo "esp-idf tools did not install after $attempt attempts" >&2
             exit 1
