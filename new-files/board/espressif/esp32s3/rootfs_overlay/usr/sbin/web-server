@@ -26,6 +26,7 @@ migrate() {
         return 0
     fi
     tmp=$(mktemp /etc/inetd.web.XXXXXX)
+    cp -p "$CONF" "$tmp"
     printf '%s\n' "$updated" > "$tmp"
     if [ ! -e /etc/inetd.conf.before-home-www ]; then cp -p "$CONF" /etc/inetd.conf.before-home-www; fi
     mv "$tmp" "$CONF"
