@@ -19,6 +19,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  host-tests:
+    name: Host-only checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Check the shell scripts parse
+        run: |
+          for f in flash.sh make-images.sh build/reproduce.sh; do
+            sh -n "$f" 2>/dev/null || bash -n "$f"
+          done
+
+      - name: Flasher regression tests
+        run: python3 build/test-flash.py
+
   build:
     name: Compile Linux and firmware
     if: inputs.reuse_build_from_run == ''
@@ -158,6 +176,16 @@ jobs:
 
           ls -lah ci/esp32-linux-build
           ls -lah ci/esp32-linux-build/build | head
+
+      - name: Restore host tool permissions
+        run: |
+          for d in build-output/build-buildroot-*/host; do
+            [ -d "$d" ] || continue
+            find "$d/bin" "$d/sbin" -type f -exec chmod +x {} + 2>/dev/null || true
+          done
+
+          ls -l build-output/build-buildroot-*/host/sbin/mkfs.jffs2 || \
+            echo "no mkfs.jffs2 in the artifact; the home image will be skipped"
 
       - name: Set aside the committed images
         run: |
