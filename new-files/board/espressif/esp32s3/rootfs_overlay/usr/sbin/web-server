@@ -17,6 +17,9 @@ migrate() {
         echo 'web-server: port 80 has a custom configuration; not changed' >&2
         return 1
     }
+    if grep -q "^#\?80[ \t].*-h /home/www$" "$CONF"; then
+        return 0
+    fi
     tmp=$(mktemp /etc/inetd.web.XXXXXX)
     cp -p "$CONF" "$tmp"
     awk '$0 ~ /^#?80[ \t]/ {

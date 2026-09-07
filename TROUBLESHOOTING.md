@@ -5,14 +5,17 @@ the slow way, so the diagnostic step is included rather than just the fix.
 
 ## Boot
 
-### Writes to `/home` hang once blocks have to be recycled
+### Writes to `/home` crawl once blocks have to be reclaimed
 
-Known limitation of the fork kernel, not yet fixed. Writing into clean jffs2
-blocks works; as soon as the filesystem has to erase and reuse blocks, the
-write never returns, the shell blocks in the kernel and the board stops
-booting at `S05home`. The stock `6.11.0` kernel does not do this on the same
-board and partition. Measurements and the suspected cause are in
-[the erase report](build/verification/2026-09-06-jffs2-erase.md).
+Known limitation of the platform, not of this branch. Writing into clean jffs2
+blocks is normal; once the filesystem has to reclaim and erase used blocks,
+throughput collapses and a 2.25 MiB write does not finish in ten minutes. The
+published 0.6 kernel behaves the same, so this is not new here. Measurements
+are in [the erase report](build/verification/2026-09-06-jffs2-erase.md).
+
+Boot no longer depends on it: `S06home-users` gives `home-init` a bounded 45
+seconds and continues either way. Keep `/home` well under its capacity and
+treat large rewrites as something to avoid.
 
 Recover by rewriting the factory `/home`:
 
