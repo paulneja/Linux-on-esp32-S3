@@ -2,7 +2,14 @@
 set -euo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo"
-test -z "$(git status --porcelain)" || { echo 'Commit the source changes before creating the build snapshot.' >&2; exit 1; }
+dirty=$(git status --porcelain)
+if [ -n "$dirty" ]; then
+	echo 'The snapshot is taken from HEAD, so the tree must be clean.' >&2
+	echo 'Commit tracked changes; move or ignore untracked files, including' >&2
+	echo 'any build log written into the repository root:' >&2
+	printf '%s\n' "$dirty" >&2
+	exit 1
+fi
 test "$(id -u)" != 0 || { echo 'Run as a regular user with Docker access.' >&2; exit 1; }
 mkdir -p build-output
 work=$(mktemp -d "$repo/build-output/reproduce.XXXXXX")
