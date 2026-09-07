@@ -1,0 +1,146 @@
+{
+  "image_sha256": "ea1e17e957cfbc319338ace1983992d571469b2b13c6a0dca501117d75cbf81d",
+  "source_commit": "734c157e00f266f5a897ad5e7de9667b2f22d31e",
+  "test_runner_sha256": "8172f82c0e934e49eac4c2edc6e1303ca38a1ed7383f08d07abe5be435feb2a9",
+  "tests": [
+    {
+      "name": "reset-and-boot",
+      "status": "pass",
+      "seconds": 19.181
+    },
+    {
+      "name": "installed-kernel-and-rootfs-hashes",
+      "status": "pass",
+      "seconds": 13.963
+    },
+    {
+      "name": "boot",
+      "status": "pass",
+      "seconds": 1.808
+    },
+    {
+      "name": "shell-policy",
+      "status": "pass",
+      "seconds": 0.337
+    },
+    {
+      "name": "first-boot-home",
+      "status": "pass",
+      "seconds": 0.405
+    },
+    {
+      "name": "excluded-programs",
+      "status": "pass",
+      "seconds": 0.187
+    },
+    {
+      "name": "mmu-executable-remap",
+      "status": "pass",
+      "seconds": 0.272
+    },
+    {
+      "name": "mmu-fibonacci",
+      "status": "pass",
+      "seconds": 0.323
+    },
+    {
+      "name": "fork-static",
+      "status": "pass",
+      "seconds": 1.421
+    },
+    {
+      "name": "fork-dynamic",
+      "status": "pass",
+      "seconds": 2.126
+    },
+    {
+      "name": "atfork",
+      "status": "pass",
+      "seconds": 0.269
+    },
+    {
+      "name": "process-compatibility",
+      "status": "pass",
+      "seconds": 2.557
+    },
+    {
+      "name": "bash",
+      "status": "pass",
+      "seconds": 3.273
+    },
+    {
+      "name": "dash",
+      "status": "pass",
+      "seconds": 2.508
+    },
+    {
+      "name": "make",
+      "status": "pass",
+      "seconds": 2.738
+    },
+    {
+      "name": "micropython",
+      "status": "pass",
+      "seconds": 1.681
+    },
+    {
+      "name": "network-tools",
+      "status": "pass",
+      "seconds": 8.951
+    },
+    {
+      "name": "hush-login",
+      "status": "pass",
+      "seconds": 5.126
+    },
+    {
+      "name": "jobq",
+      "status": "pass",
+      "seconds": 5.403
+    },
+    {
+      "name": "benchmarks-lightweight-launcher",
+      "status": "pass",
+      "seconds": 17.116
+    },
+    {
+      "name": "kernel-health",
+      "status": "pass",
+      "seconds": 0.964
+    },
+    {
+      "name": "test-home-users-board",
+      "status": "pass",
+      "seconds": 45.987
+    },
+    {
+      "name": "test-cron-board",
+      "status": "pass",
+      "seconds": 88.309
+    },
+    {
+      "name": "test-com-reconnect",
+      "status": "pass",
+      "seconds": 9.828
+    },
+    {
+      "name": "test-home-reboot",
+      "status": "pass",
+      "seconds": 30.161
+    },
+    {
+      "name": "final-kernel-health",
+      "status": "pass",
+      "seconds": 1.055
+    }
+  ],
+  "status": "pass",
+  "test_files_sha256": {
+    "experiments/mmu-poc/serial-probe.py": "e7dccdb07accc16e0f3ea6430cb106eb28333573605267654ce3274269c49d3d",
+    "experiments/mmu-poc/programs/test-home-users-board.py": "8fe311f6a28ab01159ee7928180e3279649d5dda4522afbc851af51ed3742fc7",
+    "experiments/mmu-poc/programs/test-cron-board.py": "9738668119fd6e484f2cb2121eb3b9e3bbaa67621d8fd30492272b4f8659a564",
+    "experiments/mmu-poc/programs/test-com-reconnect.py": "514b0e1c68db5816d96352cf2e29713758bf35e7bd6751ef56eca97ecfa0bf6c",
+    "experiments/mmu-poc/programs/test-home-reboot.py": "9e34ecf8c5bbb38461753d3be7cb0c92dd0044ff2563dc68299a7d25604f3f89"
+  },
+  "finished_utc": "2026-09-07T02:00:49Z"
+}
