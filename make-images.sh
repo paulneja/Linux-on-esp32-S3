@@ -31,7 +31,7 @@ BR="$BUILD/build-buildroot-$PROFILE/images"
 HOST="$BUILD/build-buildroot-$PROFILE/host"
 NA="$BUILD/esp-hosted/esp_hosted_ng/esp/esp_driver/network_adapter"
 
-for f in "$BR/xipImage" "$BR/rootfs.cramfs" "$BR/etc.jffs2" "$HOST/sbin/mkfs.jffs2" \
+for f in "$BR/xipImage" "$BR/rootfs.cramfs" "$BR/etc.jffs2" \
          "$NA/build/network_adapter.bin" "$NA/build/bootloader/bootloader.bin"; do
 	[ -f "$f" ] || die "missing build output: $f"
 done
@@ -67,12 +67,28 @@ cp -v "$BR/etc.jffs2"                        "$OUT/etc.jffs2"
 cp -v "$BR/xipImage"                         "$OUT/xipImage"
 cp -v "$BR/rootfs.cramfs"                    "$OUT/rootfs.cramfs"
 
-echo "==> building the factory /home"
-EMPTY_HOME=$(mktemp -d)
-trap 'rm -rf -- "$EMPTY_HOME"' EXIT
-chmod 755 "$EMPTY_HOME"
-"$HOST/sbin/mkfs.jffs2" -l -e 65536 -U -f --pad=$(($SIZE_HOME)) \
-	-d "$EMPTY_HOME" -o "$OUT/home.jffs2"
+MKFS=""
+if [ -f "$HOST/sbin/mkfs.jffs2" ]; then
+	[ -x "$HOST/sbin/mkfs.jffs2" ] || chmod +x "$HOST/sbin/mkfs.jffs2" 2>/dev/null || true
+	[ -x "$HOST/sbin/mkfs.jffs2" ] && MKFS="$HOST/sbin/mkfs.jffs2"
+fi
+if [ -z "$MKFS" ] && command -v mkfs.jffs2 >/dev/null 2>&1; then
+	MKFS=$(command -v mkfs.jffs2)
+fi
+
+if [ -n "$MKFS" ]; then
+	echo "==> building the factory /home"
+	EMPTY_HOME=$(mktemp -d)
+	trap 'rm -rf -- "$EMPTY_HOME"' EXIT
+	chmod 755 "$EMPTY_HOME"
+	"$MKFS" -l -e 65536 -U -f --pad=$(($SIZE_HOME)) \
+		-d "$EMPTY_HOME" -o "$OUT/home.jffs2"
+else
+	echo "==> no usable mkfs.jffs2; leaving the home partition erased"
+	echo "    (build trees copied through CI artifacts lose the executable bit;"
+	echo "     the board formats an erased home on its first write)"
+	rm -f "$OUT/home.jffs2"
+fi
 
 fits() {
 	local sz; sz=$(stat -c%s "$1")
@@ -87,7 +103,9 @@ fits "$OUT/network_adapter.bin" "$OFF_APP"    "$SIZE_APP"    network_adapter.bin
 fits "$OUT/etc.jffs2"           "$OFF_ETC"    "$SIZE_ETC"    etc.jffs2
 fits "$OUT/xipImage"            "$OFF_LINUX"  "$SIZE_LINUX"  xipImage
 fits "$OUT/rootfs.cramfs"       "$OFF_ROOTFS" "$SIZE_ROOTFS" rootfs.cramfs
-fits "$OUT/home.jffs2"          "$OFF_HOME"   "$SIZE_HOME"   home.jffs2
+if [ -n "$MKFS" ]; then
+	fits "$OUT/home.jffs2"  "$OFF_HOME"   "$SIZE_HOME"   home.jffs2
+fi
 
 echo "==> checking for baked-in WiFi credentials"
 ETC_TEXT=$(strings "$OUT/etc.jffs2")
@@ -191,7 +209,7 @@ $ESPTOOL --chip esp32s3 merge_bin -o "$OUT/linux-esp32s3-native-full.bin" \
 	"$OFF_ETC"     "$OUT/etc.jffs2" \
 	"$OFF_LINUX"   "$OUT/xipImage" \
 	"$OFF_ROOTFS"  "$OUT/rootfs.cramfs" \
-	"$OFF_HOME"    "$OUT/home.jffs2" >/dev/null
+	${MKFS:+"$OFF_HOME" "$OUT/home.jffs2"} >/dev/null
 
 echo
 echo "Done. images/ now holds:"
