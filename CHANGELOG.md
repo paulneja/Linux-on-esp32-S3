@@ -33,6 +33,9 @@ notes and the binaries are on the
   for `home-init` and continues, and `web-server migrate` no longer writes to
   `/etc` on every boot. A board whose `/home` needed reclaim previously stopped
   reaching the login prompt.
+- Ship `images/home.jffs2` so `./flash.sh --parts --erase` can restore the
+  factory `/home` after wiping the chip. It is byte-identical to the one the
+  clean build produces.
 - Known limitation of the platform, not fixed here: once jffs2 has to reclaim
   and erase used blocks, write throughput collapses. The published 0.6 kernel
   behaves the same way, so this is not new in this branch.

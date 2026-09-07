@@ -14,12 +14,17 @@ API, so it is usable by any program, not just one demo.
 > and cron have passed tests on the ESP32-S3. The fork implementation uses
 > software memory banks; it is not a full MMU or hardware memory protection.
 >
-> The committed `images/` still contain the earlier 0.6 release. For the
-> complete current branch, use [the clean build pipeline](build/README.md).
+> The committed `images/` still contain the earlier 0.6 release, plus the
+> factory `/home` that `./flash.sh --parts --erase` writes back after wiping
+> the chip. For the complete current branch, use
+> [the clean build pipeline](build/README.md).
 > The clean build of `ee9e06d` passed all 26 hardware checks on 2026-09-06;
 > see the [exact-image verification record](build/verification/2026-09-06.md).
-> This does not establish bit-for-bit reproducibility or validate later code
-> changes automatically. This is a research project, not a production system.
+> Two independant builds of the same commit differ only in a password salt and
+> a git version string, with no compiled code changed; see the
+> [reproducibility record](build/verification/2026-09-07-clone-build.md).
+> Later code changes are not validated automatically. This is a research
+> project, not a production system.
 
 > **Note on history.** This repo used to host an *emulated* approach (a RISC-V
 > RV32IMA interpreter running Linux on top of the ESP32-S3). That worked, but
