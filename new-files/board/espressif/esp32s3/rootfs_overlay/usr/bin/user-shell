@@ -1,4 +1,12 @@
 #!/bin/sh
+pref=
+if [ -n "${HOME-}" ] && [ -r "$HOME/.shell" ]; then
+    read -r pref < "$HOME/.shell" 2>/dev/null || pref=
+fi
+if [ "$pref" = dash ] && [ -x /usr/bin/dash ]; then
+    if [ "$#" -eq 0 ]; then ENV=/etc/dash-resume exec /usr/bin/dash -i; fi
+    exec /usr/bin/dash "$@"
+fi
 if [ -x /bin/bash ]; then
     if [ "$#" -eq 0 ]; then exec /bin/bash -l; fi
     exec /bin/bash "$@"

@@ -1,0 +1,13 @@
+#!/bin/sh
+pref=$HOME/.shell
+case "${1-}" in
+	bash) if [ ! -x /bin/bash ]; then echo "use-shell: bash is not installed" >&2; exit 1; fi
+	      printf 'bash\n' > "$pref"; echo "Login shell set to bash. Apply now with: exec /bin/bash -l" ;;
+	dash) if [ ! -x /usr/bin/dash ]; then echo "use-shell: dash is not installed" >&2; exit 1; fi
+	      printf 'dash\n' > "$pref"; echo "Login shell set to dash. Apply now with: exec /usr/bin/dash -i" ;;
+	""|status)
+	      current=bash
+	      [ -r "$pref" ] && read -r current < "$pref"
+	      echo "Login shell preference: $current" ;;
+	*) echo "Usage: use-shell [bash|dash|status]" >&2; exit 2 ;;
+esac

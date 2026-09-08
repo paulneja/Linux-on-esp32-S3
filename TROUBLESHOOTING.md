@@ -272,6 +272,27 @@ ps | grep ble-wifi-setup
 
 ## Native userspace
 
+### The shell switched itself to dash, or a switched board will not log in
+
+With WiFi associated there may not be enough memory left for Bash to fork, and
+every external command fails with `fork: Cannot allocate memory`. An
+interactive Bash login installs a hook that notices this, switches to dash,
+prints why, and retries the command. The choice is remembered in
+`~/.shell`, so it survives a reboot.
+
+Go back with `use-shell bash`, then `exec /bin/bash -l`. If the board will not
+give you a usable shell at all, rewrite the two writable partitions, which
+clears `~/.shell` along with everything else in `/home`:
+
+```sh
+./run.sh --recover
+```
+
+The hook is new and has not been validated on hardware under a real
+out-of-memory fork; it was developed against a simulated failure on a host,
+where a fork can not fail this way.
+
+
 ### Fork fails or processes are killed with several consoles open
 
 Fork support does not add RAM. In diagnostic tests, two interactive Bash
