@@ -288,6 +288,10 @@ clears `~/.shell` along with everything else in `/home`:
 ./run.sh --recover
 ```
 
+Verified on the board: a second login shell with WiFi up failed to fork at
+772 KiB, the hook switched to dash, printed why, and re-ran the command that
+had just failed.
+
 The switch happens below 900 KiB of `MemAvailable`. That number is measured,
 not estimated: a second login shell on a board with WiFi up failed to fork at
 740 KiB, while the same board forks normally at around 1330 KiB. An earlier
