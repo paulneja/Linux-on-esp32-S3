@@ -74,6 +74,19 @@ network configuration. `--parts --erase` resets both, writing `home.jffs2`
 when the directory has one. Missing files, invalid sizes or inconsistent
 partition layouts stop the script before any esptool invocation.
 
+## Continuous integration
+
+`.github/workflows/image.yml` runs the host-only checks on every push and pull
+request, and builds the complete image on demand. Start it from the Actions tab
+with **Image → Run workflow**: `full_build` compiles everything from pinned
+sources inside the container and uploads the artifacts, and
+`compare_two_builds` runs two of them in parallel and publishes an
+artifact-by-artifact comparison. A full build takes one to three hours on a
+GitHub runner and needs the disk cleanup the workflow does first.
+
+The older `build-linux.yml` builds the base system only and is kept for
+rebuilding that path; it is not the pipeline that produces the released image.
+
 Run the host-only regression tests with `python3 build/test-flash.py` and
 `python3 build/test-shell-fallback.py`. They use temporary images, a simulated
 esptool and a stub shell, never a serial device. The second one drives the

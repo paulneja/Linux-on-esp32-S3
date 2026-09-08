@@ -1,0 +1,189 @@
+name: Image
+
+on:
+  push:
+    branches: [main, mmu-poc]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      full_build:
+        description: Build the complete 16 MiB image from source (one to three hours)
+        type: boolean
+        default: true
+      compare_two_builds:
+        description: Build twice in parallel and compare every artifact
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  host-tests:
+    name: Host-only checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Check the shell scripts parse
+        run: |
+          for f in flash.sh make-images.sh build/reproduce.sh run.sh; do
+            sh -n "$f" 2>/dev/null || bash -n "$f"
+          done
+
+      - name: Check the Python parses
+        run: |
+          for f in build/*.py experiments/mmu-poc/programs/*.py; do
+            python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$f"
+          done
+
+      - name: Flasher regression tests
+        run: python3 build/test-flash.py
+
+      - name: Shell fallback tests
+        run: python3 build/test-shell-fallback.py
+
+  build:
+    name: Full image
+    needs: host-tests
+    if: github.event_name == 'workflow_dispatch' && inputs.full_build
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    strategy:
+      fail-fast: false
+      matrix:
+        run: ${{ fromJSON(inputs.compare_two_builds && '[1, 2]' || '[1]') }}
+
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+                      /usr/local/.ghcup /usr/share/swift
+          sudo docker image prune --all --force || true
+          echo "Disk after cleanup:"
+          df -h /
+
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Give git an identity
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+
+          test -n "$(git config user.name)"
+          test -n "$(git config user.email)"
+
+      - name: Build everything from pinned sources
+        run: JOBS=$(nproc) bash build/reproduce.sh
+
+      - name: Locate the artifacts
+        id: out
+        run: |
+          dir=$(ls -dt build-output/reproduce.*/artifacts | head -1)
+
+          test -d "$dir"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
+      - name: Report the disk left
+        if: always()
+        run: df -h /
+
+      - name: Verify the checksums
+        working-directory: ${{ steps.out.outputs.dir }}
+        run: sha256sum -c SHA256SUMS
+
+      - name: Report what was built
+        run: |
+          {
+            echo "## Build ${{ matrix.run }}"
+            echo
+            echo "Source commit \`${{ github.sha }}\`, board verification pending."
+            echo
+            echo '```'
+            cat "${{ steps.out.outputs.dir }}/SHA256SUMS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the images
+        uses: actions/upload-artifact@v7
+        with:
+          name: image-${{ matrix.run }}
+          path: ${{ steps.out.outputs.dir }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload the logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-${{ matrix.run }}
+          path: build-output/reproduce.*/logs/
+          if-no-files-found: warn
+          retention-days: 14
+
+  compare:
+    name: Compare the two builds
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.compare_two_builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Download the first build
+        uses: actions/download-artifact@v8
+        with:
+          name: image-1
+          path: left/artifacts
+
+      - name: Download the second build
+        uses: actions/download-artifact@v8
+        with:
+          name: image-2
+          path: right/artifacts
+
+      - name: Compare every artifact
+        run: python3 build/compare-builds.py left right --output comparison.json
+
+      - name: Summarise the differences
+        if: always()
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          path = Path('comparison.json')
+          if not path.exists():
+              print('## Reproducibility\n\nThe comparison did not produce a report.')
+              raise SystemExit(0)
+          report = json.loads(path.read_text())
+          print('## Reproducibility\n')
+          print('Same source commit:', report['same_source_commit'], '\n')
+          print('| artifact | result |')
+          print('|---|---|')
+          for name, entry in report['artifacts'].items():
+              print(f"| `{name}` | {'identical' if entry['identical'] else 'differs'} |")
+          differences = sorted(report['rootfs_differences'])
+          print('\nRootfs entries that differ:',
+                ', '.join(f'`{name}`' for name in differences) if differences else 'none')
+          PY
+
+      - name: Upload the comparison
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: comparison
+          path: comparison.json
+          if-no-files-found: warn

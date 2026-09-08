@@ -1,4 +1,4 @@
-name: Build Linux ESP32-S3
+name: Build Linux ESP32-S3 (legacy base system)
 
 on:
   workflow_dispatch:
@@ -19,27 +19,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  host-tests:
-    name: Host-only checks
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Check the shell scripts parse
-        run: |
-          for f in flash.sh make-images.sh build/reproduce.sh run.sh; do
-            sh -n "$f" 2>/dev/null || bash -n "$f"
-          done
-
-      - name: Flasher regression tests
-        run: python3 build/test-flash.py
-
-      - name: Shell fallback tests
-        run: python3 build/test-shell-fallback.py
-
   build:
     name: Compile Linux and firmware
     if: inputs.reuse_build_from_run == ''
