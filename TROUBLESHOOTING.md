@@ -288,9 +288,14 @@ clears `~/.shell` along with everything else in `/home`:
 ./run.sh --recover
 ```
 
-The hook is new and has not been validated on hardware under a real
-out-of-memory fork; it was developed against a simulated failure on a host,
-where a fork can not fail this way.
+The switch happens below 900 KiB of `MemAvailable`. That number is measured,
+not estimated: a second login shell on a board with WiFi up failed to fork at
+740 KiB, while the same board forks normally at around 1330 KiB. An earlier
+700 KiB threshold sat just under the real failure point and never fired.
+
+`MemAvailable` counts reclaimable cache, but a fork here needs real free pages
+for its private bank, so the shell can fail well above what that number
+suggests. Adjust `LOWMEM_THRESHOLD` in the same file if your board differs.
 
 
 ### Fork fails or processes are killed with several consoles open

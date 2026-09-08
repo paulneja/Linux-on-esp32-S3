@@ -5,7 +5,7 @@ case $- in *i*) ;; *) return 0 ;; esac
 : "${LOWMEM_ENV:=/etc/dash-resume}"
 : "${LOWMEM_RESUME:=/run/shell-resume}"
 : "${LOWMEM_PREF:=$HOME/.shell}"
-: "${LOWMEM_THRESHOLD:=700}"
+: "${LOWMEM_THRESHOLD:=900}"
 
 __lowmem_last=
 __lowmem_st=0
