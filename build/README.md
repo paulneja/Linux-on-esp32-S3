@@ -99,6 +99,12 @@ compare their hashes. It then tests remapping, fork, process compatibility,
 the selected programs, job admission, benchmarks, users and permissions,
 HTTP, cron, detached sessions, COM reconnects and persistence across reboots.
 
+Before anything else the runner quiesces the board: it lowers the console
+shell's `oom_score_adj` and stops the DHCP client. On an idle test image that
+client has no lease to keep, but it forks its script on every retry, and with
+around 1.3 MiB free that fork has killed both a measured program and the
+console shell itself. The reboot test brings the network back.
+
 Functional program tests run from the Bash login. For the instrumented
 benchmark suite, the runner replaces that login temporarily with Dash,
 then logs back into Bash. Keeping an additional interactive Bash alive

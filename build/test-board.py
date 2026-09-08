@@ -98,6 +98,13 @@ def boot_from_flash():
                 return
     raise RuntimeError('No login within 240 seconds; complete output saved in boot.log')
 
+def quiesce():
+    command('echo -500 > /proc/self/oom_score_adj && cat /proc/self/oom_score_adj',
+            30, '-500')
+    command('killall udhcpc 2>/dev/null; sleep 1; pidof udhcpc > /dev/null && echo DHCP_ALIVE'
+            ' || echo DHCP_STOPPED', 60, 'DHCP_STOPPED')
+
+
 def benchmarks():
     console.port.write(b'exec /usr/bin/dash -c \'trap "sleep 1" EXIT; . /usr/share/program-tests/benchmark-suite.sh\'\n')
     output, _ = console.until(rb'buildroot login: ?', 180)
@@ -123,6 +130,7 @@ try:
     if args.reset_from_bootloader:
         record('reset-and-boot', boot_from_flash)
     console.login()
+    record('quiesce-background-forks', quiesce)
     record('installed-kernel-and-rootfs-hashes', verify_installed)
     checks = [
         ('boot', 'uname -a && id && mount && free && dmesg',
