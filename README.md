@@ -215,7 +215,9 @@ does not test an external WiFi connection or sustained flash reclaim.
   JFFS2. Large writes and block reclaim caused severe slowdowns in tests,
   including with fork disabled and with the 0.6 kernel. Startup changes
   mitigate the boot impact; they do not fix write throughput. Avoid heavy
-  rewrites and keep important data backed up. See the
+  rewrites and keep important data backed up. This has been there since
+  earlier versions and only turned up under heavy stress testing; the cause is
+  still open and I intend to fix it later. See the
   [flash-write investigation](build/verification/2026-09-06-jffs2-erase.md).
 - **Permissions are not memory isolation.** Use trusted programs and users.
   This is a research project, not a hardened production system.
