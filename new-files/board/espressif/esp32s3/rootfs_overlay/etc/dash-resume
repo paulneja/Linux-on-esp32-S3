@@ -1,0 +1,14 @@
+if [ -z "${LOWMEM_RESUMED-}" ]; then
+	LOWMEM_RESUMED=1
+	export LOWMEM_RESUMED
+	if [ -s "${LOWMEM_RESUME:-/run/shell-resume}" ]; then
+		__resume=
+		read -r __resume < "${LOWMEM_RESUME:-/run/shell-resume}"
+		: > "${LOWMEM_RESUME:-/run/shell-resume}"
+		if [ -n "$__resume" ]; then
+			printf 'retrying: %s\n' "$__resume" >&2
+			eval "$__resume"
+		fi
+		unset __resume
+	fi
+fi
