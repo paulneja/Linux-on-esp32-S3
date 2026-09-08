@@ -74,8 +74,12 @@ network configuration. `--parts --erase` resets both, writing `home.jffs2`
 when the directory has one. Missing files, invalid sizes or inconsistent
 partition layouts stop the script before any esptool invocation.
 
-Run the host-only flasher regression tests with `python3 build/test-flash.py`.
-They use temporary images and a simulated esptool, never a serial device.
+Run the host-only regression tests with `python3 build/test-flash.py` and
+`python3 build/test-shell-fallback.py`. They use temporary images, a simulated
+esptool and a stub shell, never a serial device. The second one drives the
+low-memory shell hook with an artificial threshold, so it exercises the switch,
+the message and the retried command without needing a board that is actually
+out of memory.
 
 The packager checks partition limits, the firmware/kernel vector address,
 the fork kernel setting, root's shell, BusyBox SUID mode, excluded programs,
