@@ -6,11 +6,11 @@ firmware runs alongside it on the same chip and handles WiFi and flash access.
 All of this runs on one N16R8 board, without extra RAM, an SD card or a second
 computer attached to keep it running.
 
-## What's new in the current version
+## What's new in 0.7
 
-The `mmu-poc` branch expands the earlier 0.6 system with **native `fork()`
-support and a larger userspace**. It is the current experimental development
-version, not a new numbered stable release.
+0.7 expands the earlier 0.6 system with **native `fork()` support and a larger
+userspace**. The fork backend is still experimental: it is software memory
+banks, not a hardware MMU.
 
 - **Native fork-enabled programs.** Software memory banks let parent and child
   keep independent private state, with backup memory reclaimed when it is no
@@ -53,8 +53,15 @@ not a loader for arbitrary desktop binaries. See [limits](#limits) below.
 
 ## Get the current version
 
-**The combined BIN committed in `images/` is still 0.6.** It does not contain
-the new fork backend or programs. Build `mmu-poc` to get the current system.
+`images/` holds the 0.7 release, so the quickest path is to flash what is
+already in the repository:
+
+```sh
+./flash.sh -p /dev/ttyUSB0
+```
+
+That writes the whole 16 MiB chip and replaces `/etc` and `/home`. To build the
+same image from source instead, read on.
 
 ### The scripted way
 
@@ -113,8 +120,8 @@ you need first.**
 ```
 
 `flash.sh` checks every input, its size and the partition layout before it
-touches the board. Without `--images` it reads `images/`, which still holds
-the older 0.6 release, so pass the directory your build produced. The
+touches the board. Without `--images` it reads the committed `images/`, so
+pass the directory your build produced when you want that one instead. The
 equivalent by hand:
 
 ```sh
@@ -229,17 +236,16 @@ does not test an external WiFi connection or sustained flash reclaim.
   essential to fitting the system in RAM. Build through the full pipeline;
   matching extracted files alone does not validate a manually repacked image.
 
-## Older 0.6 prebuilt images
-
-For the previous release without the new fork/userspace work:
+## Flashing the committed images
 
 ```sh
 ./flash.sh -p /dev/ttyUSB0
 ```
 
 The script reads `images/` unless `--images` points elsewhere, and requires
-Python 3 and esptool. Everything in `images/` belongs to the 0.6 release and
-matches the combined image there byte for byte.
+Python 3 and esptool. Everything in `images/` belongs to the 0.7 release and
+matches the combined image there byte for byte. Earlier releases and their
+binaries stay on the releases page.
 
 - Default full-image flashing replaces both `/etc` and `/home`.
 - `--parts` preserves `/home`, but replaces `/etc`, including accounts and

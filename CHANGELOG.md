@@ -4,7 +4,7 @@ Releases carry one flashable `.bin` for a 16 MB / 8 MB-PSRAM ESP32-S3. Full
 notes and the binaries are on the
 [releases page](https://github.com/paulneja/Linux-on-esp32-S3/releases).
 
-## Unreleased — native fork and expanded userspace
+## 0.7 — fork, Bash and a userspace that fits (2026-09-08)
 
 - Native NOMMU fork with private software banks, last-owner backup recovery,
   memory counters and quiet-by-default tracing. Not COW or a full MMU;
