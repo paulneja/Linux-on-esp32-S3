@@ -76,13 +76,15 @@ partition layouts stop the script before any esptool invocation.
 
 ## Continuous integration
 
-`.github/workflows/image.yml` runs the host-only checks on every push and pull
-request, and builds the complete image on demand. Start it from the Actions tab
-with **Image → Run workflow**: `full_build` compiles everything from pinned
-sources inside the container and uploads the artifacts, and
-`compare_two_builds` runs two of them in parallel and publishes an
-artifact-by-artifact comparison. A full build takes one to three hours on a
-GitHub runner and needs the disk cleanup the workflow does first.
+`.github/workflows/image.yml` is manual and runs the whole thing. Start it from
+the Actions tab with **Image → Run workflow**, on any branch. It runs the
+host-only checks, then two complete builds from pinned sources in parallel, and
+then compares every artifact between them and publishes the result in the run
+summary. Each build uploads its images, checksums and logs.
+
+Expect a couple of hours; the job limit is six. The runner has no board, so
+`board_verification` stays `pending` in the manifest: flashing and the 27 board
+tests are still a local step.
 
 The older `build-linux.yml` builds the base system only and is kept for
 rebuilding that path; it is not the pipeline that produces the released image.
