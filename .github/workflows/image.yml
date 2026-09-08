@@ -1,19 +1,7 @@
 name: Image
 
 on:
-  push:
-    branches: [main, mmu-poc]
-  pull_request:
   workflow_dispatch:
-    inputs:
-      full_build:
-        description: Build the complete 16 MiB image from source (one to three hours)
-        type: boolean
-        default: true
-      compare_two_builds:
-        description: Build twice in parallel and compare every artifact
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -51,16 +39,15 @@ jobs:
         run: python3 build/test-shell-fallback.py
 
   build:
-    name: Full image
+    name: Full image ${{ matrix.run }}
     needs: host-tests
-    if: github.event_name == 'workflow_dispatch' && inputs.full_build
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 360
 
     strategy:
       fail-fast: false
       matrix:
-        run: ${{ fromJSON(inputs.compare_two_builds && '[1, 2]' || '[1]') }}
+        run: [1, 2]
 
     steps:
       - name: Free disk space
@@ -86,6 +73,10 @@ jobs:
       - name: Build everything from pinned sources
         run: JOBS=$(nproc) bash build/reproduce.sh
 
+      - name: Report the disk left
+        if: always()
+        run: df -h /
+
       - name: Locate the artifacts
         id: out
         run: |
@@ -93,10 +84,6 @@ jobs:
 
           test -d "$dir"
           echo "dir=$dir" >> "$GITHUB_OUTPUT"
-
-      - name: Report the disk left
-        if: always()
-        run: df -h /
 
       - name: Verify the checksums
         working-directory: ${{ steps.out.outputs.dir }}
@@ -107,7 +94,8 @@ jobs:
           {
             echo "## Build ${{ matrix.run }}"
             echo
-            echo "Source commit \`${{ github.sha }}\`, board verification pending."
+            echo "Source commit \`${{ github.sha }}\`. Board verification stays"
+            echo "pending: this runner has no hardware attached."
             echo
             echo '```'
             cat "${{ steps.out.outputs.dir }}/SHA256SUMS"
@@ -134,7 +122,6 @@ jobs:
   compare:
     name: Compare the two builds
     needs: build
-    if: github.event_name == 'workflow_dispatch' && inputs.compare_two_builds
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
