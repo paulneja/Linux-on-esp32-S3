@@ -37,6 +37,9 @@ jobs:
       - name: Flasher regression tests
         run: python3 build/test-flash.py
 
+      - name: Shell fallback tests
+        run: python3 build/test-shell-fallback.py
+
   build:
     name: Compile Linux and firmware
     if: inputs.reuse_build_from_run == ''
