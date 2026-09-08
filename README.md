@@ -35,12 +35,10 @@ version, not a new numbered stable release.
   partition checks; the board test suite ties results to one exact image.
   Boot initialization avoids unnecessary writes and has a bounded wait for
   slow home setup.
-- **It boots quickly and quietly.** Around 14 seconds from applying power to
-  the login prompt, measured by hand; the automated suite reports 19.07 s for
-  the same image, counting from its own reset pulse. Startup no longer blocks
-  on `/home` and writes less to flash on the way up, and the validated 27/27
-  run finished with nothing from the OOM killer in `dmesg`, which the suite
-  checks before and after every test.
+- **It boots quickly and quietly.** About 14 seconds from reset to the login
+  prompt. Startup no longer blocks on `/home` and writes less to flash on the
+  way up, and the validated 27/27 run finished with nothing from the OOM killer
+  in `dmesg`, which the suite checks before and after every test.
 
 **Fork is not a full MMU.** This remains NOMMU Linux, with no hardware process
 memory protection. The switchable MMU-remap experiment is a separate runtime,

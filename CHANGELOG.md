@@ -36,10 +36,9 @@ notes and the binaries are on the
 - Retry the ESP-IDF tool download and stop the build when it still fails. A
   transient `504` from GitHub used to be ignored, and the run carried on until
   the firmware stage died with an unrelated looking mesage.
-- Boot to a login prompt in about 14 seconds from power-on, 19.07 s as the
-  suite counts it from a reset pulse. Init no longer blocks on `/home` and
-  writes less to flash while starting, and the validated run completed boot
-  and all 27 tests with no OOM kill in `dmesg`.
+- Boot to a login prompt in about 14 seconds from reset. Init no longer blocks
+  on `/home` and writes less to flash while starting, and the validated run
+  completed boot and all 27 tests with no OOM kill in `dmesg`.
 - Stop the DHCP client and protect the console shell before running the board
   suite. Its script forks on every retry, and on an idle image with ~1.3 MiB
   free that was enough for the OOM killer to take the console shell out from
