@@ -1,16 +1,19 @@
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/CMakeLists.txt b/esp_hosted_ng/esp/esp_driver/network_adapter/main/CMakeLists.txt
+index a46af63..b238aeb 100644
 --- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/CMakeLists.txt
 +++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/CMakeLists.txt
-@@ -1,4 +1,4 @@
+@@ -1,4 +1,5 @@
 -set(COMPONENT_SRCS "app_main.c" "slave_bt.c" "cmd.c" "stats.c" "linux_boot.c" "linux_ipc.c" "linux_flash.c")
-+set(COMPONENT_SRCS "app_main.c" "slave_bt.c" "cmd.c" "stats.c" "linux_boot.c" "linux_ipc.c" "linux_flash.c" "ble_prov.c")
++set(COMPONENT_SRCS "app_main.c" "slave_bt.c" "cmd.c" "stats.c" "linux_boot.c" "linux_ipc.c" "linux_flash.c" "ble_prov.c" "pb_console.c" "terminal.c")
++set(COMPONENT_REQUIRES epdiy)
  set(COMPONENT_ADD_INCLUDEDIRS "./include")
  
  if(CONFIG_IDF_TARGET_ESP32S3)
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c
+index e7f35ad..c30f93a 100644
 --- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c
 +++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c
-@@ -43,9 +43,14 @@
+@@ -43,10 +43,17 @@
  #endif
  #endif
  #include "endian.h"
@@ -23,9 +26,12 @@ diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c b/esp_
 +#include "ble_prov.h"
 +#endif
  #include "linux_ipc.h"
++void pb_console_init(void);
++void pb_console_write(const uint8_t*, size_t);
  
  static const char TAG[] = "FW_MAIN";
-@@ -100,6 +105,7 @@ uint8_t ap_mac[MAC_ADDR_LEN] = {0};
+ 
+@@ -100,6 +107,7 @@ uint8_t ap_mac[MAC_ADDR_LEN] = {0};
  extern void wake_host();
  #endif
  
@@ -33,8 +39,15 @@ diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c b/esp_
  uint8_t get_capabilities(void)
  {
  	uint8_t cap = 0;
-@@ -514,6 +520,11 @@ void process_rx_pkt(interface_buffer_handle_t *buf_handle)
- 		else if (buf_handle->if_type == ESP_TEST_IF) {
+@@ -511,9 +519,17 @@ void process_rx_pkt(interface_buffer_handle_t *buf_handle)
+ 			process_hci_rx_pkt(payload, payload_len);
+ 		}
+ #endif
+-		else if (buf_handle->if_type == ESP_TEST_IF) {
++		else if (buf_handle->if_type == ESP_EPD_IF) {
++            pb_console_write(payload, payload_len);
++        }
++        else if (buf_handle->if_type == ESP_TEST_IF) {
  			debug_update_raw_tp_rx_count(payload_len);
  		}
 +#ifdef CONFIG_BT_ENABLED
@@ -45,7 +58,7 @@ diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c b/esp_
  	}
  	/* Free buffer handle */
  	if (buf_handle->free_buf_handle && buf_handle->priv_buffer_handle) {
-@@ -636,7 +647,6 @@ void app_main()
+@@ -636,7 +652,6 @@ void app_main()
  	}
  
  #ifdef CONFIG_BT_ENABLED
@@ -53,7 +66,7 @@ diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c b/esp_
  
  	ret = esp_read_mac(mac, ESP_MAC_BT);
  	if (ret) {
-@@ -671,6 +681,10 @@ void app_main()
+@@ -671,6 +686,10 @@ void app_main()
  		assert(to_host_queue[prio_q_idx] != NULL);
  	}
  
@@ -64,15 +77,87 @@ diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c b/esp_
  	assert(xTaskCreate(recv_task , "recv_task" , TASK_DEFAULT_STACK_SIZE , NULL , TASK_DEFAULT_PRIO, NULL) == pdTRUE);
  	assert(xTaskCreate(send_task , "send_task" , TASK_DEFAULT_STACK_SIZE, NULL , TASK_DEFAULT_PRIO , NULL) == pdTRUE);
  
-@@ -682,6 +696,8 @@ void app_main()
+@@ -682,6 +701,9 @@ void app_main()
  
  	ESP_LOGI(TAG,"Initial set up done");
  
 +	periph_module_enable(PERIPH_RSA_MODULE);
 +
++	pb_console_init();
  	void linux_boot(void);
  	linux_boot();
  }
+diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/cmd.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/cmd.c
+index 68001e1..0d90181 100644
+--- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/cmd.c
++++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/cmd.c
+@@ -71,6 +71,8 @@ int esp_wifi_register_wpa_cb_internal(struct wpa_funcs *cb);
+ int esp_wifi_unregister_wpa_cb_internal(void);
+ extern esp_err_t wlan_sta_rx_callback(void *buffer, uint16_t len, void *eb);
+ 
++extern int wpa_sm_set_ap_rsnxe(const uint8_t *ie, size_t len);
++
+ extern int wpa_parse_wpa_ie(const u8 *wpa_ie, size_t wpa_ie_len, wifi_wpa_ie_t *data);
+ static inline void WPA_PUT_LE16(u8 *a, u16 val)
+ {
+@@ -691,6 +693,7 @@ esp_err_t initialise_wifi(void)
+ 	wpa_cb.wpa3_parse_sae_msg = rx_sae_msg;
+ 	wpa_cb.wpa_config_done = config_done;
+ 	wpa_cb.wpa_config_parse_string  = wpa_config_parse_string;
++	wpa_cb.wpa_sta_set_ap_rsnxe = wpa_sm_set_ap_rsnxe;
+ 
+ 	esp_wifi_register_wpa_cb_internal(&wpa_cb);
+ 
+diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h b/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h
+index ed95897..34aa149 100644
+--- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h
++++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h
+@@ -56,6 +56,8 @@ enum ESP_INTERFACE_TYPE {
+ 	ESP_HCI_IF,
+ 	ESP_INTERNAL_IF,
+ 	ESP_TEST_IF,
++	ESP_BLE_PROV_IF,
++	ESP_EPD_IF,
+ 	ESP_MAX_IF,
+ };
+ 
+diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c
+index e19c62a..09905e8 100644
+--- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c
++++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c
+@@ -6,6 +6,7 @@
+ #include "linux_ll.h"
+ #include "hal/cache_hal.h"
+ #include "hal/mmu_ll.h"
++#include "esp_log.h"
+ 
+ static uint32_t first_free_mmu = ~0;
+ 
+@@ -26,6 +27,11 @@ void init_linux_mmap(void)
+ 			abort();
+ 		}
+ 	}
++	printf("MMU: first_free_mmu=%u (firmware uses entries 0..%u)\n",
++	       (unsigned)first_free_mmu, (unsigned)first_free_mmu - 1);
++	printf("MMU: kernel e0x14=0x%04x rootfs e0x54=0x%04x\n",
++	       (unsigned)dst[0x14], (unsigned)dst[0x54]);
++
+ #ifdef CONFIG_LINUX_PSRAM_8M
+ 	for (i = 0x100; i < 0x180; ++i) {
+ 		dst[i] = 0x4000;
+diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3 b/esp_hosted_ng/esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3
+index 57f5958..97a07bd 100644
+--- a/esp_hosted_ng/esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3
++++ b/esp_hosted_ng/esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3
+@@ -1446,7 +1446,7 @@ CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_MAX_CERTS=200
+ # CONFIG_MBEDTLS_CMAC_C is not set
+ CONFIG_MBEDTLS_HARDWARE_AES=y
+ CONFIG_MBEDTLS_AES_USE_INTERRUPT=y
+-CONFIG_MBEDTLS_HARDWARE_MPI=y
++CONFIG_MBEDTLS_HARDWARE_MPI=n
+ CONFIG_MBEDTLS_MPI_USE_INTERRUPT=y
+ CONFIG_MBEDTLS_HARDWARE_SHA=y
+ CONFIG_MBEDTLS_ROM_MD5=y
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/ble_prov.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/ble_prov.c
 new file mode 100644
 --- /dev/null
@@ -355,37 +440,6 @@ new file mode 100644
 +}
 +
 +#endif
-diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/cmd.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/cmd.c
---- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/cmd.c
-+++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/cmd.c
-@@ -71,6 +71,8 @@ int esp_wifi_register_wpa_cb_internal(struct wpa_funcs *cb);
- int esp_wifi_unregister_wpa_cb_internal(void);
- extern esp_err_t wlan_sta_rx_callback(void *buffer, uint16_t len, void *eb);
- 
-+extern int wpa_sm_set_ap_rsnxe(const uint8_t *ie, size_t len);
-+
- extern int wpa_parse_wpa_ie(const u8 *wpa_ie, size_t wpa_ie_len, wifi_wpa_ie_t *data);
- static inline void WPA_PUT_LE16(u8 *a, u16 val)
- {
-@@ -691,6 +693,7 @@ esp_err_t initialise_wifi(void)
- 	wpa_cb.wpa3_parse_sae_msg = rx_sae_msg;
- 	wpa_cb.wpa_config_done = config_done;
- 	wpa_cb.wpa_config_parse_string  = wpa_config_parse_string;
-+	wpa_cb.wpa_sta_set_ap_rsnxe = wpa_sm_set_ap_rsnxe;
- 
- 	esp_wifi_register_wpa_cb_internal(&wpa_cb);
- 
-diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h b/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h
---- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h
-+++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h
-@@ -56,6 +56,7 @@ enum ESP_INTERFACE_TYPE {
- 	ESP_HCI_IF,
- 	ESP_INTERNAL_IF,
- 	ESP_TEST_IF,
-+	ESP_BLE_PROV_IF,
- 	ESP_MAX_IF,
- };
- 
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/ble_prov.h b/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/ble_prov.h
 new file mode 100644
 --- /dev/null
@@ -408,38 +462,3 @@ new file mode 100644
 +void ble_prov_from_linux(const uint8_t *payload, uint16_t len);
 +
 +#endif
-diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c
---- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c
-+++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c
-@@ -6,6 +6,7 @@
- #include "linux_ll.h"
- #include "hal/cache_hal.h"
- #include "hal/mmu_ll.h"
-+#include "esp_log.h"
- 
- static uint32_t first_free_mmu = ~0;
- 
-@@ -26,6 +27,11 @@ void init_linux_mmap(void)
- 			abort();
- 		}
- 	}
-+	printf("MMU: first_free_mmu=%u (firmware uses entries 0..%u)\n",
-+	       (unsigned)first_free_mmu, (unsigned)first_free_mmu - 1);
-+	printf("MMU: kernel e0x14=0x%04x rootfs e0x54=0x%04x\n",
-+	       (unsigned)dst[0x14], (unsigned)dst[0x54]);
-+
- #ifdef CONFIG_LINUX_PSRAM_8M
- 	for (i = 0x100; i < 0x180; ++i) {
- 		dst[i] = 0x4000;
-diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3 b/esp_hosted_ng/esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3
---- a/esp_hosted_ng/esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3
-+++ b/esp_hosted_ng/esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3
-@@ -1446,7 +1446,7 @@ CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_MAX_CERTS=200
- # CONFIG_MBEDTLS_CMAC_C is not set
- CONFIG_MBEDTLS_HARDWARE_AES=y
- CONFIG_MBEDTLS_AES_USE_INTERRUPT=y
--CONFIG_MBEDTLS_HARDWARE_MPI=y
-+CONFIG_MBEDTLS_HARDWARE_MPI=n
- CONFIG_MBEDTLS_MPI_USE_INTERRUPT=y
- CONFIG_MBEDTLS_HARDWARE_SHA=y
- CONFIG_MBEDTLS_ROM_MD5=y

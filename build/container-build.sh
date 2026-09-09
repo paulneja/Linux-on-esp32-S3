@@ -133,6 +133,8 @@ userspace() {
     bash "$exp/programs/build-process-tools.sh"
     bash "$exp/programs/make-image.sh"
     bash "$exp/programs/compact-image.sh"
+    "$base/crosstool-NG/builds/xtensa-esp32s3-linux-uclibcfdpic/bin/xtensa-esp32s3-linux-uclibcfdpic-gcc" \
+        -Os -Wall -Wextra "$repo/paperboard/linux/epd-shell.c" -o "$exp/out/programs/epd-shell"
     python3 "$exp/programs/image-profiles.py" build --profile all --output "$work/artifacts/rootfs.cramfs"
     python3 "$exp/programs/test-cron-image.py" "$work/artifacts/rootfs.cramfs"
     python3 "$exp/programs/test-process-tools.py"

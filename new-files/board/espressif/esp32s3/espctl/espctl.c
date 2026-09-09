@@ -14,7 +14,7 @@
 #define GPIOCHIP_PATH "/dev/gpiochip0"
 
 static const int allowed_pins[] = {
-	1, 2, 4, 5, 8, 14, 15, 16, 17, 18, 21, 38, 39, 40, 41, 42, 47, 48
+	1, 2 /* Display GPIO and I2C belong exclusively to core 0. */
 };
 
 static int pin_allowed(int pin)
