@@ -90,7 +90,7 @@ with tempfile.TemporaryDirectory(prefix='final-rootfs-', dir=work) as directory:
     run(host / 'bin/cramfsck', out / 'rootfs.cramfs')
 
 # Reject stale firmware even if a resumed build left old staging files behind.
-assert b'paperboard v3:' in (work / 'base-images/network_adapter.bin').read_bytes(), 'stale firmware: Paperboard v3 marker missing'
+assert b'paperboard headless v1:' in (work / 'base-images/network_adapter.bin').read_bytes(), 'stale firmware: Paperboard headless marker missing'
 for name in ('bootloader.bin', 'partition-table.bin', 'network_adapter.bin'):
     shutil.copyfile(work / 'base-images' / name, out / name)
 shutil.copyfile(experiment / 'real-bins/xipImage-fork-quiet', out / 'xipImage')
