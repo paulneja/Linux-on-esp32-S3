@@ -151,6 +151,11 @@ userspace() {
     python3 "$exp/fork/test-reclaim.py"
 }
 
+paperboard_profile() {
+    # Repack the existing compiled userspace when the login wrapper changes.
+    python3 "$exp/programs/image-profiles.py" build --profile all --output "$work/artifacts/rootfs.cramfs"
+}
+
 package() {
     python3 "$repo/build/package-final.py" "$work"
 }
@@ -160,5 +165,6 @@ stage toolchain toolchain
 stage base-rootfs rootfs_base
 stage firmware firmware
 stage userspace userspace
+stage paperboard-profile paperboard_profile
 stage package package
 sha256sum "$work/artifacts/linux-esp32s3-native-full.bin"
