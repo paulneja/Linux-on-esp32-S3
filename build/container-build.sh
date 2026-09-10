@@ -153,7 +153,7 @@ userspace() {
 
 paperboard_profile() {
     # Repack the existing compiled userspace when the login wrapper changes.
-    python3 "$exp/programs/image-profiles.py" build --profile all --output "$work/artifacts/rootfs.cramfs"
+    python3 "$exp/programs/image-profiles.py" build --profile all --replace --output "$work/artifacts/rootfs.cramfs"
 }
 
 package() {
