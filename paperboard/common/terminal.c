@@ -1,5 +1,13 @@
 #include "terminal.h"
 #include <string.h>
+#ifdef ESP_PLATFORM
+#include "esp_attr.h"
+#define PB_RASTER_ATTR IRAM_ATTR
+#define PB_FONT_STORAGE DRAM_ATTR
+#else
+#define PB_RASTER_ATTR
+#define PB_FONT_STORAGE
+#endif
 #include "font8x8_basic.h"
 static void blank(PbCell* c) { c->ch = ' '; c->inverse = 0; }
 void pb_init(PbTerminal* t) {
@@ -89,14 +97,14 @@ void pb_feed(PbTerminal* t,const uint8_t* data,size_t len) {
         }
     }
 }
-static uint8_t glyph(const PbTerminal* t,unsigned row,unsigned col,unsigned dy) {
+static inline __attribute__((always_inline)) uint8_t glyph(const PbTerminal* t,unsigned row,unsigned col,unsigned dy) {
     PbCell c=t->cells[row][col];
     uint8_t bits=(dy>=4 && dy<20)?(uint8_t)font8x8_basic[c.ch<128?c.ch:'?'][(dy-4)/2]:0;
     if(c.inverse) bits=~bits;
     if(t->cursor_visible && row==t->y && col==t->x && dy>=22) bits=~bits;
     return bits;
 }
-void pb_raster_line(void* context,int y,uint8_t* out) {
+void PB_RASTER_ATTR pb_raster_line(void* context,int y,uint8_t* out) {
     const PbRaster* r=context;
     if(y<0||y>=PB_ROWS*24) {memset(out,0xff,PB_WIDTH);return;}
     unsigned row=(unsigned)y/24,dy=(unsigned)y%24;

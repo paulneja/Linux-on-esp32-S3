@@ -320,6 +320,12 @@ void epd_renderer_init(enum EpdInitOptions options) {
     size_t queue_elem_size = epd_width();
 #endif
 
+#ifdef EPD_SINGLE_CORE
+    // Preserve drive timing while buffering more rows against AMP contention.
+    // Adds ~10 KiB of internal RAM; the start threshold derives from ring size.
+    if (queue_len == 32) queue_len = 64;
+#endif
+
     for (int i = 0; i < NUM_RENDER_THREADS; i++) {
         render_context.line_queues[i] = lq_init(queue_len, queue_elem_size, use_lq_mask);
         render_context.feed_line_buffers[i] = (uint8_t*)heap_caps_aligned_alloc(

@@ -4,6 +4,8 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
+#include <stdio.h>
 #include "epd_procedural.h"
 #include "terminal.h"
 static PbTerminal current,shown;
@@ -49,6 +51,8 @@ void pb_console_init(void) {
     configASSERT(xPortGetCoreID()==0);
     epd_init(&sverio_paperboard_v1,&ED097TC2,EPD_LUT_1K|EPD_FEED_QUEUE_32);
     epd_set_vcom(1500);epd_set_lcd_pixel_clock_MHz(5);
+    printf("paperboard v2: core=%d clock=5MHz feed_rows=64 internal_free=%u\n",
+           xPortGetCoreID(), (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     pb_init(&current);pb_init(&shown);shown.cursor_visible=false;
     epd_poweron();epd_clear();epd_poweroff();
     const char* banner="Paperboard / ED097TC2\r\nLinux console: run epd-shell over serial.\r\n\r\n";
