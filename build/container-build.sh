@@ -29,7 +29,13 @@ clone_locked() {
         git -C "$target" fetch --depth 1 origin "$revision"
         git -C "$target" checkout --detach FETCH_HEAD
     fi
-    test "$(git -C "$target" rev-parse HEAD)" = "$revision"
+    if [[ "$target" = "$base/esp-hosted" ]] &&
+       git -C "$target" merge-base --is-ancestor "$revision" HEAD &&
+       [[ "$(git -C "$target" log -1 --format=%s)" = *"local-only, never push"* ]]; then
+        echo "RESUME: using locally committed firmware patches on pinned esp-hosted"
+    else
+        test "$(git -C "$target" rev-parse HEAD)" = "$revision"
+    fi
 }
 
 stage() {
@@ -104,7 +110,9 @@ firmware() {
     source export.sh
     set -u
     cd ../network_adapter
-    idf.py set-target esp32s3
+    if ! grep -qx 'CONFIG_IDF_TARGET="esp32s3"' sdkconfig 2>/dev/null; then
+        idf.py set-target esp32s3
+    fi
     cp sdkconfig.defaults.esp32s3.16m8r sdkconfig
     idf.py build
     cd "$repo"
