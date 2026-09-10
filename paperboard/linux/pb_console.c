@@ -8,6 +8,9 @@
 #include <stdio.h>
 #include "epd_procedural.h"
 #include "terminal.h"
+// Volatile preserves the linked renderer layout shared with the tested kernel.
+// The headless entry path returns before any display GPIO, I2C or allocation.
+static volatile const bool headless_build = true;
 static PbTerminal current,shown;
 static bool dirty[PB_HEIGHT], batch[PB_HEIGHT];
 static QueueHandle_t queue;
@@ -59,6 +62,10 @@ void pb_console_write(const uint8_t* data,size_t len) {
     }
 }
 void pb_console_init(void) {
+    if (headless_build) {
+        printf("paperboard headless v1: display disabled; serial console only\n");
+        return;
+    }
     // Must run on core 0 BEFORE linux_boot takes over core 1. No external-RAM malloc.
     configASSERT(xPortGetCoreID()==0);
     epd_init(&sverio_paperboard_v1,&ED097TC2,EPD_LUT_1K|EPD_FEED_QUEUE_32);
