@@ -34,12 +34,14 @@ diff --git a/drivers/net/wireless/espressif/esp32-ng/main.c b/drivers/net/wirele
  
  	return 0;
  }
-@@ -556,4 +558,5 @@
+@@ -578,6 +580,7 @@
  		return 0;
  	}
  
 +	esp_epd_deinit();
  	esp_stop_network_ifaces(adapter);
+ #ifdef CONFIG_ESP32_BT
+ 	/* BT may have been initialized after fw bootup event, deinit it */
 diff --git a/drivers/net/wireless/espressif/esp32-ng/Makefile b/drivers/net/wireless/espressif/esp32-ng/Makefile
 --- a/drivers/net/wireless/espressif/esp32-ng/Makefile
 +++ b/drivers/net/wireless/espressif/esp32-ng/Makefile
