@@ -51,6 +51,8 @@ assert '# CONFIG_XTENSA_VARIANT_MMU is not set' in config
 assert not re.search(r'^CONFIG_MMU=[ym]$', config, re.M)
 autoconf = (experiment / 'linux-fork/include/generated/autoconf.h').read_text()
 assert not re.search(r'^#define CONFIG_MMU\s', autoconf, re.M)
+run('python3', repo / 'experiments/mmu-poc/fork/check-kernel-config.py',
+    board / 'devkit_c1_16m_linux.config', experiment / 'linux-fork/.config')
 
 with tempfile.TemporaryDirectory(prefix='final-rootfs-', dir=work) as directory:
     tree = Path(directory) / 'tree'

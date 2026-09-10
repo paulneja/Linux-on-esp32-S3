@@ -19,5 +19,7 @@ else
 fi
 scripts/config --enable XTENSA_NOMMU_FORK --set-str LOCALVERSION '-forkbank'
 make ARCH=xtensa CROSS_COMPILE="$prefix" olddefconfig
+python3 "$task_dir/check-kernel-config.py" \
+    "$repo_dir/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config" .config
 make -j8 ARCH=xtensa CROSS_COMPILE="$prefix" xipImage 2>&1 | tee "$task_dir/../out/fork-kernel-build.log"
 echo "Built only. Original source tree, images and board unchanged."

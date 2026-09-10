@@ -14,6 +14,9 @@ if ! patch -d "$kernel_dir" --force --dry-run -R -p1 < "$task_dir/reclaim.patch"
 fi
 patch -d "$kernel_dir" --forward --batch --dry-run -p1 < "$task_dir/quiet-trace.patch"
 patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/quiet-trace.patch"
+python3 "$task_dir/check-kernel-config.py" \
+    "$repo_dir/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config" \
+    "$kernel_dir/.config"
 make -C "$kernel_dir" -j"${JOBS:-8}" ARCH=xtensa CROSS_COMPILE="$prefix-" xipImage \
     2>&1 | tee "$experiment_dir/out/kernel-quiet-details.log"
 test "$(wc -c < "$kernel_dir/arch/xtensa/boot/xipImage")" -le $((0x400000))

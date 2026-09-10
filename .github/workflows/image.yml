@@ -22,13 +22,16 @@ jobs:
 
       - name: Check the shell scripts parse
         run: |
-          for f in flash.sh make-images.sh build/reproduce.sh run.sh; do
+          for f in flash.sh make-images.sh build/reproduce.sh run.sh \
+                   build/container-build.sh experiments/mmu-poc/fork/build-kernel.sh \
+                   experiments/mmu-poc/fork/build-kernel-reclaim.sh; do
             sh -n "$f" 2>/dev/null || bash -n "$f"
           done
 
       - name: Check the Python parses
         run: |
-          for f in build/*.py experiments/mmu-poc/programs/*.py; do
+          for f in build/*.py experiments/mmu-poc/programs/*.py \
+                   experiments/mmu-poc/fork/*.py; do
             python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$f"
           done
 
@@ -37,6 +40,9 @@ jobs:
 
       - name: Shell fallback tests
         run: python3 build/test-shell-fallback.py
+
+      - name: Kernel config guard tests
+        run: python3 build/test-kernel-config.py
 
   build:
     name: Full image ${{ matrix.run }}

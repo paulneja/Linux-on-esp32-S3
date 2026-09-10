@@ -335,6 +335,22 @@ that one directory match `new-files/` exactly.
    looked only for `psk=`, and an open-network block has no credentials in it at
    all. Fix: `no-open-wifi.sh` at post-build, and a second check in
    `make-images.sh`.
+8. **Kernel config, incident 8**: `experiments/mmu-poc/fork/build-kernel.sh`
+   copies the configured buildroot tree into `experiments/mmu-poc/out/linux-fork`
+   **only when that directory does not exist**, and the directory is gitignored,
+   so it outlives `git checkout`, `git reset --hard` and branch switches alike.
+   A line added to `devkit_c1_16m_linux.config` therefore reaches buildroot's
+   kernel and never reaches the one that ships: the fork kernel rebuilds from
+   the old `.config`, the compile succeeds, the size is measured, and the image
+   goes out with the change missing. Nothing fails — that is the whole problem.
+   And `build-kernel-reclaim.sh`, which is what `build/container-build.sh`
+   actually calls, re-runs `build-kernel.sh` only when the reclaim patch is not
+   yet applied, so on a warm tree the copy step is never even reached. Fix:
+   `check-kernel-config.py` compares every statement of the seed config against
+   the built `.config` and aborts — in `build-kernel.sh`, in
+   `build-kernel-reclaim.sh` ahead of the compile, and in `package-final.py`
+   against the artifact itself. Recovery is
+   `rm -rf experiments/mmu-poc/out/linux-fork`, which the error prints.
 
 ## What's here
 
