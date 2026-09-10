@@ -37,6 +37,17 @@ retrieve_line_isr(RenderContext_t* ctx, uint8_t* buf) {
     if (ctx->lines_consumed >= ctx->lines_total) {
         return false;
     }
+#ifdef EPD_SINGLE_CORE
+    // Procedural console updates are fully buffered before LCD starts.
+    // Unchanged physical rows need no queue entry and drive no pixels.
+    if (ctx->line_provider && ctx->drawn_lines &&
+        (ctx->lines_consumed >= ctx->display_height ||
+         !ctx->drawn_lines[ctx->lines_consumed])) {
+        memset(buf, 0x00, ctx->display_width / 4);
+        ctx->lines_consumed++;
+        return false;
+    }
+#endif
     int thread = ctx->line_threads[ctx->lines_consumed];
     assert(thread < NUM_RENDER_THREADS);
 
@@ -150,6 +161,19 @@ lcd_calculate_frame(RenderContext_t* ctx, int thread_id) {
     // Count from physical row zero, including skipped/cropped rows.
     int trigger_line = int_min(NUM_RENDER_THREADS * (lq->size - 1), ctx->lines_total - 1);
 
+    bool prebuffered = false;
+#ifdef EPD_SINGLE_CORE
+    prebuffered = ctx->line_provider && ctx->drawn_lines;
+    if (prebuffered) {
+        unsigned active = 0;
+        for (int y = 0; y < ctx->display_height; ++y)
+            active += ctx->drawn_lines[y] != 0;
+        // Caller batches dirty lines to fit the ring, leaving its empty slot.
+        assert(active < lq->size);
+        trigger_line = ctx->lines_total; // Start only after all lines are ready.
+    }
+#endif
+
     while (l = atomic_fetch_add(&ctx->lines_prepared, 1), l < ctx->lines_total) {
         ctx->line_threads[l] = thread_id;
 
@@ -162,6 +186,7 @@ lcd_calculate_frame(RenderContext_t* ctx, int thread_id) {
 
         if (l < min_y || l >= max_y
             || (ctx->drawn_lines != NULL && !ctx->drawn_lines[l - area.y])) {
+            if (prebuffered) continue;
             uint8_t* buf = NULL;
             while (buf == NULL) {
                 // break in case of errors
@@ -202,6 +227,10 @@ lcd_calculate_frame(RenderContext_t* ctx, int thread_id) {
         (*input_calc_func)(lp, buf, ctx->conversion_lut, ctx->display_width);
 
         lq_commit(lq);
+    }
+    if (prebuffered) {
+        epd_lcd_line_source_cb((line_cb_func_t)&retrieve_line_isr, ctx);
+        epd_lcd_start_frame();
     }
 }
 

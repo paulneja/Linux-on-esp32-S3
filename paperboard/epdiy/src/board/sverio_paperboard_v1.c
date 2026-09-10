@@ -210,6 +210,10 @@ void printPowerGoodStatus() {
     // Read the Power Good Status register at address 0x0F
     uint8_t pgStatus = tps_read_register(config_reg.port, TPS_REG_PG);
 
+    // All six monitored rails are good: normal power-on must stay quiet.
+    // Keep the error details below when any rail is missing.
+    if ((pgStatus & 0xFA) == 0xFA) return;
+
     // Extract each Power Good status bit
     uint8_t vb_pg = (pgStatus >> 7) & 0x01;
     uint8_t vddh_pg = (pgStatus >> 6) & 0x01;

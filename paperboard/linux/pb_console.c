@@ -9,7 +9,7 @@
 #include "epd_procedural.h"
 #include "terminal.h"
 static PbTerminal current,shown;
-static bool dirty[PB_HEIGHT];
+static bool dirty[PB_HEIGHT], batch[PB_HEIGHT];
 static QueueHandle_t queue;
 struct chunk { unsigned len; uint8_t bytes[128]; };
 static void console_task(void* arg) {
@@ -28,7 +28,19 @@ static void console_task(void* arg) {
             epd_clear();pb_init(&shown);shown.cursor_visible=false;
         }
         PbRaster r={&current,&shown};pb_dirty_lines(&r,dirty);
-        enum EpdDrawError error=epd_draw_procedural(pb_raster_line,&r,dirty,MODE_DU,25);
+        enum EpdDrawError error=EPD_DRAW_SUCCESS;
+        // At most 48 active rows fit entirely in the 64-slot internal ring.
+        // Each batch completes all stock DU phases before advancing.
+        unsigned count=0;
+        memset(batch,0,sizeof(batch));
+        for (int y=0;y<PB_HEIGHT;++y) {
+            if (dirty[y]) {batch[y]=true;++count;}
+            if (count==48 || (y==PB_HEIGHT-1 && count)) {
+                error=epd_draw_procedural(pb_raster_line,&r,batch,MODE_DU,25);
+                if (error) break;
+                memset(batch,0,sizeof(batch));count=0;
+            }
+        }
         epd_poweroff();
         if(error) {
             ESP_LOGE("paperboard","draw failed 0x%x; display stopped until reboot",error);
@@ -51,7 +63,7 @@ void pb_console_init(void) {
     configASSERT(xPortGetCoreID()==0);
     epd_init(&sverio_paperboard_v1,&ED097TC2,EPD_LUT_1K|EPD_FEED_QUEUE_32);
     epd_set_vcom(1500);epd_set_lcd_pixel_clock_MHz(5);
-    printf("paperboard v2: core=%d clock=5MHz feed_rows=64 internal_free=%u\n",
+    printf("paperboard v3: core=%d clock=5MHz feed_rows=64 batch_rows=48 prebuffered=1 internal_free=%u\n",
            xPortGetCoreID(), (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     pb_init(&current);pb_init(&shown);shown.cursor_visible=false;
     epd_poweron();epd_clear();epd_poweroff();
