@@ -105,6 +105,33 @@ def quiesce():
             ' || echo DHCP_STOPPED', 60, 'DHCP_STOPPED')
 
 
+def record_memory():
+    # Phase 0 of the external-storage work turns on how much RAM is left once a
+    # driver stack is added, and on NOMMU the number that decides an allocation
+    # is contiguous pages, not MemAvailable -- MemAvailable counts reclaimable
+    # cache the allocator cannot hand to a fork. So capture buddyinfo too, on
+    # the clean image, while there is still a clean image to measure.
+    meminfo = command('cat /proc/meminfo', 60, 'MemTotal:')
+    buddyinfo = command('cat /proc/buddyinfo; echo BUDDY_DONE', 60, 'BUDDY_DONE')
+    (args.output / 'memory-baseline.txt').write_text(meminfo + '\n' + buddyinfo + '\n')
+    values = {key: int(size) for key, size in re.findall(r'(?m)^(\w+):\s+(\d+) kB$', meminfo)}
+    for key in ('MemTotal', 'MemFree', 'MemAvailable'):
+        assert values.get(key), (key, meminfo)
+    baseline = {'meminfo_kb': values}
+    zone = re.search(r'(?m)^Node \d+, zone\s+\S+((?:\s+\d+)+)\s*$', buddyinfo)
+    if zone:
+        orders = [int(count) for count in zone.group(1).split()]
+        largest = max((order for order, count in enumerate(orders) if count), default=-1)
+        baseline['free_pages_by_order'] = orders
+        baseline['largest_free_block_kb'] = (4 << largest) if largest >= 0 else 0
+    else:
+        print('  note: /proc/buddyinfo gave nothing parseable; raw text kept', flush=True)
+    results['memory_baseline'] = baseline
+    print('  baseline: MemFree {} kB, MemAvailable {} kB, largest free block {} kB'.format(
+        values['MemFree'], values['MemAvailable'],
+        baseline.get('largest_free_block_kb', 'unknown')), flush=True)
+
+
 def benchmarks():
     console.port.write(b'exec /usr/bin/dash -c \'trap "sleep 1" EXIT; . /usr/share/program-tests/benchmark-suite.sh\'\n')
     output, _ = console.until(rb'buildroot login: ?', 180)
@@ -131,6 +158,7 @@ try:
         record('reset-and-boot', boot_from_flash)
     console.login()
     record('quiesce-background-forks', quiesce)
+    record('memory-baseline', record_memory)
     record('installed-kernel-and-rootfs-hashes', verify_installed)
     checks = [
         ('boot', 'uname -a && id && mount && free && dmesg',
