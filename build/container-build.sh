@@ -117,7 +117,8 @@ firmware() {
     idf.py build
     cd "$repo"
     bash make-images.sh "$driver"
-    cp -a images "$work/base-images"
+    mkdir -p "$work/base-images"
+    cp -a images/. "$work/base-images/"
 }
 
 userspace() {
