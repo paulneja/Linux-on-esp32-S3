@@ -1,14 +1,28 @@
 if [ -z "${LOWMEM_RESUMED-}" ]; then
 	LOWMEM_RESUMED=1
 	export LOWMEM_RESUMED
-	if [ -s "${LOWMEM_RESUME:-/run/shell-resume}" ]; then
+	# exec keeps the pid, so this is the file the bash that just switched
+	# wrote. Per-pid: /run/shell-resume was shared between every session.
+	__resume_file="${LOWMEM_RESUME:-/run/shell-resume}.$$"
+	if [ -s "$__resume_file" ]; then
 		__resume=
-		read -r __resume < "${LOWMEM_RESUME:-/run/shell-resume}"
-		: > "${LOWMEM_RESUME:-/run/shell-resume}"
+		read -r __resume < "$__resume_file"
+		rm -f "$__resume_file"
 		if [ -n "$__resume" ]; then
-			printf 'retrying: %s\n' "$__resume" >&2
-			eval "$__resume"
+			# Ask. The command may have written part of a file before it
+			# failed, so repeating it can duplicate what it already did,
+			# and bash syntax does not always mean the same thing here.
+			printf 'This command did not run:\n  %s\n' "$__resume" >&2
+			printf 'Run it now in dash? [y/N] ' >&2
+			__reply=
+			read -r __reply
+			case $__reply in
+			[yY]|[yY][eE][sS]) eval "$__resume" ;;
+			*) printf 'Not run. It is still in your history.\n' >&2 ;;
+			esac
+			unset __reply
 		fi
 		unset __resume
 	fi
+	unset __resume_file
 fi
