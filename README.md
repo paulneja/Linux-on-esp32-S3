@@ -280,3 +280,11 @@ This project is licensed under the **GPLv3** (see [LICENSE](LICENSE)). Kernel
 code contributed here (`drivers/crypto/esp32s3_rsa.c`) is GPL-2.0-or-later.
 
 P.S: Sorry for the wait 🥲
+
+## Experimental branches
+
+Some hardware-specific ports and experimental features are developed in separate branches before being considered for `main`.
+
+- **Paperboard** — [`paperboard-experimental`](https://github.com/paulneja/Linux-on-esp32-S3/tree/paperboard-experimental)  
+  Experimental support for the SVERMIGO Paperboard, including the e-paper display integration.  
+  Contributed by [@svermigo](https://github.com/svermigo).
