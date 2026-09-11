@@ -1,3 +1,12 @@
+> [!WARNING]
+> ## Experimental Paperboard Branch
+>
+> This branch contains experimental, hardware-specific Paperboard support and is **not the mainline development branch**.
+>
+> Mainline development continues on [`main`](https://github.com/paulneja/Linux-on-esp32-S3/tree/main).
+>
+> <sub>Paperboard branch contributed by [@svermigo](https://github.com/svermigo).</sub>
+
 # Linux on an ESP32-S3 — native Linux, fork and a usable shell
 
 ## Paperboard and headless builds
@@ -300,5 +309,3 @@ firmware. See [NOTICE](NOTICE) for third-party components and licenses.
 
 This project is licensed under the **GPLv3** (see [LICENSE](LICENSE)). Kernel
 code contributed here (`drivers/crypto/esp32s3_rsa.c`) is GPL-2.0-or-later.
-
-P.S: Sorry for the wait 🥲
