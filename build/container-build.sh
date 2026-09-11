@@ -29,7 +29,13 @@ clone_locked() {
         git -C "$target" fetch --depth 1 origin "$revision"
         git -C "$target" checkout --detach FETCH_HEAD
     fi
-    test "$(git -C "$target" rev-parse HEAD)" = "$revision"
+    if [[ "$target" = "$base/esp-hosted" ]] &&
+       git -C "$target" merge-base --is-ancestor "$revision" HEAD &&
+       [[ "$(git -C "$target" log -1 --format=%s)" = *"local-only, never push"* ]]; then
+        echo "RESUME: using locally committed firmware patches on pinned esp-hosted"
+    else
+        test "$(git -C "$target" rev-parse HEAD)" = "$revision"
+    fi
 }
 
 stage() {
@@ -104,12 +110,15 @@ firmware() {
     source export.sh
     set -u
     cd ../network_adapter
-    idf.py set-target esp32s3
+    if ! grep -qx 'CONFIG_IDF_TARGET="esp32s3"' sdkconfig 2>/dev/null; then
+        idf.py set-target esp32s3
+    fi
     cp sdkconfig.defaults.esp32s3.16m8r sdkconfig
     idf.py build
     cd "$repo"
     bash make-images.sh "$driver"
-    cp -a images "$work/base-images"
+    mkdir -p "$work/base-images"
+    cp -a images/. "$work/base-images/"
 }
 
 userspace() {
@@ -133,12 +142,19 @@ userspace() {
     bash "$exp/programs/build-process-tools.sh"
     bash "$exp/programs/make-image.sh"
     bash "$exp/programs/compact-image.sh"
+    "$base/crosstool-NG/builds/xtensa-esp32s3-linux-uclibcfdpic/bin/xtensa-esp32s3-linux-uclibcfdpic-gcc" \
+        -Os -Wall -Wextra "$repo/paperboard/linux/epd-shell.c" -o "$exp/out/programs/epd-shell"
     python3 "$exp/programs/image-profiles.py" build --profile all --output "$work/artifacts/rootfs.cramfs"
     python3 "$exp/programs/test-cron-image.py" "$work/artifacts/rootfs.cramfs"
     python3 "$exp/programs/test-process-tools.py"
     python3 "$exp/programs/test-strip-sections.py"
     python3 "$exp/programs/test-home-init.py"
     python3 "$exp/fork/test-reclaim.py"
+}
+
+paperboard_profile() {
+    # Repack the existing compiled userspace when the login wrapper changes.
+    python3 "$exp/programs/image-profiles.py" build --profile all --replace --output "$work/artifacts/rootfs.cramfs"
 }
 
 package() {
@@ -150,5 +166,6 @@ stage toolchain toolchain
 stage base-rootfs rootfs_base
 stage firmware firmware
 stage userspace userspace
+stage paperboard-profile paperboard_profile
 stage package package
 sha256sum "$work/artifacts/linux-esp32s3-native-full.bin"

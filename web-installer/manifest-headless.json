@@ -1,0 +1,17 @@
+{
+  "name": "ESP32 Linux headless",
+  "version": "headless-v1",
+  "new_install_prompt_erase": false,
+  "new_install_improv_wait_time": 0,
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "parts": [
+        {
+          "path": "firmware/headless-v1.bin",
+          "offset": 0
+        }
+      ]
+    }
+  ]
+}

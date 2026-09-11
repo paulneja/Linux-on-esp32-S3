@@ -468,6 +468,8 @@ int esp_add_card(struct esp_adapter *adapter)
 	RET_ON_FAIL(esp_add_network_ifaces(adapter));
 
 	esp_ble_prov_init(adapter);
+	if (esp_epd_init(adapter))
+		esp_err("Paperboard: /dev/epd registration failed\n");
 
 	return 0;
 }
@@ -556,6 +558,7 @@ int esp_remove_card(struct esp_adapter *adapter)
 		return 0;
 	}
 
+	esp_epd_deinit();
 	esp_stop_network_ifaces(adapter);
 #ifdef CONFIG_ESP32_BT
 	esp_ble_prov_deinit();

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f5f3ec"><title>ESP32 Linux · USB installer</title>
+<link rel="stylesheet" href="style.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<header><a class="brand" href="./"><span class="brand-icon">▦</span> ESP32 LINUX <span class="tag">WEB INSTALLER</span></a></header>
+<main>
+<section class="hero">
+<div><p class="eyebrow">SMALL BOARD. REAL LINUX.</p><h1>From your browser.<br>Onto your board<span>.</span></h1><p class="intro">Install Linux on your ESP32-S3 over USB. Choose a build, connect your board, and continue in Google Chrome on your computer.</p><div class="spec"><strong>Requires ESP32-S3 N16R8</strong><span>16 MB flash <i>·</i> 8 MB OPI PSRAM</span></div></div>
+<div class="board-art" aria-hidden="true"><div class="board"><div class="usb"></div><div class="chip"><span>ESP32-S3</span><strong>N16R8</strong><small>LINUX INSIDE</small></div><div class="led"></div><span class="board-label">240 MHz / DUAL CORE</span></div><span class="art-caption">USB → FLASH → LINUX</span></div>
+</section>
+<section aria-labelledby="choose"><div class="section-title"><span class="step">01</span><h2 id="choose">Choose your build</h2><span class="muted">Two builds. One chip.</span></div>
+<div class="variants">
+<label class="variant"><input type="radio" name="variant" value="paperboard" checked><span class="radio-mark"></span><span class="variant-icon display-icon">▤</span><span class="version">PAPERBOARD V3</span><h3>With an e-paper display</h3><p>Your serial shell is mirrored to the e-paper after login. A quiet terminal for your desk.</p><div class="card-bottom"><strong>Paperboard + ED097TC2</strong><span>ESP32-S3 N16R8 · 1200 × 825 panel</span></div></label>
+<label class="variant"><input type="radio" name="variant" value="headless"><span class="radio-mark"></span><span class="variant-icon">&gt;_</span><span class="version">HEADLESS V1</span><h3>Without a display</h3><p>A full Linux system controlled through the serial console. No display required — leave it disconnected.</p><div class="card-bottom"><strong>ESP32-S3 N16R8 development boards</strong><span>Shell · Wi-Fi · display disabled</span></div></label>
+</div>
+<p class="compatibility">Both builds require N16R8. The headless image targets compatible development boards with this memory configuration; not every board model has been tested. The display build requires the specific SVERIO Paperboard v1 wiring.</p>
+</section>
+<section class="install" aria-labelledby="install-title"><div class="install-copy"><p class="eyebrow">02 / CONNECT & INSTALL</p><h2 id="install-title">Linux for Paperboard</h2><p>Connect your board with a USB data cable. Close other serial monitors, then select the board’s port in the next dialog.</p><p class="erase"><strong>A full installation overwrites all 16 MB of flash.</strong><br>This includes existing settings, passwords, and files in <code>/etc</code> and <code>/home</code>.</p></div><div class="install-action"><p id="browser-status" role="status">Loading USB installer…</p>
+<esp-web-install-button id="headless-install" manifest="manifest-headless.json" hidden><button slot="activate" disabled>Connect & install Linux <span>↗</span></button><span slot="unsupported">Open this page in Google Chrome on a computer.</span><span slot="not-allowed">Installation requires HTTPS or localhost.</span></esp-web-install-button>
+<esp-web-install-button id="paperboard-install" manifest="manifest-paperboard.json"><button slot="activate" disabled>Connect & install Linux <span>↗</span></button><span slot="unsupported">Open this page in Google Chrome on a computer.</span><span slot="not-allowed">Installation requires HTTPS or localhost.</span></esp-web-install-button>
+<small>USB / Web Serial · 16 MB full image</small><a id="download" href="firmware/paperboard-v3.bin" download>Download the .bin file ↓</a></div></section>
+<section class="after"><div><p class="eyebrow">03 / FIRST LOGIN & WI-FI</p><h2>Make your first connection.</h2><p>After flashing, close the browser’s serial connection and restart the board. Open a serial terminal at <strong>115200 baud</strong>, log in, then run <code>wifi</code> to scan for networks and configure Wi-Fi for wireless transfers. Select your network and enter its password.</p><p>Use any serial terminal. Select your board’s port: for example, <code>COM3</code> on Windows or <code>/dev/ttyUSB0</code> / <code>/dev/ttyACM0</code> on Linux. Set <strong>115200 baud, 8 data bits, no parity, 1 stop bit, and no flow control</strong>. Port names vary by computer.</p></div><div class="terminal"><div class="terminal-bar"><span>● ● ●</span> UART · 115200</div><pre><span class="muted-terminal"># Serial terminal settings:</span>
+Port: <b>your board’s serial port</b>
+Speed: <b>115200 baud · 8N1 · no flow control</b>
+
+Welcome to Buildroot
+buildroot login: <b>root</b>
+Password: <b>changeme123</b>
+# <b>wifi</b>
+<span class="muted-terminal">Choose your network and enter its password.</span></pre><small>Change the default password with <code>passwd</code>.</small></div></section>
+<section class="faq" aria-labelledby="faq-title"><h2 id="faq-title">Before you unplug</h2>
+<details><summary>Which board do I need?</summary><p>You need an ESP32-S3 N16R8: 16 MB flash and 8 MB OPI PSRAM. These images are not for N8R8, N16R2, ESP32, S2, or C3 boards. Check the module marking or manufacturer’s documentation. The installer detects the ESP32-S3 chip family; it does not verify the required PSRAM type and capacity.</p></details>
+<details><summary>My port is missing or will not connect.</summary><p>Use a USB data cable and close applications using the serial port. If automatic bootloader entry fails, hold BOOT, briefly press RESET/EN, release BOOT, and reconnect. Depending on the USB bridge, your board may need its manufacturer’s driver.</p></details>
+<details><summary>Which USB connector should I use?</summary><p>Use your board’s USB–UART connector for the Linux serial terminal. This build uses UART0 (TX GPIO43, RX GPIO44). A board with only native USB may need an external USB–UART adapter with 3.3 V logic. USB flashing support does not guarantee a Linux console on the same port.</p></details>
+<details><summary>Can I use another display or board?</summary><p>The display build targets ED097TC2 and SVERIO Paperboard v1 wiring. A different panel or pin assignment requires firmware changes. The headless build does not activate the e-paper driver.</p></details>
+<details><summary>Why does installation not work from a local HTML file?</summary><p>Serve this page and all included files from a local server or an HTTPS host. To run locally, launch <code>python3 serve.py</code> from the installer folder and open <a href="http://127.0.0.1:8080">http://127.0.0.1:8080</a> in Chrome.</p></details>
+</section>
+</main><footer><span>ESP32 LINUX <i>/</i> Native Xtensa Linux 6.11</span><div><a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools 10.4.0</a><a href="SHA256SUMS">Checksums</a><a href="https://github.com/svermigo/Linux-on-esp32-S3" target="_blank" rel="noopener">Project on GitHub ↗</a></div></footer>
+<noscript>Enable JavaScript to install firmware over USB.</noscript>
+</body></html>

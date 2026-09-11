@@ -65,6 +65,12 @@ esp-hosted)
 		cp "$LOCAL/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r" \
 			"$LOCAL/new-files/esp-hosted/network_adapter/sdkconfig.defaults.esp32s3.16m8r" \
 			esp/esp_driver/network_adapter/
+		mkdir -p esp/esp_driver/network_adapter/components/epdiy
+        cp -a "$LOCAL/paperboard/epdiy/." esp/esp_driver/network_adapter/components/epdiy/
+        cp "$LOCAL/paperboard/linux/pb_console.c" esp/esp_driver/network_adapter/main/
+        cp "$LOCAL/paperboard/common/terminal.c" "$LOCAL/paperboard/common/font8x8_basic.h" esp/esp_driver/network_adapter/main/
+        cp "$LOCAL/paperboard/common/terminal.h" esp/esp_driver/network_adapter/main/include/
+        git add esp/esp_driver/network_adapter/components/epdiy
 		git add esp/esp_driver/network_adapter/main/ \
 			esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3 \
 			esp/esp_driver/network_adapter/partition_table.esp32s3.16m8r \

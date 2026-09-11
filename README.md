@@ -1,5 +1,27 @@
 # Linux on an ESP32-S3 — native Linux, fork and a usable shell
 
+## Paperboard and headless builds
+
+This fork adds an ED097TC2 e-paper terminal for SVERIO Paperboard v1 and a
+separate display-disabled build for compatible ESP32-S3 N16R8 boards.
+**Both require 16 MB flash and 8 MB OPI PSRAM.**
+
+- `main`: Paperboard V3, automatic serial-shell mirroring to ED097TC2.
+- `paperboard-headless`: Headless V1, no display initialization or shell mirroring.
+- [Web installer](web-installer/README.md): complete USB installation from desktop
+  Chrome, with both firmware images included. Hosted installer:
+  https://svermigo.cz/esp32-linux/
+- [Port details and validation](paperboard/README.md).
+
+After flashing, connect a serial terminal to UART0 (TX GPIO43, RX GPIO44),
+115200 baud, 8N1, no flow control. Log in as `root` / `changeme123` and run `wifi`
+to configure networking. Full images overwrite all flash, including settings and
+user files. The display build needs the Paperboard pinout; it is not a generic
+parallel-display driver configuration.
+
+The native Linux kernel and userspace originate from
+[paulneja/Linux-on-esp32-S3](https://github.com/paulneja/Linux-on-esp32-S3).
+
 Linux 6.11 running **natively on the ESP32-S3's Xtensa cores**, with WiFi,
 Bash, MicroPython and writable storage. Linux is not emulated: Espressif's
 firmware runs alongside it on the same chip and handles WiFi and flash access.

@@ -1,4 +1,16 @@
 #!/bin/sh
+# Mirror only root's primary serial login. The child re-enters this wrapper
+# on a PTY; the environment guard prevents recursion and keeps shell preferences.
+if [ "$#" -eq 0 ] && [ -t 0 ] && [ -z "${PAPERBOARD_MIRROR_ACTIVE-}" ] &&
+   [ ! -e /etc/paperboard-no-mirror ] && [ -c /dev/epd ] &&
+   [ -x /usr/bin/epd-shell ] && [ "$(id -u)" = 0 ]; then
+    case "$(tty 2>/dev/null)" in
+        /dev/ttyS0|/dev/console)
+            export PAPERBOARD_MIRROR_ACTIVE=1
+            exec /usr/bin/epd-shell /usr/bin/user-shell
+            ;;
+    esac
+fi
 pref=
 if [ -n "${HOME-}" ] && [ -r "$HOME/.shell" ]; then
     read -r pref < "$HOME/.shell" 2>/dev/null || pref=
