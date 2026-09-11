@@ -2,8 +2,9 @@
 
 DEV=/dev/esp-ble
 IFACE=espsta0
-LIST=/tmp/.ble-scan
+LIST=/run/ble-scan
 CR=$(printf '\r')
+TAB=$(printf '\t')
 
 [ -e "$DEV" ] || exit 0
 
@@ -21,7 +22,17 @@ say() {
 }
 
 LINE=""
+# Reading a dialog answer: bounded, because BLE.md documents phones dropping
+# the link mid-session. Without the timeout the daemon stays parked here and
+# the next session's first byte is read as this session's answer.
 read_line() {
+	IFS= read -r -t "${1:-120}" LINE <&3 || return 1
+	LINE=${LINE%"$CR"}
+	return 0
+}
+
+# The outer loop waits for someone to show up, so it must not time out.
+read_wake() {
 	IFS= read -r LINE <&3 || return 1
 	LINE=${LINE%"$CR"}
 	return 0
@@ -77,7 +88,7 @@ do_dialog() {
 
 	_try=0
 	while :; do
-		wifi scan > "$LIST" 2>/dev/null
+		wifi scan --tsv > "$LIST" 2>/dev/null
 		[ -s "$LIST" ] && break
 		_try=$((_try + 1))
 		if [ "$_try" -ge 3 ]; then
@@ -90,9 +101,10 @@ do_dialog() {
 
 	say ""
 	_i=0
-	while IFS= read -r _l; do
+	while IFS="$TAB" read -r _sig _sec _name; do
 		_i=$((_i + 1))
-		say "  $_i) $_l"
+		[ "$_sec" = OPEN ] && _lock=open || _lock=locked
+		say "  $_i) $_name  ($_lock, $_sig)"
 	done < "$LIST"
 	say ""
 	say "Send the number of the network:"
@@ -105,24 +117,27 @@ do_dialog() {
 		;;
 	esac
 
-	_sel=""
+	# Read the chosen row from the tab separated list. "read" with IFS set to
+	# a tab keeps the SSID verbatim: runs of spaces survive, and nothing is
+	# glob expanded the way "set -- $line" used to do.
+	_ssid=""
+	_sec=""
 	_i=0
-	while IFS= read -r _l; do
+	while IFS="$TAB" read -r _sig _f2 _f3; do
 		_i=$((_i + 1))
-		[ "$_i" = "$LINE" ] && { _sel="$_l"; break; }
+		if [ "$_i" = "$LINE" ]; then
+			_sec="$_f2"
+			_ssid="$_f3"
+			break
+		fi
 	done < "$LIST"
 
-	if [ -z "$_sel" ]; then
+	if [ -z "$_ssid" ]; then
 		say "No network with that number."
 		return
 	fi
 
-	set -- $_sel
-	_sec="$2"
-	shift 2
-	_ssid="$*"
-
-	if [ "$_sec" = "open" ]; then
+	if [ "$_sec" = OPEN ]; then
 		say "'$_ssid' is open - connecting..."
 		connect_and_report "$_ssid" ""
 	else
@@ -137,6 +152,6 @@ do_dialog() {
 	fi
 }
 
-while read_line; do
+while read_wake; do
 	do_dialog
 done

@@ -3,51 +3,66 @@
 IFACE=espsta0
 CONF=/etc/wpa_supplicant.conf
 TAB=$(printf '\t')
+NL=$(printf '\nx'); NL=${NL%x}
 
 raw_scan() {
 	ip link set "$IFACE" up 2>/dev/null
 
-	if wpa_cli -i "$IFACE" ping 2>/dev/null | grep -q PONG; then
-		wpa_cli -i "$IFACE" scan >/dev/null 2>&1
-		sleep 3
-		wpa_cli -i "$IFACE" scan_results 2>/dev/null | awk -F"$TAB" '
-			NR == 1 { next }                       # header row
-			NF >= 5 {
-				sig = $3; flags = $4; ssid = $5
-				if (ssid == "") next
-				sec = (flags ~ /WPA|WEP|PSK/) ? "SEC" : "OPEN"
-				print sig "\t" sec "\t" ssid
-			}'
-	else
-		iw dev "$IFACE" scan 2>/dev/null | awk '
-			function flush() {
-				if (ssid != "") print sig "\t" sec "\t" ssid
-				ssid = ""; sec = "OPEN"; sig = "-100"
-			}
-			/^BSS / { flush() }
-			/signal:/ { sig = $2 + 0 }
-			/^\tSSID: / { s = $0; sub(/^\tSSID: /, "", s); ssid = s }
-			/RSN:|WPA:/ { sec = "SEC" }
-			END { flush() }'
-	fi
+	# No wpa_cli branch here: the image is built without it, and without a
+	# control socket for it to talk to, so trying it first only costs two
+	# failed exec attempts per scan on a board where that is expensive.
+	iw dev "$IFACE" scan 2>/dev/null | awk '
+		function flush() {
+			if (ssid != "") print sig "\t" sec "\t" ssid
+			ssid = ""; sec = "OPEN"; sig = "-100"
+		}
+		/^BSS / { flush() }
+		/signal:/ { sig = $2 + 0 }
+		/^\tSSID: / { s = $0; sub(/^\tSSID: /, "", s); ssid = s }
+		/RSN:|WPA:/ { sec = "SEC" }
+		END { flush() }'
 }
 
 scan_list() {
 	raw_scan | sort -t"$TAB" -k1,1 -rn | awk -F"$TAB" '!seen[$3]++'
 }
 
+# A quote, a backslash or a newline in one of these values would end the
+# quoted string and let the rest be read as wpa_supplicant directives. The
+# BLE provisioning dialog feeds this function whatever the phone sent, with
+# no authentication, so this check is the boundary.
+reject_unsafe() {
+	case $1 in
+	*\"*|*\\*)
+		echo "wifi: $2 cannot contain a quote or a backslash." >&2
+		return 1 ;;
+	esac
+	case $1 in
+	*"$NL"*)
+		echo "wifi: $2 cannot contain a newline." >&2
+		return 1 ;;
+	esac
+	[ -n "$1" ] || { echo "wifi: $2 cannot be empty." >&2; return 1; }
+	return 0
+}
+
 write_conf_open() {
-	cat > "$CONF" <<EOF
+	reject_unsafe "$1" "the SSID" || return 1
+	# umask in a subshell: the file must never exist world readable, not even
+	# for the instant between the redirect and a later chmod.
+	( umask 077; cat > "$CONF" <<EOF
 network={
 	ssid="$1"
 	key_mgmt=NONE
 }
 EOF
-	chmod 600 "$CONF"
+	)
 }
 
 write_conf_psk() {
-	cat > "$CONF" <<EOF
+	reject_unsafe "$1" "the SSID" || return 1
+	reject_unsafe "$2" "the password" || return 1
+	( umask 077; cat > "$CONF" <<EOF
 network={
 	ssid="$1"
 	psk="$2"
@@ -57,7 +72,7 @@ network={
 	group=CCMP
 }
 EOF
-	chmod 600 "$CONF"
+	)
 }
 
 apply_conf() {
@@ -75,16 +90,19 @@ connect() {
 		return 1
 	fi
 	if [ -n "$2" ]; then
-		write_conf_psk "$SSID" "$2"
+		write_conf_psk "$SSID" "$2" || return 1
 	else
-		write_conf_open "$SSID"
+		write_conf_open "$SSID" || return 1
 	fi
 	apply_conf "$SSID"
 }
 
 interactive() {
 	echo "Scanning for WiFi networks on $IFACE ..."
-	TMP=$(mktemp 2>/dev/null || echo /tmp/.wifi-scan.$$)
+	TMP=$(mktemp /run/wifi-scan.XXXXXX) || {
+		echo "wifi: cannot create a scratch file in /run" >&2
+		return 1
+	}
 	scan_list > "$TMP"
 
 	if [ ! -s "$TMP" ]; then
@@ -112,6 +130,12 @@ interactive() {
 		return 0
 	fi
 
+	case $choice in
+	''|*[!0-9]*)
+		echo "Invalid choice." >&2
+		rm -f "$TMP"
+		return 1 ;;
+	esac
 	line=$(sed -n "${choice}p" "$TMP" 2>/dev/null)
 	rm -f "$TMP"
 	if [ -z "$line" ]; then
@@ -147,12 +171,38 @@ status() {
 	ip addr show "$IFACE" 2>/dev/null | grep -E "inet " || echo "No IP address."
 }
 
+usage() {
+	cat <<'EOF'
+usage: wifi [command]
+
+  wifi                    scan and pick a network interactively
+  wifi scan               list the networks in range
+  wifi scan --tsv         the same list, tab separated, for scripts
+  wifi connect "SSID"     join an open network
+  wifi connect "SSID" PW  join a WPA2 network
+  wifi status             show the association and the IP address
+  wifi disconnect         bring the STA link down
+
+The chosen network is stored in /etc/wpa_supplicant.conf (mode 600) and is
+rejoined on every boot. Progress is logged to /var/log/network.log.
+EOF
+}
+
 case "${1:-}" in
 "")             interactive ;;
-scan|list)      scan_list | awk -F"$TAB" '{printf "  %5s  %-6s  %s\n", $1, ($2=="OPEN"?"open":"lock"), $3}' ;;
+scan|list)
+	# --tsv is the machine-readable form: signal, OPEN or SEC, then the SSID,
+	# separated by tabs. ble-wifi-setup reads that instead of re-parsing the
+	# column layout below, where an SSID with two spaces in it loses one.
+	if [ "${2:-}" = --tsv ]; then
+		scan_list
+	else
+		scan_list | awk -F"$TAB" '{printf "  %5s  %-6s  %s\n", $1, ($2=="OPEN"?"open":"lock"), $3}'
+	fi
+	;;
 connect)        shift; connect "$@" ;;
 status)         status ;;
 disconnect|off) killall -q wpa_supplicant 2>/dev/null; ifdown "$IFACE" 2>/dev/null; echo "STA link down." ;;
--h|--help|help) sed -n '3,17p' "$0" | sed 's/^#\{0,1\} \{0,1\}//' ;;
+-h|--help|help) usage ;;
 *)              echo "usage: wifi [scan|connect \"SSID\" [pass]|status|disconnect]" >&2; exit 1 ;;
 esac

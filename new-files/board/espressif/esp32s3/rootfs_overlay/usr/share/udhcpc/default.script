@@ -95,12 +95,19 @@ case "$ACTION" in
 		[ -n "$search_list" ] &&
 			echo "search $search_list # $interface" >> $RESOLV_CONF
 
-		echo "nameserver 1.1.1.1 # $interface" >> $RESOLV_CONF
-		echo "nameserver 8.8.8.8 # $interface" >> $RESOLV_CONF
+		# resolv.conf is consulted in order, so the network's own resolver
+		# goes first: it is the only one that can answer for LAN names, and
+		# sending every query to a public resolver ahead of it is a leak.
+		# The public servers stay as a fallback for a DHCP lease that
+		# carries no DNS server at all.
 		for i in $dns ; do
 			echo adding dns $i
 			echo "nameserver $i # $interface" >> $RESOLV_CONF
 		done
+		if [ -z "$dns" ]; then
+			echo "nameserver 1.1.1.1 # $interface" >> $RESOLV_CONF
+			echo "nameserver 8.8.8.8 # $interface" >> $RESOLV_CONF
+		fi
 		;;
 esac
 
