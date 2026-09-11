@@ -5,8 +5,9 @@ PORT=80
 DOCROOT=/home/www
 enabled() { grep -q "^$PORT[ 	]" "$CONF"; }
 restart_inetd() {
-    killall inetd 2>/dev/null || :
-    /usr/sbin/inetd
+    # SIGHUP, not kill-and-relaunch: see the note in ssh-server. Relaunching
+    # bare left /var/run/inetd.pid naming a process that no longer exists.
+    killall -HUP inetd 2>/dev/null || /etc/init.d/S45inetd start
 }
 migrate() {
     test "$(id -u)" = 0

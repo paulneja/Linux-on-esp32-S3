@@ -1,7 +1,7 @@
 #!/bin/sh
 case "$1" in
 	start)
-		if ! mount | grep -q ' /home '; then
+		if ! grep -q ' /home ' /proc/mounts; then
 			echo "S05home: /home is not mounted, skipping (see /home/README.txt)"
 		fi
 		;;

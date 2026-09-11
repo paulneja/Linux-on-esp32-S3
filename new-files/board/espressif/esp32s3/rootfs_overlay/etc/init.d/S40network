@@ -2,7 +2,7 @@
 
 LOG=/var/log/network.log
 
-mkdir -p /run/network
+mkdir -p /run/network /run/log
 
 case "$1" in
   start)

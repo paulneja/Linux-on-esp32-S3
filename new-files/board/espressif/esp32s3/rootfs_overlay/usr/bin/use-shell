@@ -1,4 +1,8 @@
 #!/bin/sh
+if [ -z "${HOME-}" ]; then
+	echo "use-shell: HOME is not set; nothing to store a preference in" >&2
+	exit 1
+fi
 pref=$HOME/.shell
 case "${1-}" in
 	bash) if [ ! -x /bin/bash ]; then echo "use-shell: bash is not installed" >&2; exit 1; fi

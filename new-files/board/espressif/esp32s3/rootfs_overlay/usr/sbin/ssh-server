@@ -1,12 +1,19 @@
 #!/bin/sh
+set -e
+
+if [ "$(id -u)" != 0 ]; then
+	echo "ssh-server: must be run as root" >&2
+	exit 1
+fi
 
 CONF=/etc/inetd.conf
 SSH_LINE='ssh	stream	tcp	nowait	root	/usr/sbin/dropbear	dropbear -i -R -I 600'
 
 restart_inetd() {
-	killall inetd 2>/dev/null
-	sleep 1
-	/usr/sbin/inetd
+	# BusyBox inetd rereads inetd.conf on SIGHUP. Killing and relaunching it
+	# by hand desynchronised the pidfile that S45inetd owns, and left a
+	# window with no inetd at all if the rebind lost the race.
+	killall -HUP inetd 2>/dev/null || /etc/init.d/S45inetd start
 }
 
 case "$1" in

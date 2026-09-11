@@ -1,0 +1,7 @@
+# Sourced by /etc/init.d/S01syslogd before it starts the daemon.
+#
+# /var/log points at /run/log, which is tmpfs, so the log is RAM. BusyBox
+# defaults to 200 KiB plus one rotation: 400 KiB of a 7 MiB machine. Cap it.
+mkdir -p /run/log
+
+SYSLOGD_ARGS="-s 32 -b 1"

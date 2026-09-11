@@ -7,12 +7,16 @@ case "${1:-}" in
         if start-stop-daemon -K -t -q -p /var/run/crond.pid -n crond; then exit 0; fi
         export SHELL=/bin/sh PATH=/usr/bin:/bin:/usr/sbin:/sbin
         /usr/sbin/crond -b -l 8 -c /etc/cron/crontabs
-        for attempt in 1 2 3; do
-            sleep 1
+        # crond -b writes its pidfile in milliseconds; sleeping a whole second
+        # before the first look cost every boot a second for nothing.
+        attempt=0
+        while [ "$attempt" -lt 30 ]; do
             if start-stop-daemon -K -t -q -p /var/run/crond.pid -n crond; then
                 echo 'Starting cron: OK'
                 exit 0
             fi
+            usleep 100000
+            attempt=$((attempt + 1))
         done
         echo 'cron did not become ready; check /var/log/messages' >&2
         exit 1
