@@ -105,12 +105,20 @@ hostapd fits and works. SoftAP remains unsupported.
 ## Fork and memory banking
 
 Linux still runs in NOMMU mode. The fork patches keep private page backups
-and swap the resident contents on scheduling transitions. The final owner
-releases unnecessary backups; `/proc/meminfo` and `/proc/PID/status` expose
-the associated accounting. There is no copy-on-write or hardware isolation.
-The backend requires UP Linux, rejects multithreaded fork and limits private
-memory per fork to 512 KiB. `libfork.so.0` exposes the compatible userspace
-entry points; it does not replace the whole C library.
+and exchange the resident contents with them on scheduling transitions: the
+running process owns no backup of its own, so N processes sharing a region
+need N-1 page sets, and a first fork costs one set rather than two. The final
+owner releases unnecessary backups; `/proc/meminfo` and `/proc/PID/status`
+expose the associated accounting. The backend requires UP Linux, rejects
+multithreaded fork and limits private memory per fork to 512 KiB by default
+(`fork_bank_max_bytes`). `libfork.so.0` exposes the compatible userspace entry
+points; it does not replace the whole C library.
+
+There is no copy-on-write, and there cannot be one on this chip: the TRM
+(section 15.6) specifies that an unpermitted write is dropped and raises an
+asynchronous interrupt, not a restartable fault. Without a fault to copy the
+page and retry the store from, COW has nothing to hang on. There is no
+hardware isolation either.
 
 `mmu-run` is separate: it loads constrained freestanding Xtensa payloads and
 switches owned remap pages. Ordinary Bash/Make/MicroPython processes use the

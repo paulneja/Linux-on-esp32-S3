@@ -32,6 +32,41 @@ cambio de contexto, y referencias de región para evitar liberar memoria
 residente mientras otro proceso aún la utiliza. Los accesos remotos de
 `/proc` y ptrace consultan el banco correspondiente, no el residente ajeno.
 
+### Bancos por intercambio (`swap-banks.patch`)
+
+El proceso residente no tiene respaldo propio: sus datos están en la región
+misma, así que un juego de páginas a su nombre era peso muerto. En el cambio de
+contexto se **intercambia** el contenido de cada página residente con la del
+banco entrante, en vez de guardar y restaurar; al terminar, el banco entrante
+contiene los datos del proceso saliente y simplemente cambia de dueño. Para N
+procesos sobre una región hacen falta N−1 juegos, no N, y el primer `fork()`
+asigna uno, no dos.
+
+El tráfico de memoria por cambio no varía: dos cargas y dos almacenamientos por
+palabra es lo que ya costaban los dos `memcpy`. Lo que cambia es la huella.
+Medido en placa con `programbench` (pico de respaldo global durante la corrida):
+socat 296 → 144 KiB, MicroPython 512 → 384, Dash 560 → 420, Bash 892 → 800. La
+mitad exacta se cumple para un `fork()` simple de una región; una batería de
+shell mantiene varios procesos vivos a la vez, donde N−1 frente a N es una
+fracción menor.
+
+`bank_access()` deshabilita interrupciones por página, no por toda la longitud
+pedida: leer `/proc/PID/mem` de un proceso bancado podía pedir un `memcpy` de
+512 KiB con interrupciones cortadas. El techo de memoria privada bancable es el
+parámetro `fork_bank_max_bytes`; también acota cuánto dura un cambio de contexto
+con interrupciones deshabilitadas.
+
+### Por qué no hay copy-on-write
+
+No es una limitación de esta implementación sino del chip. El manual de
+referencia del ESP32-S3 (§15.6, *Unauthorized Access and Interrupts*) describe
+qué pasa ante un acceso a memoria sin permiso: «All write attempts will fail»
+y «An interrupt will be triggered». La escritura se **descarta** y llega una
+interrupción **asíncrona** — no una excepción de datos sincrónica que permita
+copiar la página y reejecutar el `store`. Además solo se registra la primera
+violación. Sin un fallo de escritura reanudable no hay forma de implementar
+COW, con o sin el módulo PMS.
+
 No cambia los registros de la MMU externa usados por `mmu-run`.
 No es protección de memoria: Linux continúa con `CONFIG_MMU=n`.
 
@@ -63,11 +98,13 @@ como payloads del runtime MMU**.
   `pthread_atfork`, probados en placa, pero no fork multihilo ni descarga
   de bibliotecas con callbacks registrados.
 - Límite inicial: 512 KiB de regiones privadas respaldadas por proceso.
-  La RAM real disponible puede imponer un límite menor. La implementación
-  reserva un respaldo por banco además de la memoria residente original:
-  dos procesos con D bytes privados pueden necesitar aproximadamente 3D.
-- No hay COW, swap ni paginación bajo demanda. Se copian los bancos completos
-  que cambian de propietario; el coste de planificación aumenta con D.
+  La RAM real disponible puede imponer un límite menor. Con bancos por
+  intercambio, dos procesos con D bytes privados necesitan aproximadamente
+  2D: la memoria residente más un único juego de respaldo, que cambia de
+  dueño en cada cambio de contexto.
+- No hay COW, swap ni paginación bajo demanda (ver «Por qué no hay
+  copy-on-write»). Se intercambian los bancos completos que cambian de
+  propietario; el coste de planificación aumenta con D.
 - Rechaza regiones privadas con páginas fijadas. Impide nuevas fijaciones
   GUP de regiones bancadas: no se admite DMA/asíncrono sobre esos buffers.
 - No admite dividir ni desmapear parcialmente una región bancada. Desmapear
