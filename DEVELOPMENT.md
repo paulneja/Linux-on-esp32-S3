@@ -352,6 +352,24 @@ that one directory match `new-files/` exactly.
    against the artifact itself. Recovery is
    `rm -rf experiments/mmu-poc/out/linux-fork`, which the error prints.
 
+9. **Kernel config, incident 9**: `CONFIG_EXTRA_FIRMWARE="regulatory.db
+   regulatory.db.p7s"` was added so cfg80211 stops asking for a file that is
+   not mounted yet, and the blobs were wired into
+   `experiments/mmu-poc/fork/build-kernel.sh` — the path that was being tested
+   at the time. Buildroot's own kernel build was never given them. It is not a
+   warning: the kernel opens those files directly, so a clean build ran for 25
+   minutes and then stopped with `No rule to make target
+   'firmware/regulatory.db'`, and with `-j8` the real line was 370 lines above
+   the one make printed last. Buildroot already makes `linux` depend on
+   `wireless-regdb`, so the files existed the whole time, in
+   `$(TARGET_DIR)/lib/firmware`; nothing copied them into
+   `$(LINUX_DIR)/firmware` where the kernel looks. Fix: a
+   `LINUX_PRE_BUILD_HOOKS` entry in `03-buildroot-tracked-changes.patch`, and
+   `ExtraFirmwareTests` in `build/test-kernel-config.py`, which fails when a
+   name in `CONFIG_EXTRA_FIRMWARE` is missing from either build path. The
+   general shape is incident 8 again: two kernel build paths, one of them
+   updated.
+
 ## What's here
 
 - `patches/00-esp32-linux-build.patch` — changes to upstream's build driver

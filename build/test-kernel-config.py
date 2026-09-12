@@ -86,5 +86,51 @@ class KernelConfigTests(unittest.TestCase):
                               'a build path that skips the check cannot detect a stale tree')
 
 
+class ExtraFirmwareTests(unittest.TestCase):
+    """CONFIG_EXTRA_FIRMWARE names files the kernel build opens directly.
+
+    Nothing in the kernel puts them there, and a missing one is not a warning:
+    the build stops with "No rule to make target 'firmware/regulatory.db'".
+    Both kernel build paths have to install them, and they are easy to change
+    apart, so check that every named blob is handled in both places.
+    """
+
+    BOARD_CONFIG = ROOT / 'new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config'
+    INSTALLERS = ['patches/03-buildroot-tracked-changes.patch',
+                  'experiments/mmu-poc/fork/build-kernel.sh']
+
+    def blobs(self):
+        for line in self.BOARD_CONFIG.read_text().splitlines():
+            if line.startswith('CONFIG_EXTRA_FIRMWARE='):
+                return line.split('=', 1)[1].strip().strip('"').split()
+        return []
+
+    def test_the_board_still_builds_firmware_in(self):
+        self.assertTrue(self.blobs(), 'no CONFIG_EXTRA_FIRMWARE: drop this test')
+
+    def test_every_named_blob_is_installed_by_every_build_path(self):
+        for installer in self.INSTALLERS:
+            text = (ROOT / installer).read_text()
+            for blob in self.blobs():
+                with self.subTest(installer=installer, blob=blob):
+                    self.assertTrue(blob in text,
+                                    installer + ' never names ' + blob + ', so that '
+                                    'build path leaves it out of the kernel tree and '
+                                    'stops with "No rule to make target"')
+
+    def test_the_directory_the_kernel_looks_in_is_the_one_they_write(self):
+        want = 'firmware'
+        for line in self.BOARD_CONFIG.read_text().splitlines():
+            if line.startswith('CONFIG_EXTRA_FIRMWARE_DIR='):
+                want = line.split('=', 1)[1].strip().strip('"')
+        self.assertEqual(want, 'firmware',
+                         'both installers write into <kernel>/firmware; a different '
+                         'CONFIG_EXTRA_FIRMWARE_DIR needs them changed to match')
+        for installer in self.INSTALLERS:
+            with self.subTest(installer=installer):
+                self.assertTrue('firmware/' in (ROOT / installer).read_text(),
+                                installer + ' writes nothing into a firmware/ '
+                                'directory')
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

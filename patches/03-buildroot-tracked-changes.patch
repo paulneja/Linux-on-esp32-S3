@@ -100,6 +100,32 @@ index 91ec9aa32c..1a75b5f1ae 100644
  # BR2_PACKAGE_URANDOM_SCRIPTS is not set
  BR2_TARGET_ROOTFS_CRAMFS=y
  BR2_TARGET_ROOTFS_CRAMFS_XIP=y
+diff --git a/linux/linux.mk b/linux/linux.mk
+index 16d9f194..abbef47b 100644
+--- a/linux/linux.mk
++++ b/linux/linux.mk
+@@ -86,6 +86,21 @@ LINUX_DEPENDENCIES += \
+ 	$(if $(BR2_PACKAGE_FIRMWARE_IMX),firmware-imx) \
+ 	$(if $(BR2_PACKAGE_WIRELESS_REGDB),wireless-regdb)
+ 
++# ...and the kernel looks for them in $(LINUX_DIR)/$(CONFIG_EXTRA_FIRMWARE_DIR),
++# which nothing populates: wireless-regdb installs into the target directory.
++# The dependency above guarantees it has run, so copy the two files across
++# before the kernel build reads them. This board sets CONFIG_EXTRA_FIRMWARE
++# to regulatory.db because cfg80211 asks for it long before / is mounted.
++ifeq ($(BR2_PACKAGE_WIRELESS_REGDB),y)
++define LINUX_INSTALL_REGULATORY_DB
++	$(INSTALL) -m 644 -D -T $(TARGET_DIR)/lib/firmware/regulatory.db \
++		$(LINUX_DIR)/firmware/regulatory.db
++	$(INSTALL) -m 644 -D -T $(TARGET_DIR)/lib/firmware/regulatory.db.p7s \
++		$(LINUX_DIR)/firmware/regulatory.db.p7s
++endef
++LINUX_PRE_BUILD_HOOKS += LINUX_INSTALL_REGULATORY_DB
++endif
++
+ # Starting with 4.16, the generated kconfig paser code is no longer
+ # shipped with the kernel sources, so we need flex and bison, but
+ # only if the host does not have them.
 diff --git a/package/libcurl/libcurl.mk b/package/libcurl/libcurl.mk
 index 3661cbf5bd..014f5143d8 100644
 --- a/package/libcurl/libcurl.mk

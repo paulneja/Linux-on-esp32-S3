@@ -105,6 +105,9 @@ jobs:
       - name: Kernel config guard tests
         run: python3 build/test-kernel-config.py
 
+      - name: Kept-configuration tests
+        run: python3 build/test-keepconfig.py
+
   build:
     name: Full image ${{ matrix.run }}
     needs: host-tests

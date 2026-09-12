@@ -234,6 +234,12 @@ measurement is recorded so the work starts from a number.
 - `flash.sh --backup DIR` reads `/etc` and `/home` off the board, which
   `build/README.md` told you to do without providing a way.
 - `run.sh --recover` used esptool 5 spellings that the pinned 4.8.1 rejects.
+- Buildroot's kernel build now installs `regulatory.db` into the kernel tree
+  before compiling. `CONFIG_EXTRA_FIRMWARE` names files the kernel opens
+  directly, and only the fork kernel's own build script had been taught to put
+  them there, so a clean build stopped after 25 minutes with `No rule to make
+  target 'firmware/regulatory.db'`. `build/test-kernel-config.py` now fails if
+  a name in `CONFIG_EXTRA_FIRMWARE` is missing from either build path.
 - Host checks run on every push, over every tracked shell script rather than a
   list, with a bashism check on the scripts busybox runs and guards against a
   patch carrying a binary hunk or a file that `new-files/` also ships.
