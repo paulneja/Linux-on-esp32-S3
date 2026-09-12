@@ -370,6 +370,18 @@ that one directory match `new-files/` exactly.
    general shape is incident 8 again: two kernel build paths, one of them
    updated.
 
+10. **Fork backend, incident 10**: `mm/nommu-bank.inc` is compiled twice --
+   into the kernel, and natively under ASan by
+   `experiments/mmu-poc/fork/test-reclaim.py`, which is how the banking logic
+   gets tested at all. `switch-latency.patch` added `get_ccount()`, the Xtensa
+   cycle counter, inside `nommu_bank_switch`. The kernel has it; the host does
+   not, and the shim compiles with `-Werror`, so the build stopped 34 minutes
+   in on `implicit declaration of function 'get_ccount'`. Anything
+   architecture-specific added to that file needs a stub in the shim beside
+   `local_irq_save` and `READ_ONCE`. The stub advances a counter by 240 cycles
+   per read, so the timing around the interrupts-off region is exercised on
+   the host too rather than merely compiling.
+
 ## What's here
 
 - `patches/00-esp32-linux-build.patch` — changes to upstream's build driver

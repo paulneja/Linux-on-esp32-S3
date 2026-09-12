@@ -39,6 +39,12 @@ typedef long atomic_long_t;
 static unsigned irq_depth;
 #define local_irq_save(f) do { (f)=irq_depth++; } while (0)
 #define local_irq_restore(f) do { irq_depth=(f); } while (0)
+/* The Xtensa cycle counter has no host equivalent. Advance it by 240 cycles
+ * per read -- one microsecond at the board's nominal clock -- so the switch
+ * timing around local_irq_save is exercised here rather than only on target.
+ */
+static unsigned long fake_ccount;
+#define get_ccount() (fake_ccount += 240)
 struct list_head { struct list_head *next,*prev; };
 #define INIT_LIST_HEAD(h) ((h)->next=(h)->prev=(h))
 #define list_empty(h) ((h)->next==(h))
@@ -86,6 +92,8 @@ int main(void) {
  /* The set changed hands: now the parent's descriptor holds it. */
  assert(a.nommu_bank->count==2 && b.nommu_bank->count==0);
  assert(nommu_bank_shadow_pages==2);
+ /* Two counter reads per switch, so one switch measures 240 cycles. */
+ assert(nommu_bank_switch_last_cycles==240 && nommu_bank_switch_max_cycles==240);
  bank_detach(&b);
  assert(*memory==111 && a.nommu_bank->count==0 && nommu_bank_pages(&ma)==0);
  assert(nommu_bank_shadow_pages==0 && nommu_bank_recovered_pages==2);

@@ -234,6 +234,10 @@ measurement is recorded so the work starts from a number.
 - `flash.sh --backup DIR` reads `/etc` and `/home` off the board, which
   `build/README.md` told you to do without providing a way.
 - `run.sh --recover` used esptool 5 spellings that the pinned 4.8.1 rejects.
+- The host shim that tests the fork backend stubs `get_ccount()`, the Xtensa
+  cycle counter the switch measurement reads. It compiles `nommu-bank.inc`
+  natively with `-Werror`, so the counter added for `ForkSwitchMax` stopped
+  that build until the stub existed.
 - Buildroot's kernel build now installs `regulatory.db` into the kernel tree
   before compiling. `CONFIG_EXTRA_FIRMWARE` names files the kernel opens
   directly, and only the fork kernel's own build script had been taught to put
