@@ -6,10 +6,12 @@ IMG="$DIR/images"
 PORT=""
 ERASE=0
 PARTS=0
+BACKUP=""
 
 usage() {
 	cat <<'EOF'
 Usage: ./flash.sh [-p PORT] [--images DIR] [--parts] [--erase]
+       ./flash.sh --backup DIR [-p PORT]
 
 Requires Python 3 and esptool. Images come from images/ beside this script
 unless --images points somewhere else, such as a build-output artifacts
@@ -18,6 +20,7 @@ directory.
   --images DIR     Read the images from DIR instead of images/
   --parts          Write separate images; preserve /home unless --erase is used
   --erase          Erase the entire chip before writing; destroys all board data
+  --backup DIR     Read /etc and /home off the board into DIR and exit
   -h, --help       Show this help
 
 The default full-image write overwrites /etc and /home even without --erase.
@@ -25,6 +28,10 @@ The default full-image write overwrites /etc and /home even without --erase.
 --parts --erase writes home.jffs2 when the directory has one; without it the
 partition is left erased, which the board formats on its first write.
 All inputs are checked before device access.
+
+--backup takes about a minute and a half and writes etc.jffs2.bak and
+home.jffs2.bak. Those hold account hashes and wifi credentials: keep them
+private, and never commit them.
 EOF
 	exit "${1:-0}"
 }
@@ -35,12 +42,71 @@ while [ $# -gt 0 ]; do
 	--images)  IMG="${2:?--images needs a directory}"; shift 2 ;;
 	--erase)   ERASE=1; shift ;;
 	--parts)   PARTS=1; shift ;;
+	--backup)  BACKUP="${2:?--backup needs a directory}"; shift 2 ;;
 	-h|--help) usage 0 ;;
 	*) echo "unknown option: $1" >&2; usage 1 >&2 ;;
 	esac
 done
 
 command -v python3 >/dev/null 2>&1 || { echo "error: Python 3 is required" >&2; exit 1; }
+if command -v esptool.py >/dev/null 2>&1; then
+	ESPTOOL="esptool.py"
+elif command -v esptool >/dev/null 2>&1; then
+	ESPTOOL="esptool"
+elif python3 -c 'import esptool' >/dev/null 2>&1; then
+	ESPTOOL="python3 -m esptool"
+else
+	echo "error: esptool not found. Install it with:" >&2
+	echo "    pip install esptool" >&2
+	echo "or activate your ESP-IDF environment (. \$IDF_PATH/export.sh)." >&2
+	exit 1
+fi
+
+if [ -z "$PORT" ]; then
+	for p in /dev/ttyACM0 /dev/ttyACM1 /dev/ttyUSB0 /dev/ttyUSB1; do
+		[ -e "$p" ] && { PORT="$p"; break; }
+	done
+	[ -n "$PORT" ] || { echo "error: no board found; pass -p /dev/ttyXXX" >&2; exit 1; }
+	echo "Using port $PORT (override with -p)"
+fi
+
+
+# Reading the two writable partitions off the board. No image is involved, so
+# this runs before the preflight and leaves without touching anything else.
+if [ -n "$BACKUP" ]; then
+	mkdir -p "$BACKUP"
+	BCSV="$DIR/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r"
+	# Offsets come from the CSV, so a recut layout backs up the right regions
+	# without this script being edited.
+	RANGES=$(python3 - "$BCSV" <<'CSVEOF'
+import csv, sys
+from pathlib import Path
+want = ('etc', 'home')
+found = {}
+for row in csv.reader(Path(sys.argv[1]).open()):
+    if not row or not row[0].strip() or row[0].lstrip().startswith('#'):
+        continue
+    name = row[0].strip()
+    if name in want:
+        found[name] = (int(row[3].strip(), 0), int(row[4].strip(), 0))
+if len(found) != len(want):
+    sys.exit('error: partition table has no %s' % ', '.join(set(want) - set(found)))
+print(' '.join('%d %d' % found[name] for name in want))
+CSVEOF
+	)
+	# shellcheck disable=SC2086
+	set -- $RANGES
+	echo "==> Reading /etc and /home into $BACKUP (about 90 seconds)"
+	# shellcheck disable=SC2086
+	$ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 --before default_reset --after hard_reset \
+		read_flash "$1" "$2" "$BACKUP/etc.jffs2.bak"
+	# shellcheck disable=SC2086
+	$ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 --before default_reset --after hard_reset \
+		read_flash "$3" "$4" "$BACKUP/home.jffs2.bak"
+	echo "Saved. These hold password hashes and wifi credentials: keep them private."
+	exit 0
+fi
+
 CSV="$DIR/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r"
 OFFSETS=$(python3 - "$IMG" "$CSV" "$PARTS" "$ERASE" <<'PY'
 import csv
@@ -134,27 +200,6 @@ if [ "$PARTS" = 1 ]; then
 else
 	set -- 0x0 "$IMG/linux-esp32s3-native-full.bin"
 	echo "Warning: the full image overwrites /etc and /home, even without --erase."
-fi
-
-if command -v esptool.py >/dev/null 2>&1; then
-	ESPTOOL="esptool.py"
-elif command -v esptool >/dev/null 2>&1; then
-	ESPTOOL="esptool"
-elif python3 -c 'import esptool' >/dev/null 2>&1; then
-	ESPTOOL="python3 -m esptool"
-else
-	echo "error: esptool not found. Install it with:" >&2
-	echo "    pip install esptool" >&2
-	echo "or activate your ESP-IDF environment (. \$IDF_PATH/export.sh)." >&2
-	exit 1
-fi
-
-if [ -z "$PORT" ]; then
-	for p in /dev/ttyACM0 /dev/ttyACM1 /dev/ttyUSB0 /dev/ttyUSB1; do
-		[ -e "$p" ] && { PORT="$p"; break; }
-	done
-	[ -n "$PORT" ] || { echo "error: no board found; pass -p /dev/ttyXXX" >&2; exit 1; }
-	echo "Using port $PORT (override with -p)"
 fi
 
 if [ "$ERASE" = 1 ]; then

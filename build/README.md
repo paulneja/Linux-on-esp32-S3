@@ -151,10 +151,16 @@ to the factory state before retrying, which is faster than the full image and
 leaves the kernel and rootfs untouched:
 
 ```sh
+./flash.sh --backup somewhere/private     # first, if the board has data on it
 esptool --chip esp32s3 --port YOUR_COM_ADAPTER \
-    --before default-reset --after no-reset \
-    write-flash 0xd0000 ARTIFACTS/etc.jffs2 0xcc0000 ARTIFACTS/home.jffs2
+    --before default_reset --after hard_reset \
+    write_flash 0xd0000 ARTIFACTS/etc.jffs2 0xcc0000 ARTIFACTS/home.jffs2
 ```
+
+The underscore spellings are deliberate: `build/Dockerfile` pins esptool
+4.8.1, which rejects the hyphenated forms that esptool 5 prefers, while
+esptool 5 still accepts these with a deprecation warning. One spelling works
+with both.
 
 If esptool left the freshly flashed board in its bootloader with
 `--after no-reset`, add `--reset-from-bootloader` to explicitly reset it via

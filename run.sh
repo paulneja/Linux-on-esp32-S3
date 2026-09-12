@@ -364,12 +364,17 @@ do_recover() {
 	red "this erases the current /etc and /home on the board"
 	ask "  Continue?" || return 1
 	free_port "$port" || return 1
+	# The hyphenated spellings are esptool 5 only, and build/Dockerfile pins
+	# 4.8.1, which rejects them -- so this failed against the very version the
+	# project builds with. The underscore forms work in both: esptool 5 takes
+	# them with a deprecation warning. The offsets are the etc and home
+	# partitions; flash.sh reads those from the CSV instead of hardcoding them.
 	local tool; tool=$(have esptool && echo esptool || echo esptool.py)
 	"$tool" --chip esp32s3 --port "$port" --baud 460800 \
-		--before default-reset --after no-reset \
-		write-flash 0xd0000 "$a/etc.jffs2" 0xcc0000 "$a/home.jffs2"
+		--before default_reset --after hard_reset \
+		write_flash 0xd0000 "$a/etc.jffs2" 0xcc0000 "$a/home.jffs2"
 	local rc=$?
-	[ "$rc" -eq 0 ] && green "partitions restored" || red "the restore failed"
+	[ "$rc" -eq 0 ] && green "partitions restored; the board was reset" || red "the restore failed"
 	return "$rc"
 }
 
