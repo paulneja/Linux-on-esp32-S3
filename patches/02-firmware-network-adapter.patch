@@ -1,4 +1,5 @@
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/CMakeLists.txt b/esp_hosted_ng/esp/esp_driver/network_adapter/main/CMakeLists.txt
+index a46af63..6b19b1d 100644
 --- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/CMakeLists.txt
 +++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/CMakeLists.txt
 @@ -1,4 +1,4 @@
@@ -8,6 +9,7 @@ diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/CMakeLists.txt b/
  
  if(CONFIG_IDF_TARGET_ESP32S3)
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c
+index e7f35ad..ae920d3 100644
 --- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c
 +++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c
 @@ -43,9 +43,14 @@
@@ -25,7 +27,28 @@ diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c b/esp_
  #include "linux_ipc.h"
  
  static const char TAG[] = "FW_MAIN";
-@@ -100,6 +105,7 @@ uint8_t ap_mac[MAC_ADDR_LEN] = {0};
+@@ -81,6 +86,7 @@ interface_context_t *if_context = NULL;
+ interface_handle_t *if_handle = NULL;
+ 
+ QueueHandle_t to_host_queue[MAX_PRIORITY_QUEUES] = {NULL};
++static SemaphoreHandle_t to_host_wakeup;
+ 
+ #if CONFIG_ESP_SPI_HOST_INTERFACE
+ #ifdef CONFIG_IDF_TARGET_ESP32S2
+@@ -89,7 +95,11 @@ QueueHandle_t to_host_queue[MAX_PRIORITY_QUEUES] = {NULL};
+ #define TO_HOST_QUEUE_SIZE      20
+ #endif
+ #else
+-#define TO_HOST_QUEUE_SIZE      100
++/* The shmem path. 100 entries per queue is ~10 KiB of internal DRAM for a
++ * depth that cannot be reached: every queued station packet pins one of the
++ * 10 static plus 32 dynamic wifi receive buffers.
++ */
++#define TO_HOST_QUEUE_SIZE      24
+ #endif
+ 
+ #define ETH_DATA_LEN			1500
+@@ -100,6 +110,7 @@ uint8_t ap_mac[MAC_ADDR_LEN] = {0};
  extern void wake_host();
  #endif
  
@@ -33,7 +56,47 @@ diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c b/esp_
  uint8_t get_capabilities(void)
  {
  	uint8_t cap = 0;
-@@ -514,6 +520,11 @@ void process_rx_pkt(interface_buffer_handle_t *buf_handle)
+@@ -245,6 +256,7 @@ esp_err_t wlan_ap_rx_callback(void *buffer, uint16_t len, void *eb)
+ 		ESP_LOGE(TAG, "Slave -> Host: Failed to send buffer\n");
+ 		goto DONE;
+ 	}
++	xSemaphoreGive(to_host_wakeup);
+ 
+ 	return ESP_OK;
+ 
+@@ -283,6 +295,7 @@ esp_err_t wlan_sta_rx_callback(void *buffer, uint16_t len, void *eb)
+ 		ESP_LOGE(TAG, "Slave -> Host: Failed to send buffer\n");
+ 		goto DONE;
+ 	}
++	xSemaphoreGive(to_host_wakeup);
+ 
+ 	return ESP_OK;
+ 
+@@ -316,7 +329,10 @@ void process_tx_pkt(interface_buffer_handle_t *buf_handle)
+ 
+ esp_err_t send_to_host(uint8_t prio_q_idx, interface_buffer_handle_t *buf_handle)
+ {
+-	return xQueueSend(to_host_queue[prio_q_idx], buf_handle, portMAX_DELAY);
++	if (xQueueSend(to_host_queue[prio_q_idx], buf_handle, portMAX_DELAY) != pdTRUE)
++		return pdFALSE;
++	xSemaphoreGive(to_host_wakeup);
++	return pdTRUE;
+ }
+ 
+ /* Send data to host */
+@@ -359,7 +375,10 @@ void send_task(void* pvParameters)
+ 				process_tx_pkt(&buf_handle);
+ 			}
+ 		} else {
+-			vTaskDelay(1);
++			/* Woken by whoever enqueues; the timeout only bounds the
++			 * wait if a give is ever missed.
++			 */
++			xSemaphoreTake(to_host_wakeup, pdMS_TO_TICKS(50));
+ 		}
+ 	}
+ }
+@@ -514,6 +533,11 @@ void process_rx_pkt(interface_buffer_handle_t *buf_handle)
  		else if (buf_handle->if_type == ESP_TEST_IF) {
  			debug_update_raw_tp_rx_count(payload_len);
  		}
@@ -45,7 +108,7 @@ diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c b/esp_
  	}
  	/* Free buffer handle */
  	if (buf_handle->free_buf_handle && buf_handle->priv_buffer_handle) {
-@@ -636,7 +647,6 @@ void app_main()
+@@ -636,7 +660,6 @@ void app_main()
  	}
  
  #ifdef CONFIG_BT_ENABLED
@@ -53,8 +116,14 @@ diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c b/esp_
  
  	ret = esp_read_mac(mac, ESP_MAC_BT);
  	if (ret) {
-@@ -671,6 +681,10 @@ void app_main()
+@@ -669,8 +692,16 @@ void app_main()
+ 	for (prio_q_idx=0; prio_q_idx<MAX_PRIORITY_QUEUES; prio_q_idx++) {
+ 		to_host_queue[prio_q_idx] = xQueueCreate(TO_HOST_QUEUE_SIZE, sizeof(interface_buffer_handle_t));
  		assert(to_host_queue[prio_q_idx] != NULL);
++		if (!to_host_wakeup) {
++			to_host_wakeup = xSemaphoreCreateBinary();
++			assert(to_host_wakeup != NULL);
++		}
  	}
  
 +#ifdef CONFIG_BT_ENABLED
@@ -64,7 +133,7 @@ diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c b/esp_
  	assert(xTaskCreate(recv_task , "recv_task" , TASK_DEFAULT_STACK_SIZE , NULL , TASK_DEFAULT_PRIO, NULL) == pdTRUE);
  	assert(xTaskCreate(send_task , "send_task" , TASK_DEFAULT_STACK_SIZE, NULL , TASK_DEFAULT_PRIO , NULL) == pdTRUE);
  
-@@ -682,6 +696,8 @@ void app_main()
+@@ -682,6 +713,8 @@ void app_main()
  
  	ESP_LOGI(TAG,"Initial set up done");
  
@@ -75,6 +144,7 @@ diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/app_main.c b/esp_
  }
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/ble_prov.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/ble_prov.c
 new file mode 100644
+index 0000000..9659b15
 --- /dev/null
 +++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/ble_prov.c
 @@ -0,0 +1,277 @@
@@ -356,6 +426,7 @@ new file mode 100644
 +
 +#endif
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/cmd.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/cmd.c
+index 68001e1..0d90181 100644
 --- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/cmd.c
 +++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/cmd.c
 @@ -71,6 +71,8 @@ int esp_wifi_register_wpa_cb_internal(struct wpa_funcs *cb);
@@ -376,6 +447,7 @@ diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/cmd.c b/esp_hoste
  	esp_wifi_register_wpa_cb_internal(&wpa_cb);
  
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h b/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h
+index ed95897..860c42e 100644
 --- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h
 +++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h
 @@ -56,6 +56,7 @@ enum ESP_INTERFACE_TYPE {
@@ -388,6 +460,7 @@ diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/adapter.h
  
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/ble_prov.h b/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/ble_prov.h
 new file mode 100644
+index 0000000..1dd3f92
 --- /dev/null
 +++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/include/ble_prov.h
 @@ -0,0 +1,17 @@
@@ -409,6 +482,7 @@ new file mode 100644
 +
 +#endif
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c
+index e19c62a..09905e8 100644
 --- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c
 +++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.c
 @@ -6,6 +6,7 @@
@@ -432,6 +506,7 @@ diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_ll_esp32s3.
  	for (i = 0x100; i < 0x180; ++i) {
  		dst[i] = 0x4000;
 diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3 b/esp_hosted_ng/esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3
+index 57f5958..97a07bd 100644
 --- a/esp_hosted_ng/esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3
 +++ b/esp_hosted_ng/esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3
 @@ -1446,7 +1446,7 @@ CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_MAX_CERTS=200
