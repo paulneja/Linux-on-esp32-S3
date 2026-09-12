@@ -132,6 +132,68 @@ def record_memory():
         baseline.get('largest_free_block_kb', 'unknown')), flush=True)
 
 
+def record_memory_after():
+    """The same numbers as the baseline, at the end of the run.
+
+    A leak in the fork backend, or a service that grows, shows up as a gap
+    between these two and nowhere else: every individual test passes. The
+    tolerance is loose on purpose -- page cache legitimately grows -- but a
+    real leak of hundreds of kilobytes will not fit inside it.
+    """
+    meminfo = command('cat /proc/meminfo', 60, 'MemTotal:')
+    buddyinfo = command('cat /proc/buddyinfo; echo BUDDY_DONE', 60, 'BUDDY_DONE')
+    (args.output / 'memory-final.txt').write_text(meminfo + '\n' + buddyinfo + '\n')
+    values = {key: int(size) for key, size in re.findall(r'(?m)^(\w+):\s+(\d+) kB$', meminfo)}
+    final = {'meminfo_kb': values}
+    results['memory_final'] = final
+    baseline = results['memory_baseline']['meminfo_kb']
+    shadow = values.get('ForkShadow')
+    assert shadow == 0, (
+        'ForkShadow is %s kB with no forked children left: the backend kept '
+        'backup pages that nothing owns' % shadow)
+    lost = baseline['MemAvailable'] - values['MemAvailable']
+    print('  final: MemAvailable {} kB ({:+d} kB against the baseline)'.format(
+        values['MemAvailable'], -lost), flush=True)
+    assert lost < 512, (
+        'MemAvailable fell %d kB across the suite, from %d to %d. Individual '
+        'tests can all pass while something leaks; this is the check for that.'
+        % (lost, baseline['MemAvailable'], values['MemAvailable']))
+
+
+def fork_exec_cycles():
+    """Five hundred fork+exec rounds, then assert nothing was kept.
+
+    The longest fork loop elsewhere is 24 iterations. A backend that leaks one
+    page per fork hides easily at that scale and not at all at this one.
+    """
+    before = command("grep -E '^(MemAvailable|ForkShadow)' /proc/meminfo", 60, 'MemAvailable')
+    command('i=0; while [ $i -lt 500 ]; do /bin/true; i=$((i+1)); done; echo CYCLES_DONE',
+            300, 'CYCLES_DONE')
+    after = command("grep -E '^(MemAvailable|ForkShadow)' /proc/meminfo", 60, 'MemAvailable')
+    grab = lambda text, key: int(re.search(r'(?m)^' + key + r':\s+(\d+) kB', text).group(1))
+    assert grab(after, 'ForkShadow') == 0, 'ForkShadow left set after 500 fork+exec rounds'
+    lost = grab(before, 'MemAvailable') - grab(after, 'MemAvailable')
+    print('  500 rounds cost {:+d} kB'.format(-lost), flush=True)
+    assert lost < 256, '500 fork+exec rounds lost %d kB' % lost
+
+
+def jffs2_write_timing():
+    """How long a write to /home takes, recorded rather than asserted.
+
+    build/verification/2026-09-06-jffs2-erase.md measured writes stalling for
+    minutes when blocks had to be reclaimed. Nothing has watched the number
+    since; this puts it in results.json every run.
+    """
+    output = command('time_start=$(cut -d. -f1 /proc/uptime); '
+                     'dd if=/dev/zero of=/home/.write-probe bs=4096 count=64 2>/dev/null; '
+                     'sync; time_end=$(cut -d. -f1 /proc/uptime); '
+                     'rm -f /home/.write-probe; '
+                     'echo WRITE_SECONDS=$((time_end - time_start))', 300, 'WRITE_SECONDS=')
+    seconds = int(re.search(r'WRITE_SECONDS=(\d+)', output).group(1))
+    results['jffs2_write_256k_seconds'] = seconds
+    print('  256 KiB to /home took {} s'.format(seconds), flush=True)
+
+
 def benchmarks():
     console.port.write(b'exec /usr/bin/dash -c \'trap "sleep 1" EXIT; . /usr/share/program-tests/benchmark-suite.sh\'\n')
     output, _ = console.until(rb'buildroot login: ?', 180)
@@ -189,7 +251,10 @@ try:
     for name, text, expected in checks:
         record(name, lambda text=text, expected=expected: command(text, 180, expected))
     record('benchmarks-lightweight-launcher', benchmarks)
+    record('fork-exec-cycles', fork_exec_cycles)
+    record('jffs2-write-timing', jffs2_write_timing)
     record('kernel-health', lambda: command('test "$(cat /proc/sys/kernel/tainted)" = 0 && ! dmesg | grep -E "Out of memory:|Kernel panic|BUG:|Oops:" && free'))
+    record('memory-final', record_memory_after)
     console.close()
     console = None
     for name in ('test-home-users-board', 'test-cron-board', 'test-com-reconnect', 'test-home-reboot'):
