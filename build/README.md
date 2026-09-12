@@ -67,7 +67,7 @@ user files. Back up a used board privately before any full-image test.
 Never publish raw board backups: they may contain credentials and user data.
 
 Point `flash.sh` at this directory with `--images`; without it the script
-reads `images/`, which holds the older 0.6 release. Its default combined-image
+reads `images/`, which holds the 0.7 release. Its default combined-image
 write replaces `/etc` and `/home` even without `--erase`. `--parts` preserves
 `/home` but still replaces `/etc`, including accounts, password hashes and
 network configuration. `--parts --erase` resets both, writing `home.jffs2`
@@ -185,4 +185,7 @@ The exact 16 MiB image SHA256 is
 See the [verification record](verification/2026-09-06.md) and its archived
 machine-readable results for scope and limitations. This result applies to
 that artifact, not automatically to future code changes or other profiles.
-The committed `images/` remain the older 0.6 release.
+The committed `images/` are the 0.7 release: its `xipImage` is byte-identical
+to the fork kernel built here, and its rootfs carries bash, dash, micropython,
+jobq and mmu-run. Its combined image does not match any of the hashes recorded
+under `verification/`, so it is a 0.7 build that predates those runs.

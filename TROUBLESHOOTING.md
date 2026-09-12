@@ -191,13 +191,19 @@ curl -sI https://github.com | head -1      # HTTP/1.1 200 OK
 ```
 
 Verified on hardware: with the clock at 1970 github, google and example.com all
-fail; with it set, all three succeed. Nothing persists the date across a power
-cycle — the board asks again on each join.
+fail; with it set, all three succeed.
 
-`echo $CURL_CA_BUNDLE` should print
-`/usr/share/ca-certificates/ca-bundle.crt` (set by `/etc/profile.d/curl-ca.sh`,
-so it is only in *login* shells). If that is empty, you are in a non-login
-shell, and that is a different failure with the same message.
+The board now remembers the time across a reboot: `S01clock` writes it to
+`/home/.clock` at shutdown and restores it at boot when it is newer than what
+the clock says. That is the time the board was last running, not the real one,
+but it is on the right side of every certificate date, so TLS works before NTP
+answers. A board that lost power without a clean shutdown, or that has never
+had the right time, still starts in 1970.
+
+`CURL_CA_BUNDLE` is not what decides this. The bundle path is compiled into
+libcurl with `--with-ca-bundle`, so curl finds it with the variable unset and
+in contexts a profile script never reaches — CGI, cron, inetd. If TLS is
+failing, the clock is the thing to check.
 
 ### The status page does not answer
 

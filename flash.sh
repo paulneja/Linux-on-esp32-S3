@@ -208,6 +208,16 @@ if [ "$ERASE" = 1 ]; then
 	$ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 erase_flash
 fi
 
+# images/ now ships a SHA256SUMS; check it when the directory has one, so a
+# truncated download or a half-written artifact is caught before the erase.
+if [ -f "$IMG/SHA256SUMS" ] && command -v sha256sum >/dev/null 2>&1; then
+	echo "==> Verifying checksums in $IMG"
+	( cd "$IMG" && sha256sum -c SHA256SUMS --quiet ) || {
+		echo "error: checksum mismatch in $IMG; no board data was changed" >&2
+		exit 1
+	}
+fi
+
 echo "==> Flashing validated images"
 # shellcheck disable=SC2086
 $ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 --before default_reset --after hard_reset \

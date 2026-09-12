@@ -1,6 +1,12 @@
 name: Image
 
 on:
+  # The host checks take minutes and catch the things that used to reach a
+  # board: a script that does not parse, a patch that stopped applying, a
+  # bashism in a file busybox sh has to run. Those run on every push. The
+  # full image build stays manual.
+  push:
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -22,11 +28,66 @@ jobs:
 
       - name: Check the shell scripts parse
         run: |
-          for f in flash.sh make-images.sh build/reproduce.sh run.sh \
-                   build/container-build.sh experiments/mmu-poc/fork/build-kernel.sh \
-                   experiments/mmu-poc/fork/build-kernel-reclaim.sh; do
-            sh -n "$f" 2>/dev/null || bash -n "$f"
+          status=0
+          # Everything tracked with a shell shebang, rather than a list that
+          # goes stale: the overlay scripts run on the board under busybox sh
+          # and were never checked here at all.
+          for f in $(git ls-files); do
+            case "$(head -c 40 "$f" 2>/dev/null | tr -d '\0')" in
+              '#!/bin/sh'*|'#! /bin/sh'*|'#!/usr/bin/dash'*)
+                sh -n "$f" || status=1 ;;
+              '#!/bin/bash'*|'#!/usr/bin/env bash'*)
+                bash -n "$f" || status=1 ;;
+            esac
           done
+          exit "$status"
+
+      - name: Check the overlay scripts for bashisms
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq devscripts
+          status=0
+          # These run under busybox sh on the board. A bashism here does not
+          # fail the build, it fails at boot.
+          for f in $(git ls-files 'new-files/board/espressif/esp32s3/rootfs_overlay' \
+                                  'new-files/board/espressif/esp32s3/*.sh'); do
+            case "$(head -c 40 "$f" 2>/dev/null | tr -d '\0')" in
+              '#!/bin/sh'*|'#! /bin/sh'*) checkbashisms "$f" || status=1 ;;
+            esac
+          done
+          exit "$status"
+
+      - name: Check the patches still apply
+        run: |
+          # A patch that stopped applying is otherwise only discovered hours
+          # into a build. This checks the ones whose target is in the tree.
+          status=0
+          for p in new-files/board/espressif/esp32s3/patches/linux/*.patch \
+                   patches/*.patch experiments/mmu-poc/fork/*.patch; do
+            grep -q '^--- ' "$p" || { echo "$p: no diff header"; status=1; }
+            grep -q '^+++ ' "$p" || { echo "$p: no diff header"; status=1; }
+            # A binary hunk cannot be reconstructed by git apply and is
+            # rejected in full; incident 5 in DEVELOPMENT.md is this.
+            if grep -q '^Binary files' "$p"; then
+              echo "$p: carries a binary hunk, which git apply cannot replay"
+              status=1
+            fi
+          done
+          exit "$status"
+
+      - name: Check no file is carried by both a patch and new-files
+        run: |
+          # DEVELOPMENT.md incident 5: the rsync wins, so the patch copy is
+          # invisible and free to drift out of step.
+          status=0
+          for f in $(grep '^diff --git' patches/03-buildroot-tracked-changes.patch |
+                     sed 's|.* b/||'); do
+            rel=${f#board/espressif/esp32s3/}
+            if [ -e "new-files/board/espressif/esp32s3/$rel" ]; then
+              echo "$f is carried by both patch 03 and new-files/"
+              status=1
+            fi
+          done
+          exit "$status"
 
       - name: Check the Python parses
         run: |

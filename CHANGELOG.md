@@ -4,6 +4,189 @@ Releases carry one flashable `.bin` for a 16 MB / 8 MB-PSRAM ESP32-S3. Full
 notes and the binaries are on the
 [releases page](https://github.com/paulneja/Linux-on-esp32-S3/releases).
 
+## Unreleased — the memory the board was reserving and never using
+
+Measured on the developer board with the new kernel, against the same board
+before it: `MemAvailable` at idle went from 860 kB to 3484 kB, the worst point
+during the Bash benchmark from 248 kB to 2404 kB, and `init` starts at 1.71 s
+instead of 4.23 s. `tainted` 0, no OOM, panic, BUG or Oops.
+
+### Security
+
+- **The four dropbear private host keys no longer ship in the image.** They
+  come from buildroot's board directory, where they are tracked in a public
+  repository, and they were landing in `rootfs.cramfs` at mode 0644 and in
+  `etc.jffs2`. Every board built from this project answered SSH with the same
+  key, downloadable by anyone. inetd already runs dropbear with `-R`, which
+  writes a key per board into the writable `/etc` on the first connection.
+  `package-final.py` now refuses to package an image that carries them.
+- The WiFi configuration is written under `umask 077` instead of at 0644 with
+  the passphrase in it until a later `chmod`, and the SSID and password are
+  rejected if they contain a quote, a backslash or a newline. That path is
+  reachable with no authentication at all from the BLE provisioning dialog.
+- DHCP-supplied resolvers go into `resolv.conf` ahead of 1.1.1.1 and 8.8.8.8,
+  which had been written first, so every lookup went to a public resolver
+  before the network's own and LAN names never resolved.
+- `/var/log` points at `/run/log` rather than the 1777 `/tmp`, where syslogd
+  created world-readable authentication records.
+- `ble-wifi-setup` reads through `/run` instead of a predictable name in
+  `/tmp`, times out instead of parking mid-dialog forever, and parses the scan
+  list by tabs, so an SSID with two spaces or a `*` survives.
+- The kernel drops `no_hash_pointers`, `/dev/mem` and `TIOCSTI`, and restricts
+  `dmesg`.
+- The WiFi driver no longer advertises WEP40, WEP104, TKIP and SMS4, and no
+  longer dumps 1600 bytes of hex to the console for any packet with one header
+  byte set — remotely triggerable, about two seconds of UART each.
+
+### Memory
+
+- `SLUB_TINY`, the allocator variant written for machines under 16 MiB. Slab
+  went from 3692 kB to 1700 kB.
+- `INET_TABLE_PERTURB_ORDER=8`: the source-port randomisation table was
+  262144 bytes at boot, sized for a host making thousands of outbound
+  connections.
+- jffs2 stops reserving the zlib deflate workspace, which `CMODE_NONE` means
+  is never entered. NOMMU has no vmalloc area — `mm/nommu.c` makes `vmalloc`
+  a `kmalloc` — so it was an order-7 allocation: a contiguous 512 KiB block,
+  which is the one thing a fork here cannot find.
+- `LOG_BUF_SHIFT` 17 to 15, `LEGACY_PTYS` off, and `TICK_CPU_ACCOUNTING`
+  instead of `VIRT_CPU_ACCOUNTING_GEN`, which pulls in a debugging option that
+  adds work to every syscall return.
+- tmpfs mounts have `size=` and inode limits; without them one runaway write
+  could take the machine to where a fork stops working.
+
+### Fork
+
+The backend gave every process its own page set, including the resident one,
+whose set is dead weight: its data is in the region itself. Exchanging the
+resident page with the incoming shadow page leaves the outgoing process's data
+in the set the incoming one vacated, so N processes need N-1 sets and the
+resident owner holds none. Two loads and two stores per word is what the
+save-then-restore pair of memcpy already cost, so the traffic per context
+switch is unchanged.
+
+Measured with `programbench`, peak system-wide backup during each run:
+
+| program | before | after |
+|---|---:|---:|
+| socat, a plain fork and exec | 296 kB | 144 kB |
+| micropython | 512 kB | 384 kB |
+| dash | 560 kB | 420 kB |
+| bash | 892 kB | 800 kB |
+
+The halving is exact for a single fork of one region, which is what socat
+does and what the arithmetic predicts. A shell benchmark keeps several
+processes alive at once, where N-1 against N is a smaller proportion, so the
+improvement there is 10 to 25 per cent. `fork-test` passes 5/5 static and
+5/5 dynamic on the board.
+
+Copy-on-write is not possible on this chip, and the reason is now written
+down rather than remembered: the TRM's section 15.6 says an unpermitted write
+*fails* and raises an asynchronous interrupt. There is no restartable fault to
+copy a page and retry the store from.
+
+`bank_access()` keeps interrupts disabled for one page instead of for a length
+that comes from userspace — reading `/proc/PID/mem` of a banked process could
+ask for a single 512 KiB memcpy with interrupts off. The ceiling on banked
+private memory is a module parameter now; it also bounds how long a switch
+runs with interrupts disabled.
+
+### The WiFi driver
+
+- A use after free on the interface creation error path: `esp_wdev` is
+  `netdev_priv(ndev)` and was written after `free_netdev()`, with
+  `adapter->priv[]` left pointing at it. That path is taken when a command to
+  core 0 times out, which is when the firmware is slow at boot.
+- The receive path copied a fixed 1600 bytes from an allocation the firmware
+  sizes to the packet — 12 bytes for a short command response — reading past
+  the end of the other core's heap. Its length check also added the header to
+  a `u16` before comparing, so a declared length near 65535 passed.
+- A command node handed out without an skb was never returned to the free
+  queue, and every caller checks for the skb and gives up, so twenty
+  allocation failures emptied the pool permanently and WiFi stayed dead until
+  reboot. Two more leaks on the association and response paths.
+- Transmit completion ran only when a receive in the same batch succeeded, so
+  one failure with the write ring full could leave the queue stopped.
+- `prepare_command_request()` rejects an oversized payload instead of reaching
+  `skb_over_panic()`; the node then fits the transport maximum and drops from
+  the kmalloc-4096 slab to kmalloc-2048.
+- A `synchronize_rcu()` before every command, with no RCU readers to wait for.
+- `esp_alloc_skb()` reserved headroom only when the slab returned an unaligned
+  pointer, so transmit was allocating a second skb and copying every frame.
+
+Twelve WiFi scans on the board with no node pool exhaustion; five networks
+found.
+
+### Core 0
+
+- Both watchdogs are enabled. Nothing watched the WiFi and BLE core: if it
+  deadlocked, Linux kept running with permanently dead networking and no way
+  to reset it. Two traps, both found by building and reading the generated
+  config: `CONFIG_INT_WDT`, the deprecated alias, sits 650 lines further down
+  and silently turned the interrupt watchdog back off, and
+  `ESP_INT_WDT_CHECK_CPU1` defaults to on, under which core 0 feeds the
+  watchdog only after core 1's FreeRTOS tick sets a flag — core 1 runs Linux,
+  so the chip would have reset itself every 1.6 s.
+- `send_task` slept a whole tick when its queues were empty, adding up to
+  10 ms to any packet arriving into an idle queue. The enqueue sites signal a
+  semaphore instead.
+- `SPIRAM_MEMTEST` no longer walks 8 MiB on every power-on.
+- Enabling the watchdogs moves the firmware's `space_for_vectors` by a page,
+  and the kernel is linked against that address, so `CONFIG_VECTORS_ADDR`
+  moves with it. Flashing one without the other gives a core 0
+  `StoreProhibited` panic and a reset loop; `package-final.py` compares them.
+  The measured table is in the sdkconfig and in `build/verification/`.
+
+### Flash
+
+About 1.4 MB reclaimed from a rootfs partition that had 48 KB free: iptables
+(788657 bytes, for a firewall that ships empty and that a post-build script
+already renamed out of the boot sequence, whose plugins match on things this
+kernel does not build), lua (223683 bytes, for one CGI now written in sh and
+awk), the duplicate MicroPython and the untested payloads under
+`/usr/share/mmu` (468 KB), the gpio tools that duplicate `espctl`, and four
+libraries no ELF in the image lists as `NEEDED`. The kernel itself is 320 KB
+smaller.
+
+### Behaviour
+
+- **The shell fallback only triggers on a real fork failure.** It switched to
+  dash and replayed the last command on any non-zero exit status, so `grep`
+  finding nothing, a failed `test`, or a command that wrote half a file and
+  died were all retried. Bash returns 126 when it cannot fork. It also asks
+  before replaying now, keeps its state per process rather than in one shared
+  path, and no longer writes a preference to jffs2 at the moment memory ran
+  out.
+- Starting dash without `-l` meant dash users read no `/etc/profile` at all —
+  no PATH, no EDITOR, no umask — which the low-memory switch then made
+  permanent.
+- `ssh-server` and `web-server` send SIGHUP to inetd instead of killing and
+  relaunching it without `-f`, which left the pidfile naming a dead process,
+  so stopping inetd stopped working and a later start bound a second one.
+  `ssh-server` also had no root check and reported success after failing.
+- `wifi --help` printed the script's own source.
+- The board keeps a clock across reboots and sends a hostname with its DHCP
+  request. Without the first, every boot started in 1970 and TLS failed until
+  NTP answered; without the second the router listed the board unnamed.
+- udhcpc logs to syslog. On NOMMU it re-execs into the background and sets
+  `logmode` to none, so nothing it reported reached `/var/log/network.log`,
+  which the README tells you to read.
+- `kernel.default_stack_size` is 32 KiB. On NOMMU the stack is one allocation
+  with no guard page, and curl, wpa_supplicant, dropbear, nano and iw all have
+  a zero `PT_GNU_STACK` and land on it; the manifest records which do.
+
+### Build
+
+- `package-final.py` checks the kernel's link address against the linux
+  partition offset, cross-checks `partition-table.bin` against the CSV, and
+  refuses an image carrying dropbear keys.
+- `flash.sh --backup DIR` reads `/etc` and `/home` off the board, which
+  `build/README.md` told you to do without providing a way.
+- `run.sh --recover` used esptool 5 spellings that the pinned 4.8.1 rejects.
+- Host checks run on every push, over every tracked shell script rather than a
+  list, with a bashism check on the scripts busybox runs and guards against a
+  patch carrying a binary hunk or a file that `new-files/` also ships.
+
 ## 0.7 — fork, Bash and a userspace that fits (2026-09-08)
 
 - Native NOMMU fork with private software banks, last-owner backup recovery,
@@ -58,7 +241,7 @@ notes and the binaries are on the
   flasher serves the committed 0.6 release and a freshly built artifacts
   directory. `--parts --erase` writes a factory `home.jffs2` when the directory
   has one and otherwise leaves `/home` erased, which the board formats on its
-  first write. `images/` keeps only the 0.6 release, matching its own combined
+  first write. `images/` keeps the 0.7 release, matching its own combined
   image byte for byte.
 - Known limitation of the platform, not fixed here: once jffs2 has to reclaim
   and erase used blocks, write throughput collapses. The published 0.6 kernel
