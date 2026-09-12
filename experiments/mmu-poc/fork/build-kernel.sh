@@ -11,6 +11,19 @@ if [[ ! -e "$kernel_dir" ]]; then
     cp -a --reflink=auto "$source_dir" "$kernel_dir"
 fi
 cd -- "$kernel_dir"
+# CONFIG_EXTRA_FIRMWARE builds regulatory.db into the image, because cfg80211
+# asks for it before the rootfs is mounted. The kernel looks for the files in
+# $kernel_dir/firmware; buildroot has already installed them into the target.
+mkdir -p firmware
+for blob in regulatory.db regulatory.db.p7s; do
+    src="$build_dir/build-buildroot-esp32s3_devkit_c1_16m/target/lib/firmware/$blob"
+    if [[ -f "$src" ]]; then
+        cp -f "$src" "firmware/$blob"
+    else
+        echo "build-kernel.sh: missing $src; CONFIG_EXTRA_FIRMWARE will fail" >&2
+        exit 1
+    fi
+done
 if patch --force --dry-run -R -p1 < "$task_dir/kernel.patch" >/dev/null 2>&1; then
     echo "Kernel patch already present."
 else

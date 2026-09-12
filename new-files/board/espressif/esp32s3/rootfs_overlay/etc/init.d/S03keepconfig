@@ -1,0 +1,91 @@
+#!/bin/sh
+#
+# Carry the network and the accounts across an update.
+#
+# /etc is its own jffs2 partition and every flash writes it, because the init
+# scripts live there -- so an update takes the wifi credentials and the root
+# password with it, and the board comes back unreachable. /home is preserved
+# by flash.sh --parts, so keep a copy there and restore it when /etc comes
+# back from the factory.
+#
+# What is copied: wpa_supplicant.conf, shadow, passwd, group and the dropbear
+# host keys. They hold credentials, so the directory is 0700 and every file
+# keeps the mode it had.
+#
+# Restoring is deliberately conservative. A file is only put back when /etc
+# does not have one, or has the factory one -- never over something written
+# after the update. Leave /home/.etc-backup/disabled to turn the whole thing
+# off.
+
+# Overridable so build/test-keepconfig.py can drive this on a host with a
+# fake /etc and /home rather than a board.
+: "${KEEP_ETC:=/etc}"
+: "${KEEP_BACKUP:=/home/.etc-backup}"
+: "${KEEP_MOUNTS:=/proc/mounts}"
+
+BACKUP=$KEEP_BACKUP
+FILES="wpa_supplicant.conf shadow passwd group"
+KEYS="dropbear/dropbear_rsa_host_key dropbear/dropbear_ecdsa_host_key dropbear/dropbear_ed25519_host_key dropbear/dropbear_dss_host_key"
+
+home_is_writable() {
+	awk -v want="${KEEP_HOME:-/home}" \
+	    '$2 == want && $4 ~ /(^|,)rw(,|$)/ { found = 1 }
+	     END { exit !found }' "$KEEP_MOUNTS"
+}
+
+# "dir/file" needs its directory created; a bare "file" does not -- and
+# ${1%/*} returns the whole word when there is no slash in it.
+make_parent() {
+	case $1 in
+	*/*) mkdir -p "$2/${1%/*}" 2>/dev/null ;;
+	esac
+}
+
+save_one() {
+	[ -f "$KEEP_ETC/$1" ] || return 0
+	make_parent "$1" "$BACKUP"
+	# Write beside the target and rename, so a power cut during the write
+	# cannot leave a half-copied credential file behind.
+	cp -p "$KEEP_ETC/$1" "$BACKUP/$1.new" 2>/dev/null || return 0
+	mv "$BACKUP/$1.new" "$BACKUP/$1" 2>/dev/null
+}
+
+# Only ever called once the caller has established that /etc came back from
+# the factory, so overwriting is the point. Skip a file that already matches
+# to save a jffs2 write.
+restore_one() {
+	[ -f "$BACKUP/$1" ] || return 0
+	cmp -s "$BACKUP/$1" "$KEEP_ETC/$1" && return 0
+	make_parent "$1" "$KEEP_ETC"
+	cp -p "$BACKUP/$1" "$KEEP_ETC/$1.new" 2>/dev/null || return 0
+	mv "$KEEP_ETC/$1.new" "$KEEP_ETC/$1" 2>/dev/null && echo "  restored /etc/$1"
+}
+
+case "$1" in
+	start)
+		[ -e "$BACKUP/disabled" ] && exit 0
+		home_is_writable || exit 0
+		[ -d "$BACKUP" ] || exit 0
+		# The gate: a configured board has a wpa_supplicant.conf, and
+		# a factory one never does. Its presence means this is a normal
+		# boot and nothing should be touched. Its absence right after an
+		# update means /etc was just rewritten, and everything below is
+		# what this board had before.
+		[ -e "$KEEP_ETC/wpa_supplicant.conf" ] && exit 0
+		# Nothing to restore if the wifi config was not saved either.
+		[ -f "$BACKUP/wpa_supplicant.conf" ] || exit 0
+		echo 'Restoring the configuration saved before this update:'
+		for f in $FILES $KEYS; do restore_one "$f"; done
+		echo '  (delete /home/.etc-backup, or touch /home/.etc-backup/disabled, to stop this)'
+		;;
+	stop)
+		[ -e "$BACKUP/disabled" ] && exit 0
+		home_is_writable || exit 0
+		mkdir -p "$BACKUP" 2>/dev/null || exit 0
+		chmod 700 "$BACKUP" 2>/dev/null
+		for f in $FILES $KEYS; do save_one "$f"; done
+		;;
+	save) "$0" stop && echo "Configuration saved to $BACKUP" ;;
+	restart|reload) "$0" stop; "$0" start ;;
+	*) echo "Usage: $0 {start|stop|save}" >&2; exit 1 ;;
+esac
