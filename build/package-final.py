@@ -26,6 +26,23 @@ def run(*args):
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
+def elf_stack_size(path):
+    """PT_GNU_STACK p_memsz for a 32-bit little-endian ELF, or 0 if absent."""
+    data = path.read_bytes()
+    if len(data) < 52 or data[:4] != b'\x7fELF' or data[4] != 1 or data[5] != 1:
+        return 0
+    phoff, = struct.unpack_from('<I', data, 28)
+    phentsize, phnum = struct.unpack_from('<HH', data, 42)
+    for n in range(phnum):
+        base = phoff + n * phentsize
+        if base + 32 > len(data):
+            break
+        p_type, = struct.unpack_from('<I', data, base)
+        if p_type == 0x6474e551:          # PT_GNU_STACK
+            p_memsz, = struct.unpack_from('<I', data, base + 20)
+            return p_memsz
+    return 0
+
 parts = {}
 for line in (repo / 'new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r').read_text().splitlines():
     if not line or line.startswith('#'): continue
@@ -46,6 +63,14 @@ for _, kind, _, _, offset, size, link, _, _, entsize in sections:
 config = (experiment / 'linux-fork/.config').read_text()
 match = re.search(r'^CONFIG_VECTORS_ADDR=(0x[0-9a-fA-F]+)$', config, re.M)
 assert match and vectors == int(match[1], 16), 'Firmware/kernel vector mismatch'
+load = re.search(r'^CONFIG_KERNEL_LOAD_ADDRESS=(0x[0-9a-fA-F]+)$', config, re.M)
+assert load, 'kernel has no CONFIG_KERNEL_LOAD_ADDRESS'
+expected_load = 0x42000000 + parts['linux']['offset']
+assert int(load[1], 16) == expected_load, (
+    'kernel is linked at %s but the linux partition starts at %s. Moving the '
+    'partition means moving CONFIG_KERNEL_LOAD_ADDRESS with it, or the board '
+    'loops in the bootloader before Linux prints anything.'
+    % (load[1], hex(expected_load)))
 assert 'CONFIG_XTENSA_NOMMU_FORK=y' in config
 assert '# CONFIG_XTENSA_VARIANT_MMU is not set' in config
 assert not re.search(r'^CONFIG_MMU=[ym]$', config, re.M)
@@ -71,6 +96,24 @@ with tempfile.TemporaryDirectory(prefix='final-rootfs-', dir=work) as directory:
     if '/usr/bin/user-shell' not in allowed:
         shells.write_text('\n'.join(allowed + ['/usr/bin/user-shell']) + '\n')
     assert not (tree / 'etc/wpa_supplicant.conf').exists()
+    # buildroot's board directory carries dropbear host keys that are tracked
+    # in a public repository. trim-target.sh removes them so -R generates one
+    # per board; this is the check that it actually happened.
+    keys = sorted(str(path.relative_to(tree))
+                  for path in tree.glob('etc/dropbear/*_host_key'))
+    assert not keys, 'image carries dropbear private host keys: %s' % keys
+    # A zero PT_GNU_STACK means the program runs on kernel.default_stack_size,
+    # and on NOMMU that allocation has no guard page, so an overflow is silent
+    # corruption rather than a SIGSEGV. Record which programs rely on it --
+    # asserting would be wrong, because shared libraries legitimately have no
+    # PT_GNU_STACK and the executable's value is what governs. Only real
+    # programs are listed, so the set is small enough to read in a diff.
+    stackless = sorted(
+        str(path.relative_to(tree))
+        for directory in ('bin', 'sbin', 'usr/bin', 'usr/sbin')
+        for path in (tree / directory).glob('*')
+        if path.is_file() and not path.is_symlink() and '.so' not in path.name
+        and path.open('rb').read(4) == b'\x7fELF' and elf_stack_size(path) == 0)
     assert not (tree / 'usr/bin/sqlite3').exists()
     assert not (tree / 'usr/bin/sudo').exists()
     assert not (tree / 'usr/bin/doas').exists()
@@ -93,6 +136,21 @@ with tempfile.TemporaryDirectory(prefix='final-rootfs-', dir=work) as directory:
 
 for name in ('bootloader.bin', 'partition-table.bin', 'network_adapter.bin'):
     shutil.copyfile(work / 'base-images' / name, out / name)
+
+# The binary table is what the board reads; the CSV is what everything here
+# computes from. They have disagreed before, and the kernel derives the rootfs
+# XIP address from the table, so a mismatch panics with "Cannot open root
+# device" rather than failing the build.
+table = (out / 'partition-table.bin').read_bytes()
+installed = {}
+for pos in range(0, len(table) - 31, 32):
+    magic, _, _, offset, size, label, _ = struct.unpack_from('<HBBII16sI', table, pos)
+    if magic != 0x50AA:
+        break
+    installed[label.split(b'\0', 1)[0].decode('ascii')] = {'offset': offset, 'size': size}
+assert installed == parts, (
+    'partition-table.bin does not match partition_table.esp32s3.16m8r:\n'
+    '  table: %s\n  csv:   %s' % (installed, parts))
 shutil.copyfile(experiment / 'real-bins/xipImage-fork-quiet', out / 'xipImage')
 files = {'factory': 'network_adapter.bin', 'etc': 'etc.jffs2', 'linux': 'xipImage',
          'rootfs': 'rootfs.cramfs', 'home': 'home.jffs2'}
@@ -132,6 +190,7 @@ inventory = {
     'vectors_addr': hex(vectors), 'partitions': parts, 'sha256': checksums,
     'build_method': 'Clean sources and Linux toolchain; no prebuilt project images or experiment binaries',
     'board_verification': 'pending',
+    'default_stack_binaries': stackless,
 }
 configurations = {
     'toolchain.config': build / 'crosstool-NG/.config',
