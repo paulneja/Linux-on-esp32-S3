@@ -31,6 +31,10 @@ static long field(const char *path,const char *name) {
     fclose(f); return n;
 }
 static long shadows(void) { return field("/proc/self/status","ForkShadow:"); }
+/* System wide: with swap banking the resident process owns no shadow pages,
+ * so the copy belonging to a forked child shows up here, not in the parent's
+ * own status. */
+static long shadows_global(void) { return field("/proc/meminfo","ForkShadow:"); }
 
 int main(int argc,char **argv) {
     int a[2],b[2],s,fd; pid_t p,q; char c;
@@ -39,17 +43,25 @@ int main(int argc,char **argv) {
         send_byte(atoi(argv[3]),'E'); CHECK(receive(atoi(argv[4]))=='G'); return 19;
     }
     alarm(60);
-    long before=shadows();
+    long before=shadows(), before_all=shadows_global();
     CHECK(pipe(a)==0 && pipe(b)==0);
     p=spawn();
     if(!p) { close(a[0]); close(b[1]); state=456; send_byte(a[1],'R'); CHECK(receive(b[0])=='G'); CHECK(state==456); _exit(0); }
     close(a[1]);close(b[0]);CHECK(receive(a[0])=='R');
-    long during=shadows();
+    long during=shadows(), during_all=shadows_global();
     send_byte(b[1],'G');reap(p,0);close(a[0]);close(b[1]);
-    long after=shadows();CHECK(state==123);
-    if(before>=0) { CHECK(before==0 && during>0 && after==0); }
-    printf("RECLAIM parent_kib before=%ld live=%ld after=%ld\n",before,during,after);
-    pass("last child exit releases parent backup (host: counter absent)");
+    long after=shadows(), after_all=shadows_global();CHECK(state==123);
+    if(before>=0) {
+        /* This process is the resident one throughout, so it must never hold
+         * a shadow set of its own -- that is what makes a fork cost P rather
+         * than 2P. The child's saved copy is what the system wide counter
+         * sees while it is alive, and it has to be gone afterwards. */
+        CHECK(before==0 && during==0 && after==0);
+        CHECK(during_all>before_all && after_all==before_all);
+    }
+    printf("RECLAIM parent_kib before=%ld live=%ld after=%ld global live=%ld\n",
+           before,during,after,during_all-before_all);
+    pass("a fork costs one backup, not two, and the child's is released");
 
     char path[]="/tmp/process-test.XXXXXX";
     fd=mkstemp(path);CHECK(fd>=0);CHECK(unlink(path)==0);

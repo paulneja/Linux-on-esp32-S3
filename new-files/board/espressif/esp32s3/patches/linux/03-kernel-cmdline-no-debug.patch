@@ -1,3 +1,21 @@
+xtensa: esp32s3: a production command line
+
+Four changes to the built-in bootargs, all measured against a captured board
+log ("build-output/fixtest/board-check-run1/boot.log"):
+
+ - "debug" is gone, as before.
+ - "quiet" is new. The log is about 140 lines and 8.4 KB, pushed synchronously
+   to a 115200 console, which is roughly 0.73 s of the boot spent in the UART.
+   CONSOLE_LOGLEVEL_QUIET is 4 and LOG_BUF_SHIFT still holds the whole thing,
+   so dmesg after boot is unchanged.
+ - "rootfstype=cramfs" stops mount_block_root() from trying the registered
+   filesystems in turn against a 7.5 MiB partition; jffs2 registers first.
+ - "panic=10" replaces PANIC_TIMEOUT=0, under which a panic hangs forever with
+   no way back. The board has a syscon-reboot node, so a reboot works.
+ - "no_hash_pointers" is gone. It prints every %p in dmesg as a real kernel
+   address, and with dmesg unrestricted that was readable by any user on a
+   board that ships dropbear. Add it back on a development image if needed.
+
 --- a/arch/xtensa/boot/dts/esp32s3.dtsi
 +++ b/arch/xtensa/boot/dts/esp32s3.dtsi
 @@ -8,7 +8,7 @@
@@ -5,7 +23,7 @@
  
  	chosen {
 -		bootargs = "earlycon=esp32s3uart,mmio32,0x60000000,115200n8,40000000 console=ttyS0,115200n8 debug rw root=mtd:rootfs no_hash_pointers ";
-+		bootargs = "earlycon=esp32s3uart,mmio32,0x60000000,115200n8,40000000 console=ttyS0,115200n8 rw root=mtd:rootfs no_hash_pointers ";
++		bootargs = "earlycon=esp32s3uart,mmio32,0x60000000,115200n8,40000000 console=ttyS0,115200n8 quiet rw root=mtd:rootfs rootfstype=cramfs panic=10 ";
  	};
  
  	aliases {
