@@ -11,6 +11,20 @@ nominal 240 MHz, from the Xtensa cycle counter around the existing
 local_irq_save region. The counter wraps every 18 seconds, which is orders of
 magnitude longer than anything this can legitimately record.
 
+The answer on this board: a switch over the full 512 KiB ceiling takes 21.5
+ms, which is longer than the 10 ms timer tick. That is about 10 cycles per
+memory operation through PSRAM, so it is what the hardware can do rather than
+a mistake. Typical switches are 3 us.
+
+Lowering the ceiling was tried and reverted. The interactive login bash has
+368 KiB private -- more than micropython's 308 -- so a 320 KiB ceiling leaves
+the shell itself unable to fork, and the board answers "fork: Cannot allocate
+memory" to the first command carrying a glob. Every value that keeps the
+system working has a switch costing more than a tick, so the ceiling is not
+where this gets fixed; exchanging pages lazily, on first access rather than
+at switch time, is. The number is recorded so that work can start from a
+measurement.
+
 --- a/include/linux/nommu-bank.h
 +++ b/include/linux/nommu-bank.h
 @@ -4,6 +4,8 @@
