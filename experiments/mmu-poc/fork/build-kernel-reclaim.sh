@@ -14,6 +14,12 @@ if ! patch -d "$kernel_dir" --force --dry-run -R -p1 < "$task_dir/reclaim.patch"
 fi
 patch -d "$kernel_dir" --forward --batch --dry-run -p1 < "$task_dir/quiet-trace.patch"
 patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/quiet-trace.patch"
+# swap-banks goes last: it rewrites the page handling that the three patches
+# above build up, so it has to see them already applied.
+if ! patch -d "$kernel_dir" --force --dry-run -R -p1 < "$task_dir/swap-banks.patch" >/dev/null 2>&1; then
+    patch -d "$kernel_dir" --forward --batch --dry-run -p1 < "$task_dir/swap-banks.patch"
+    patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/swap-banks.patch"
+fi
 python3 "$task_dir/check-kernel-config.py" \
     "$repo_dir/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config" \
     "$kernel_dir/.config"
