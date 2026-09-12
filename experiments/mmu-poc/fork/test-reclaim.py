@@ -20,6 +20,8 @@ shim = r'''
 #define module_param_named(name,value,type,perm) \
  static void * const test_param_##name __attribute__((unused)) = &(value)
 #define MODULE_PARM_DESC(name,desc)
+#define WARN_ON_ONCE(cond) ({ int __w = !!(cond); if (__w) { fprintf(stderr, "WARN_ON_ONCE(%s) at %d\n", #cond, __LINE__); abort(); } __w; })
+#define READ_ONCE(x) (x)
 #define PAGE_SHIFT 12
 #define PAGE_SIZE 4096
 #define GFP_KERNEL 0
@@ -77,33 +79,42 @@ int main(void) {
  struct vm_region r={(unsigned long)memory,(unsigned long)memory+2*PAGE_SIZE,NULL};
  init(&a,&ma,&r);init(&b,&mb,&r);init(&c,&mc,&r);
  *memory=111;
- assert(bank_clone(&b,&a)==0);assert(nommu_bank_shadow_pages==4);
+ /* One page set for two processes: the resident parent holds none. */
+ assert(bank_clone(&b,&a)==0);assert(nommu_bank_shadow_pages==2);
+ assert(a.nommu_bank->count==0 && b.nommu_bank->count==2);
  nommu_bank_switch(&mb);*memory=222;
+ /* The set changed hands: now the parent's descriptor holds it. */
+ assert(a.nommu_bank->count==2 && b.nommu_bank->count==0);
+ assert(nommu_bank_shadow_pages==2);
  bank_detach(&b);
  assert(*memory==111 && a.nommu_bank->count==0 && nommu_bank_pages(&ma)==0);
  assert(nommu_bank_shadow_pages==0 && nommu_bank_recovered_pages==2);
- puts("PASS: departing resident restores survivor and frees both backups");
+ puts("PASS: one backup per fork, swapped on switch, released when the resident leaves");
  for(int i=0;i<100;i++) {
   assert(bank_clone(&b,&a)==0);nommu_bank_switch(&mb);*memory=222;
   assert(bank_clone(&c,&b)==0);nommu_bank_switch(&mc);*memory=333;
-  bank_detach(&b);assert(nommu_bank_shadow_pages==4);
+  /* Three processes, two page sets. */
+  assert(nommu_bank_shadow_pages==4);
+  bank_detach(&b);
+  /* b was not resident, so its set is simply freed: two sets become one. */
+  assert(nommu_bank_shadow_pages==2);
   nommu_bank_switch(&ma);assert(*memory==111);
   nommu_bank_switch(&mc);assert(*memory==333);
   bank_detach(&a);assert(*memory==333 && nommu_bank_shadow_pages==0);
   bank_detach(&c);init(&a,&ma,&r);init(&b,&mb,&r);init(&c,&mc,&r);*memory=111;
  }
  puts("PASS: nested ownership and 100 teardown/refork cycles");
- for(int i=0;i<4;i++) {
+ for(int i=0;i<2;i++) {
   fail_after=i;assert(bank_clone(&b,&a)==-ENOMEM);fail_after=-1;
   assert(nommu_bank_shadow_pages==0 && *memory==111);
  }
  puts("PASS: every page allocation failure unwinds without lost state");
  assert(bank_clone(&b,&a)==0);departing=&b;allocation_hook=exit_during_alloc;
- assert(bank_clone(&c,&a)==0);assert(nommu_bank_shadow_pages==4);
+ assert(bank_clone(&c,&a)==0);assert(nommu_bank_shadow_pages==2);
  nommu_bank_switch(&mc);assert(*memory==111);*memory=444;
  bank_detach(&c);assert(*memory==111 && nommu_bank_shadow_pages==0);
  bank_detach(&a);free(memory);
- puts("PASS: sibling exits while clone allocation sleeps; backups recreated");
+ puts("PASS: sibling exits while clone allocation sleeps; one backup, not two");
  return 0;
 }
 '''
