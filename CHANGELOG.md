@@ -154,6 +154,35 @@ saves 45 KB of flash but makes every `--help` allocate about 450 KB of RAM
 for bunzip2, in one contiguous block — `nc --help` went from 76 KB private to
 584 KB on the board.
 
+### Fork, part two
+
+bash runs a plain foreground command through `vfork` now. `fork` reserved and
+copied all 368 KiB of an interactive login, exchanged it on every context
+switch while the child lived, and restored it when the child exec'd a moment
+later -- about 736 KiB moved for a single `/bin/true`, and the reservation is
+what failed with "fork: Cannot allocate memory". Measured after: 100
+consecutive commands leave `ForkRecovered` exactly where it started. Pipes,
+redirections, background jobs and subshells still use `fork`, which they
+need.
+
+Three things that took, none of them visible by reading: the child shares the
+parent's stack frame, so its work lives in a separate noinline function; it
+must not call `tcsetpgrp`, because the parent is asleep until the exec and a
+terminal owned by an empty process group makes the shell's next read return
+EIO, which bash treats as end of input; and `strvec_from_word_list(alloc=0)`
+aliases the caller's words rather than copying them, so disposing the vector
+freed memory `bind_lastarg()` reads immediately afterwards.
+`build/test-bash-vfork.py` builds the patched bash natively under
+AddressSanitizer on a pty and found the last two.
+
+`/proc/meminfo` reports `ForkSwitchMax` and `ForkSwitchLast`: how long a
+context switch held interrupts off. A switch over the full 512 KiB ceiling
+takes 21.5 ms, longer than the 10 ms timer tick, at about 10 cycles per
+memory operation through PSRAM. Lowering the ceiling was tried and reverted:
+the login bash needs 368 KiB, so every value that keeps the system working
+costs more than a tick. Exchanging pages lazily is where that gets fixed; the
+measurement is recorded so the work starts from a number.
+
 ### Behaviour
 
 - **The shell fallback only triggers on a real fork failure.** It switched to
@@ -177,6 +206,22 @@ for bunzip2, in one contiguous block — `nc --help` went from 76 KB private to
 - udhcpc logs to syslog. On NOMMU it re-execs into the background and sets
   `logmode` to none, so nothing it reported reached `/var/log/network.log`,
   which the README tells you to read.
+- **An update no longer takes the wifi and the password with it.** `/etc` is
+  its own partition and every flash rewrites it, so the board came back
+  unreachable. `S03keepconfig` copies the credentials to `/home`, which
+  `flash.sh --parts` preserves, and restores them when `/etc` comes back from
+  the factory -- never over a file written since.
+- The BLE setup channel closes once wifi is configured. It is how a board
+  with no network and no cable gets on one; afterwards it is a resident
+  process listening on an unauthenticated link into a root process.
+  `ble-prov on|off|auto` overrides it.
+- `regulatory.db` loads. It has been in the image all along and cfg80211 asks
+  for it 14 ms before the rootfs is mounted; it is built into the kernel now,
+  and `iw reg get` reports the real rules instead of the built-in defaults.
+- The RSA driver's wait for the accelerator is bounded. It spun forever if
+  the firmware had not handed the block over -- the boot stopped dead with
+  nothing printed, which DEVELOPMENT.md records as incident 6 with no fix.
+  Its self-test no longer runs on every boot, which is 45 ms back.
 - `kernel.default_stack_size` is 32 KiB. On NOMMU the stack is one allocation
   with no guard page, and curl, wpa_supplicant, dropbear, nano and iw all have
   a zero `PT_GNU_STACK` and land on it; the manifest records which do.
