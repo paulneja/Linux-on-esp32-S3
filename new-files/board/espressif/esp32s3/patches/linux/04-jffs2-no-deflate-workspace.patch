@@ -1,0 +1,62 @@
+jffs2: do not reserve the deflate workspace when nothing can compress
+
+jffs2_compressors_init() allocates the zlib deflate workspace at filesystem
+init, before any mount. With MAX_WBITS and MAX_MEM_LEVEL that is 64 KiB of
+window, 64 KiB of prev, 64 KiB of head and 64 KiB of overlay plus the state
+structure: about 264 KiB, taken with vmalloc and held for the life of the
+system.
+
+This board builds with CONFIG_JFFS2_CMODE_NONE, so jffs2_compress() takes the
+JFFS2_COMPR_MODE_NONE arm of its switch and returns immediately; the deflate
+path is never entered and that quarter of a megabyte is never touched.
+
+It costs more than its size. NOMMU has no vmalloc area -- mm/nommu.c makes
+vmalloc() a kmalloc() -- so a 262 KiB request goes to the page allocator as
+get_order(262144 + sizeof(deflate_workspace)), which is order 7: a contiguous
+512 KiB block, held forever. Contiguous blocks are exactly what a fork on this
+machine needs and cannot get; /proc/buddyinfo on an idle board shows a single
+free order-7 block, and a fork of bash has been seen to fail with 112 KiB
+available.
+
+The inflate workspace stays unconditionally: the shipped /etc and /home images
+are built by mkfs.jffs2 with compression on, so reading them needs it whatever
+the write-side mode is.
+
+--- a/fs/jffs2/compr_zlib.c
++++ b/fs/jffs2/compr_zlib.c
+@@ -42,6 +42,12 @@
+ 
+ static int __init alloc_workspaces(void)
+ {
++	/* With CMODE_NONE jffs2_compress() returns before it ever reaches a
++	 * compressor, so the deflate workspace -- about 264 KiB of vmalloc,
++	 * held for the life of the system -- is never touched. Reading still
++	 * needs inflate: the factory /etc and /home images are compressed.
++	 */
++#ifndef CONFIG_JFFS2_CMODE_NONE
+ 	def_strm.workspace = vmalloc(zlib_deflate_workspacesize(MAX_WBITS,
+ 							MAX_MEM_LEVEL));
+ 	if (!def_strm.workspace)
+@@ -49,9 +55,12 @@
+ 
+ 	jffs2_dbg(1, "Allocated %d bytes for deflate workspace\n",
+ 		  zlib_deflate_workspacesize(MAX_WBITS, MAX_MEM_LEVEL));
++#endif
+ 	inf_strm.workspace = vmalloc(zlib_inflate_workspacesize());
+ 	if (!inf_strm.workspace) {
++#ifndef CONFIG_JFFS2_CMODE_NONE
+ 		vfree(def_strm.workspace);
++#endif
+ 		return -ENOMEM;
+ 	}
+ 	jffs2_dbg(1, "Allocated %d bytes for inflate workspace\n",
+@@ -61,7 +70,9 @@
+ 
+ static void free_workspaces(void)
+ {
++#ifndef CONFIG_JFFS2_CMODE_NONE
+ 	vfree(def_strm.workspace);
++#endif
+ 	vfree(inf_strm.workspace);
+ }
+ #else
