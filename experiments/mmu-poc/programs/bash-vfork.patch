@@ -1,0 +1,227 @@
+bash: run a plain foreground command through vfork instead of fork
+
+On this NOMMU board fork() reserves and copies every private page bash has --
+368 KiB for an interactive login -- exchanges them on each context switch
+while the child lives, and restores them when the child execs a moment
+later. A single /bin/true from bash moves about 736 KiB of memory, and when
+the reservation cannot be met the shell prints "fork: Cannot allocate
+memory". dash and busybox already use vfork for this case; bash was the one
+shell that did not.
+
+The child shares the parent's address space until it calls execve, so it
+must not touch bash's state: only setpgid, tcsetpgrp, sigaction on the six
+signals an interactive bash ignores, execve, and on failure a raw write of
+the error and _exit with 126 or 127. The parent does the job-table
+bookkeeping make_child's parent half does, so wait_for() and job control see
+an ordinary child.
+
+Only the simplest shape qualifies: a command that was found, run in the
+foreground, with no redirections, no pipes and no descriptors to close.
+Pipelines, redirections, background jobs, subshells and substitutions keep
+using fork exactly as before, and so does anything where vfork itself fails.
+
+--- a/jobs.c
++++ b/jobs.c
+@@ -2122,6 +2122,136 @@
+    COMMAND is just for remembering the name of the command; we don't do
+    anything else with it.  ASYNC_P says what to do with the tty.  If
+    non-zero, then don't give it away. */
++/* NOMMU: fork() is a full copy of bash's private memory -- hundreds of
++   kilobytes reserved, copied, exchanged on every context switch and thrown
++   away the instant the child calls execve.  On this board that reservation
++   is what fails with "Cannot allocate memory".  vfork() shares the address
++   space and suspends the parent until the child execs, so a plain foreground
++   command costs nothing.
++
++   The child shares the parent's memory AND the parent's stack frame, so it
++   must not write to anything the parent will read afterwards: not a global,
++   not a local of the function that called vfork.  Everything the child does
++   lives in vfork_child_exec(), a separate frame below the caller's, which
++   takes what it needs as arguments and only ever calls raw syscalls.  Signal
++   dispositions are per process even under CLONE_VM, and uClibc's sigaction()
++   is a plain syscall wrapper.
++
++   If execve fails the child reports it the way a shell does -- the command
++   name, the errno text, status 126 or 127 -- with raw write(2), and exits.
++   The one thing the fork path would do differently is run a file with no
++   "#!" line as a script; dash does not either.  Returns the pid, or -1 if
++   vfork itself failed. */
++
++static void
++vfork_child_error (path, err)
++     const char *path;
++     int err;
++{
++  const char *msg = strerror (err);
++  write (2, "bash: ", 6);
++  write (2, path, strlen (path));
++  write (2, ": ", 2);
++  write (2, msg, strlen (msg));
++  write (2, "\n", 1);
++}
++
++static void __attribute__ ((noinline, noreturn))
++vfork_child_exec (path, args, env, pgrp, jc, oset)
++     char *path;
++     char **args, **env;
++     pid_t pgrp;
++     int jc;
++     const sigset_t *oset;
++{
++  struct sigaction act;
++  int err;
++
++  if (jc)
++    {
++      pid_t mypid = getpid ();
++      setpgid (mypid, pgrp ? pgrp : mypid);
++      /* No tcsetpgrp: the parent is suspended until we exec, so it could
++	 not take the terminal back if we died first -- and a short command
++	 does die first.  A terminal owned by an empty group makes the
++	 shell's next read() fail with EIO, which bash treats as EOF. */
++    }
++  /* execve resets caught signals itself; only ignored ones survive it.
++     An interactive bash ignores these, and a child must not inherit that
++     -- ^C would not stop it.  Same set the fork path restores. */
++  sigemptyset (&act.sa_mask);
++  act.sa_flags = 0;
++  act.sa_handler = SIG_DFL;
++  sigaction (SIGINT, &act, (struct sigaction *)NULL);
++  sigaction (SIGQUIT, &act, (struct sigaction *)NULL);
++  sigaction (SIGTERM, &act, (struct sigaction *)NULL);
++  sigaction (SIGTSTP, &act, (struct sigaction *)NULL);
++  sigaction (SIGTTIN, &act, (struct sigaction *)NULL);
++  sigaction (SIGTTOU, &act, (struct sigaction *)NULL);
++  sigprocmask (SIG_SETMASK, oset, (sigset_t *)NULL);
++  execve (path, args, env);
++  err = errno;
++  vfork_child_error (path, err);
++  _exit (err == ENOENT ? EX_NOTFOUND : EX_NOEXEC);
++}
++
++pid_t
++make_child_vfork_exec (command, path, args, env)
++     char *command;
++     char *path;
++     char **args, **env;
++{
++  volatile pid_t pid;
++  pid_t pgrp;
++  int jc;
++  sigset_t set, oset;
++
++  /* Block the signals make_child blocks, for the same reason: a SIGCHLD
++     between the birth and add_process() would be mishandled. */
++  sigemptyset (&set);
++  sigaddset (&set, SIGCHLD);
++  sigaddset (&set, SIGINT);
++  sigaddset (&set, SIGTERM);
++  sigemptyset (&oset);
++  sigprocmask (SIG_BLOCK, &set, &oset);
++
++  making_children ();
++
++  /* Everything the child needs, computed before vfork so the child reads
++     and never writes this frame. */
++  jc = job_control;
++  pgrp = jc ? pipeline_pgrp : shell_pgrp;
++
++  pid = vfork ();
++  if (pid == 0)
++    vfork_child_exec (path, args, env, pgrp, jc, &oset);
++  if (pid < 0)
++    {
++      sigprocmask (SIG_SETMASK, &oset, (sigset_t *)NULL);
++      return -1;
++    }
++
++  /* Parent: the child has exec'd, or has exited and is waiting to be
++     reaped by wait_for() through the normal SIGCHLD bookkeeping. */
++  if (jc)
++    {
++      if (pipeline_pgrp == 0)
++	pipeline_pgrp = pid;
++      setpgid (pid, pipeline_pgrp);
++    }
++  else if (pipeline_pgrp == 0)
++    pipeline_pgrp = shell_pgrp;
++
++  add_process (command, pid);
++  delete_old_job (pid);
++  bgp_delete (pid);
++  last_made_pid = pid;
++  js.c_totforked++;
++  js.c_living++;
++  sigprocmask (SIG_SETMASK, &oset, (sigset_t *)NULL);
++  return pid;
++}
++
+ pid_t
+ make_child (command, flags)
+      char *command;
+--- a/jobs.h
++++ b/jobs.h
+@@ -271,6 +271,7 @@
+ extern void list_running_jobs PARAMS((int));
+ 
+ extern pid_t make_child PARAMS((char *, int));
++extern pid_t make_child_vfork_exec PARAMS((char *, char *, char **, char **));
+ 
+ extern int get_tty_state PARAMS((void));
+ extern int set_tty_state PARAMS((void));
+--- a/execute_cmd.c
++++ b/execute_cmd.c
+@@ -346,6 +346,22 @@
+   free (fdbp);
+ }
+ 
++/* True when the child would have nothing to close: execute_command() always
++   passes a bitmap, empty for a simple command, so this is the real test. */
++static int
++fd_bitmap_is_empty (fdbp)
++     struct fd_bitmap *fdbp;
++{
++  register int i;
++
++  if (fdbp == 0)
++    return 1;
++  for (i = 0; i < fdbp->size; i++)
++    if (fdbp->bitmap[i])
++      return 0;
++  return 1;
++}
++
+ void
+ close_fd_bitmap (fdbp)
+      struct fd_bitmap *fdbp;
+@@ -5651,6 +5667,30 @@
+     pid = 0;
+   else
+     {
++      /* The simplest shape -- a found command, foreground, no redirections,
++	 no pipes, nothing to close -- goes through vfork and costs no copy.
++	 Anything else, and any vfork that could not exec, takes the fork
++	 path below exactly as before.  See make_child_vfork_exec(). */
++      if (command && async == 0 && redirects == 0
++	  && fd_bitmap_is_empty (fds_to_close)
++	  && pipe_in == NO_PIPE && pipe_out == NO_PIPE
++	  && (subshell_environment & (SUBSHELL_ASYNC|SUBSHELL_PIPE)) == 0)
++	{
++	  maybe_make_export_env ();
++	  /* alloc=0: the vector points at the words themselves, which the
++	     caller still owns -- bind_lastarg() reads them after we return.
++	     So free only the vector, never the strings. The fork path never
++	     had to care: its child execs and dies holding the pointers. */
++	  args = strvec_from_word_list (words, 0, 0, (int *)NULL);
++	  p = savestring (command_line);
++	  pid = make_child_vfork_exec (p, command, args, export_env);
++	  free (args);
++	  if (pid > 0)
++	    goto parent_return;
++	  /* vfork itself failed: fall back to fork. add_process did not run,
++	     so p is ours to free. */
++	  FREE (p);
++	}
+       fork_flags = async ? FORK_ASYNC : 0;
+       pid = make_child (p = savestring (command_line), fork_flags);
+     }

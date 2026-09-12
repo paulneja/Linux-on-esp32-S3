@@ -9,6 +9,7 @@ fi
 apply_program_patch "$source_dir" bash-fork.patch
 apply_program_patch "$source_dir" bash-help-cross.patch
 apply_program_patch "$source_dir" bash-pid-cache.patch
+apply_program_patch "$source_dir" bash-vfork.patch
 staging="$build_dir/build-buildroot-esp32s3_devkit_c1_16m/staging"
 export CPPFLAGS="-I$staging/usr/include"
 export CFLAGS="$CFLAGS -Oz -flto --sysroot=$staging"
