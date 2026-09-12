@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -83,10 +84,18 @@ def pack(selected, output):
         install(HERE / 'set-user-shell.sh', tree / 'usr/sbin/set-user-shell')
         board = REPO / 'new-files/board/espressif/esp32s3'
         overlay = board / 'rootfs_overlay'
-        for path in ('usr/sbin/web-server', 'usr/sbin/home-init', 'usr/sbin/home-users-setup',
-                     'usr/sbin/cron-setup', 'usr/sbin/cron-server', 'etc/init.d/S50crond',
-                     'usr/bin/user-shell', 'usr/bin/session', 'etc/init.d/S06home-users'):
-            install(overlay / path, tree / path)
+        # Everything in the overlay, rather than a list of nine paths that
+        # went stale every time one was added: the overlay is by definition
+        # what belongs on the target, and this image is assembled from a
+        # cramfs that may predate the current one. Modes come from the files.
+        for source in sorted(overlay.rglob('*')):
+            if not source.is_file():
+                continue
+            relative = source.relative_to(overlay)
+            # /home is seeded by prepare-home.sh into the archive, not here.
+            if relative.parts[0] == 'home':
+                continue
+            install(source, tree / relative, 0o755 if os.access(source, os.X_OK) else 0o644)
         run('sh', board / 'prepare-home.sh', tree)
         for directory, name in (('usr/bin', 'crontab'), ('usr/sbin', 'crond')):
             path = tree / directory / name

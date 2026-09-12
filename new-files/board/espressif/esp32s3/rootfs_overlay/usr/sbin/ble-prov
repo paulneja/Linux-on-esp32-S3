@@ -1,0 +1,51 @@
+#!/bin/sh
+#
+# Whether the BLE provisioning dialog runs.
+#
+# It exists so a board with no network and no cable can be told which wifi to
+# join, from a phone. It is also a link anyone in radio range can open and
+# write to, with no authentication, feeding a root process -- so by default it
+# stops once wifi is configured. These switches override that both ways, and
+# persist across reboots in /etc.
+
+set -e
+DIR=/etc/ble-prov
+INIT=/etc/init.d/S46blewifi
+
+if [ "$(id -u)" != 0 ]; then
+	echo "ble-prov: must be run as root" >&2
+	exit 1
+fi
+
+case "${1:-status}" in
+on|always)
+	mkdir -p "$DIR"
+	rm -f "$DIR/never"
+	: > "$DIR/always"
+	"$INIT" start
+	echo 'BLE provisioning stays on, wifi configured or not.'
+	;;
+auto)
+	mkdir -p "$DIR"
+	rm -f "$DIR/always" "$DIR/never"
+	echo 'BLE provisioning runs only until wifi is configured (the default).'
+	"$INIT" status
+	;;
+off|never)
+	mkdir -p "$DIR"
+	rm -f "$DIR/always"
+	: > "$DIR/never"
+	"$INIT" stop >/dev/null 2>&1 || :
+	echo 'BLE provisioning is off and will not start at boot.'
+	;;
+status)
+	"$INIT" status
+	if [ -e "$DIR/always" ]; then echo 'setting: on (always)'
+	elif [ -e "$DIR/never" ]; then echo 'setting: off (never)'
+	else echo 'setting: auto (stops once wifi is configured)'; fi
+	;;
+*)
+	echo 'usage: ble-prov {on|off|auto|status}' >&2
+	exit 1
+	;;
+esac

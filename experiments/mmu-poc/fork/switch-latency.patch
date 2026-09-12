@@ -1,0 +1,88 @@
+nommu-bank: measure how long a switch holds interrupts off
+
+A context switch between two banked processes exchanges every banked page
+with interrupts disabled, so the timer tick, the shmem IPC interrupt and the
+UART all wait for it. That window is what decides how large
+fork_bank_max_bytes can safely be, and until now it was reasoned about rather
+than measured.
+
+/proc/meminfo gains ForkSwitchMax and ForkSwitchLast, in microseconds at the
+nominal 240 MHz, from the Xtensa cycle counter around the existing
+local_irq_save region. The counter wraps every 18 seconds, which is orders of
+magnitude longer than anything this can legitimately record.
+
+--- a/include/linux/nommu-bank.h
++++ b/include/linux/nommu-bank.h
+@@ -4,6 +4,8 @@
+ #include <linux/atomic.h>
+ extern atomic_long_t nommu_bank_shadow_pages;
+ extern atomic_long_t nommu_bank_recovered_pages;
++extern unsigned long nommu_bank_switch_max_cycles;
++extern unsigned long nommu_bank_switch_last_cycles;
+ struct mm_struct;
+ struct vm_area_struct;
+ void nommu_bank_switch(struct mm_struct *mm);
+--- a/mm/nommu-bank.inc
++++ b/mm/nommu-bank.inc
+@@ -43,6 +43,17 @@
+ atomic_long_t nommu_bank_shadow_pages = ATOMIC_LONG_INIT(0);
+ atomic_long_t nommu_bank_recovered_pages = ATOMIC_LONG_INIT(0);
+ 
++/* How long a context switch spends with interrupts disabled, in CPU cycles.
++ * This is the number that decides how large fork_bank_max_bytes may safely
++ * be: a switch between two banked processes exchanges every banked page with
++ * interrupts off, so the timer tick, the shmem IPC interrupt and the UART all
++ * wait for it. Reported in /proc/meminfo as ForkSwitchMax, in microseconds at
++ * the nominal 240 MHz; write anything to /proc/sys/vm/fork_bank_reset_max to
++ * clear it before a measurement.
++ */
++unsigned long nommu_bank_switch_max_cycles;
++unsigned long nommu_bank_switch_last_cycles;
++
+ /* A single-owner descriptor survives, but owns no backup pages. Keeping
+  * that descriptor stable matters when another mm exits while fork sleeps
+  * in bank_alloc(). Only the owning mm can replace its descriptor.
+@@ -168,12 +179,13 @@
+ void nommu_bank_switch(struct mm_struct *mm)
+ {
+ 	struct nommu_bank *bank;
+-	unsigned long flags;
++	unsigned long flags, started;
+ 
+ 	/* init_mm has no user banks and a zero-initialized context. */
+ 	if (!mm->context.nommu_banks.next)
+ 		return;
+ 	local_irq_save(flags);
++	started = get_ccount();
+ 	list_for_each_entry(bank, &mm->context.nommu_banks, link) {
+ 		struct vm_region *region = bank->region;
+ 		struct nommu_bank *out = region->bank_owner;
+@@ -200,6 +212,12 @@
+ 		}
+ 		region->bank_owner = bank;
+ 	}
++	/* get_ccount() wraps every 18 seconds at 240 MHz; a switch that took
++	 * that long is not a measurement worth keeping.
++	 */
++	nommu_bank_switch_last_cycles = get_ccount() - started;
++	if (nommu_bank_switch_last_cycles > nommu_bank_switch_max_cycles)
++		nommu_bank_switch_max_cycles = nommu_bank_switch_last_cycles;
+ 	local_irq_restore(flags);
+ }
+ 
+--- a/fs/proc/meminfo.c
++++ b/fs/proc/meminfo.c
+@@ -66,6 +66,13 @@
+ #ifdef CONFIG_XTENSA_NOMMU_FORK
+ 	show_val_kb(m, "ForkShadow:     ", atomic_long_read(&nommu_bank_shadow_pages));
+ 	show_val_kb(m, "ForkRecovered:  ", atomic_long_read(&nommu_bank_recovered_pages));
++	/* Microseconds at the nominal 240 MHz: the worst and the most recent
++	 * time a context switch held interrupts off to exchange banked pages.
++	 */
++	seq_printf(m, "ForkSwitchMax:  %8lu us\n",
++		   nommu_bank_switch_max_cycles / 240);
++	seq_printf(m, "ForkSwitchLast: %8lu us\n",
++		   nommu_bank_switch_last_cycles / 240);
+ #endif
+ 	show_val_kb(m, "Buffers:        ", i.bufferram);
+ 	show_val_kb(m, "Cached:         ", cached);

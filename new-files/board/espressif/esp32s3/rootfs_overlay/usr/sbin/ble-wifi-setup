@@ -2,6 +2,7 @@
 
 DEV=/dev/esp-ble
 IFACE=espsta0
+CONF=/etc/wpa_supplicant.conf
 LIST=/run/ble-scan
 CR=$(printf '\r')
 TAB=$(printf '\t')
@@ -154,4 +155,14 @@ do_dialog() {
 
 while read_wake; do
 	do_dialog
+	# Once this board is on a network the dialog has done its job. Leaving
+	# it running keeps an unauthenticated link to a root process open for
+	# the life of the device; "ble-prov on" is there for anyone who wants
+	# exactly that.
+	if [ ! -e /etc/ble-prov/always ] && [ -s "$CONF" ]; then
+		say ""
+		say "WiFi is configured; closing the setup channel."
+		say "Re-enable it from the board with: ble-prov on"
+		exit 0
+	fi
 done

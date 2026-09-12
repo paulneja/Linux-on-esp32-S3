@@ -20,6 +20,10 @@ if ! patch -d "$kernel_dir" --force --dry-run -R -p1 < "$task_dir/swap-banks.pat
     patch -d "$kernel_dir" --forward --batch --dry-run -p1 < "$task_dir/swap-banks.patch"
     patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/swap-banks.patch"
 fi
+if ! patch -d "$kernel_dir" --force --dry-run -R -p1 < "$task_dir/switch-latency.patch" >/dev/null 2>&1; then
+    patch -d "$kernel_dir" --forward --batch --dry-run -p1 < "$task_dir/switch-latency.patch"
+    patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/switch-latency.patch"
+fi
 python3 "$task_dir/check-kernel-config.py" \
     "$repo_dir/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config" \
     "$kernel_dir/.config"

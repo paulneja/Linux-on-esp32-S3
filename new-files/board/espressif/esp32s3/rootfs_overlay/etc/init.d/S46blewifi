@@ -3,11 +3,38 @@
 DAEMON=/usr/sbin/ble-wifi-setup
 PIDFILE=/var/run/ble-wifi-setup.pid
 
+# The provisioning dialog is how a board with no wifi and no cable gets on a
+# network. Once it is on one, the daemon is a resident process -- 124 KiB
+# private, the third largest on an idle board -- listening on a link that
+# anyone in radio range can open and write to, with no authentication. So it
+# runs when it is needed and not otherwise.
+#
+#   /etc/ble-prov/always    keep it running even with wifi configured
+#   /etc/ble-prov/never     never start it
+#
+# `ble-prov on` and `ble-prov off` write those.
+
 case "$1" in
 start)
 	[ -e /dev/esp-ble ] || exit 0
+	[ -e /etc/ble-prov/never ] && exit 0
+	if [ ! -e /etc/ble-prov/always ] && [ -s /etc/wpa_supplicant.conf ]; then
+		echo 'BLE WiFi setup: not started (wifi already configured; ble-prov on to force)'
+		exit 0
+	fi
 	printf 'Starting BLE WiFi setup: '
 	start-stop-daemon -S -q -m -p "$PIDFILE" -b -x "$DAEMON" && echo "OK" || echo "FAIL"
+	;;
+status)
+	if start-stop-daemon -K -t -q -p "$PIDFILE"; then
+		echo 'BLE WiFi setup: running'
+	elif [ -e /etc/ble-prov/never ]; then
+		echo 'BLE WiFi setup: disabled (ble-prov on to enable)'
+	elif [ -s /etc/wpa_supplicant.conf ]; then
+		echo 'BLE WiFi setup: not running (wifi is configured)'
+	else
+		echo 'BLE WiFi setup: not running'
+	fi
 	;;
 stop)
 	printf 'Stopping BLE WiFi setup: '
@@ -21,7 +48,7 @@ restart|reload)
 	"$0" start
 	;;
 *)
-	echo "Usage: $0 {start|stop|restart}"
+	echo "Usage: $0 {start|stop|restart|status}"
 	exit 1
 	;;
 esac
