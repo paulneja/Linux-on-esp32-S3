@@ -691,13 +691,22 @@ CONFIG_SPIRAM_USE_MEMMAP=y
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=240
 
-# Every instruction fetch that misses is a flash read (the kernel is XIP)
-# and every data miss is a PSRAM read, so these two caches sit in front of
-# everything. The internal SRAM they cost is what the queue and stack
-# reductions below release.
-# CONFIG_ESP32S3_INSTRUCTION_CACHE_16KB is not set
-CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
-CONFIG_ESP32S3_INSTRUCTION_CACHE_SIZE=0x8000
+# Anything that changes how much internal RAM this firmware uses moves the
+# space_for_vectors symbol, and that address is what the kernel is linked
+# against as CONFIG_VECTORS_ADDR. Measured on this tree:
+#
+#   caches 16K/32K, no watchdogs   0x4037f000
+#   caches 16K/32K, watchdogs on   0x40380000   <- what ships
+#   caches 32K/64K, watchdogs on   0x40384000
+#
+# Flashing a firmware whose address does not match the kernel gives a core 0
+# StoreProhibited panic on the first boot and a reset loop. Raising the caches
+# is still worth measuring -- the kernel is XIP, so every instruction miss is a
+# flash read -- but it has to move the kernel's VECTORS_ADDR in the same
+# commit. package-final.py compares the two and refuses to package a mismatch.
+CONFIG_ESP32S3_INSTRUCTION_CACHE_16KB=y
+# CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB is not set
+CONFIG_ESP32S3_INSTRUCTION_CACHE_SIZE=0x4000
 # CONFIG_ESP32S3_INSTRUCTION_CACHE_4WAYS is not set
 CONFIG_ESP32S3_INSTRUCTION_CACHE_8WAYS=y
 CONFIG_ESP32S3_ICACHE_ASSOCIATED_WAYS=8
@@ -705,9 +714,9 @@ CONFIG_ESP32S3_ICACHE_ASSOCIATED_WAYS=8
 CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_32B=y
 CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE=32
 # CONFIG_ESP32S3_DATA_CACHE_16KB is not set
-# CONFIG_ESP32S3_DATA_CACHE_32KB is not set
-CONFIG_ESP32S3_DATA_CACHE_64KB=y
-CONFIG_ESP32S3_DATA_CACHE_SIZE=0x10000
+CONFIG_ESP32S3_DATA_CACHE_32KB=y
+# CONFIG_ESP32S3_DATA_CACHE_64KB is not set
+CONFIG_ESP32S3_DATA_CACHE_SIZE=0x8000
 # CONFIG_ESP32S3_DATA_CACHE_4WAYS is not set
 CONFIG_ESP32S3_DATA_CACHE_8WAYS=y
 CONFIG_ESP32S3_DCACHE_ASSOCIATED_WAYS=8
