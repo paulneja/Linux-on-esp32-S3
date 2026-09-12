@@ -1,0 +1,34 @@
+#!/bin/sh
+#
+# There is no RTC and no battery, so every boot starts at the epoch and stays
+# there until DHCP and NTP both answer. Until then TLS fails: a certificate is
+# not yet valid in 1970, which is the "peer certificate could not be verified"
+# in TROUBLESHOOTING.md. Files written before then get a 1970 mtime on jffs2
+# as well.
+#
+# Remember the time at shutdown and restore it at boot when it is newer than
+# what the clock says. It is not accurate -- it is the time this board was
+# last running -- but it is on the right side of every certificate date, and
+# it costs one jffs2 write per shutdown.
+
+STAMP=/home/.clock
+
+case "$1" in
+	start)
+		[ -r "$STAMP" ] || exit 0
+		saved=
+		read -r saved < "$STAMP" 2>/dev/null || exit 0
+		case $saved in ''|*[!0-9]*) exit 0 ;; esac
+		now=$(date -u +%s)
+		if [ "$saved" -gt "$now" ]; then
+			date -u -s "@$saved" > /dev/null 2>&1 &&
+				echo "Clock restored to $(date -u '+%Y-%m-%d %H:%M:%S') UTC (saved at shutdown)"
+		fi
+		;;
+	stop)
+		# /home may be read-only or missing; never fail the shutdown.
+		date -u +%s > "$STAMP" 2>/dev/null || :
+		;;
+	restart|reload) "$0" stop; "$0" start ;;
+	*) echo "Usage: $0 {start|stop|restart}" >&2; exit 1 ;;
+esac

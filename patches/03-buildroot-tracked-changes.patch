@@ -1,12 +1,3 @@
-diff --git a/board/espressif/esp32s3/rootfs_overlay/etc/fstab b/board/espressif/esp32s3/rootfs_overlay/etc/fstab
-index e1fe09d1e0..62bab8ffba 100644
---- a/board/espressif/esp32s3/rootfs_overlay/etc/fstab
-+++ b/board/espressif/esp32s3/rootfs_overlay/etc/fstab
-@@ -7,3 +7,4 @@ tmpfs		/tmp		tmpfs	mode=1777	0	0
- tmpfs		/run		tmpfs	mode=0755,nosuid,nodev	0	0
- sysfs		/sys		sysfs	defaults	0	0
- mtd:etc		/etc		jffs2	nofail		0	0
-+mtd:home	/home		jffs2	nofail		0	0
 diff --git a/board/espressif/esp32s3/rootfs_overlay/etc/inetd.conf b/board/espressif/esp32s3/rootfs_overlay/etc/inetd.conf
 index 6a86f988b1..755e1cbef3 100644
 --- a/board/espressif/esp32s3/rootfs_overlay/etc/inetd.conf
@@ -15,46 +6,6 @@ index 6a86f988b1..755e1cbef3 100644
 -ssh     stream  tcp     nowait  root    /usr/sbin/dropbear      dropbear -i -B
 +#ssh     stream  tcp     nowait  root    /usr/sbin/dropbear      dropbear -i -R -I 600
 +telnet  stream  tcp     nowait  root    /usr/sbin/telnetd       telnetd -i
-diff --git a/board/espressif/esp32s3/rootfs_overlay/etc/init.d/S05home b/board/espressif/esp32s3/rootfs_overlay/etc/init.d/S05home
-new file mode 100755
-index 0000000000..f948f23de5
---- /dev/null
-+++ b/board/espressif/esp32s3/rootfs_overlay/etc/init.d/S05home
-@@ -0,0 +1,34 @@
-+#!/bin/sh
-+#
-+# Populate /home after the jffs2 partition is mounted by "mount -a" (inittab
-+# runs that before rcS). A freshly erased jffs2 partition comes up empty, so
-+# the home directories have to be created on first boot rather than shipped:
-+# anything baked into the image would land on the read-only cramfs underneath
-+# and be hidden by the mount.
-+#
-+
-+HOMES="root"
-+
-+case "$1" in
-+	start)
-+		if ! mount | grep -q ' /home '; then
-+			echo "S05home: /home is not mounted, skipping (see /home/README.txt)"
-+			exit 0
-+		fi
-+		for h in $HOMES; do
-+			if [ ! -d "/home/$h" ]; then
-+				mkdir -p "/home/$h" || exit 1
-+				chmod 700 "/home/$h"
-+				echo "S05home: created /home/$h"
-+			fi
-+		done
-+		;;
-+	stop)
-+		;;
-+	restart|reload)
-+		"$0" start
-+		;;
-+	*)
-+		echo "Usage: $0 {start|stop|restart}"
-+		exit 1
-+esac
 diff --git a/board/espressif/esp32s3/rootfs_overlay/etc/wpa_supplicant.conf.example b/board/espressif/esp32s3/rootfs_overlay/etc/wpa_supplicant.conf.example
 index f49bd3d1a8..bc164ab136 100644
 --- a/board/espressif/esp32s3/rootfs_overlay/etc/wpa_supplicant.conf.example

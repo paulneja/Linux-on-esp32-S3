@@ -12,5 +12,4 @@ if [ ! -e /etc/skel/.profile ] && [ ! -L /etc/skel/.profile ]; then
     chmod 644 /etc/skel/.profile
 fi
 /usr/sbin/home-init
-/usr/sbin/web-server migrate
 echo 'Home defaults and web configuration ready; existing accounts and files preserved.'

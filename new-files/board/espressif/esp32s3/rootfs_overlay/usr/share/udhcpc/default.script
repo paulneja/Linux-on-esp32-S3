@@ -1,6 +1,14 @@
 #!/bin/sh
 
 
+# build/README.md records this hook's fork killing both a measured program and
+# the console shell: udhcpc re-forks its script on every retry, and on a board
+# with a megabyte free that fork arrives at the worst moment. Make the OOM
+# killer prefer this script, and the client that forked it, over the shell
+# somebody is typing into.
+echo 500 > /proc/self/oom_score_adj 2>/dev/null || :
+echo 300 > /proc/$PPID/oom_score_adj 2>/dev/null || :
+
 [ -z "$1" ] && echo "Error: should be called from udhcpc" && exit 1
 
 ACTION="$1"
