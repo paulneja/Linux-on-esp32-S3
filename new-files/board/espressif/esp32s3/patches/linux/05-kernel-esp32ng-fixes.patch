@@ -1,0 +1,402 @@
+esp32-ng: fix a use after free, two leaks and an out of bounds read
+
+Found by reading the driver, not by a failure on the board. In order of how
+badly each one ends:
+
+esp_cfg80211.c: the interface creation error path used esp_wdev after
+free_netdev(ndev), and esp_wdev *is* netdev_priv(ndev) -- it lives inside the
+net_device. It also left adapter->priv[] pointing at the freed memory, which
+get_priv_from_payload_header() walks on the next packet. That path is taken
+when cmd_init_interface() or cmd_get_mac() time out, i.e. precisely when core
+0 is slow or wedged at startup.
+
+esp_shmem.c: the receive path copied a fixed 1600 bytes from a pointer into
+core 0's memory, but the firmware allocates exactly payload plus header for
+each packet -- 12 bytes for a short command response. Read the header first
+and copy what the packet says it is. The same function's length check added
+the header size to a u16 before comparing, so it wrapped: a declared length
+near 65535 passed the bound and skb_trim() left 11 bytes of whatever was in
+the buffer.
+
+esp_cmd.c: a command node handed out with no skb was never returned to the
+free queue, and every caller checks cmd_skb and gives up, so twenty
+allocation failures emptied the pool for good and wifi stayed dead until
+reboot. The association path leaked a node and its skb when the IE copy
+failed, and wait_and_decode_cmd_resp() leaked one whenever the adapter went
+inactive mid-command.
+
+Transmit completion was hostage to receive: handle_tx() runs only from the
+batch callback, and that only fired when some receive in the batch succeeded.
+One allocation failure with the write ring full left the netdev queue stopped
+until a later receive happened to work.
+
+Cheaper or quieter, while here:
+
+ - prepare_command_request() now rejects an oversized payload instead of
+   reaching skb_over_panic(). The association command's length depends on
+   information elements the peer influences and nothing checked it. With that
+   in place the node shrinks from 2048 to 1600, the transport's own maximum,
+   which moves every command from the kmalloc-4096 slab to kmalloc-2048.
+ - synchronize_rcu() ran before every single command -- tens of milliseconds
+   each, roughly ten per association -- and there are no RCU readers of
+   cmd_pending_queue anywhere in the driver; it is serialised by its spinlock.
+ - flush_scheduled_work() drained the system workqueue rather than the
+   driver's. The compiler says so: __warn_flushing_systemwide_wq.
+ - esp_alloc_skb() only reserved headroom when the slab returned an unaligned
+   pointer, so in the common case there was none and process_tx_packet() took
+   its realloc branch -- a second skb and a full copy per transmitted frame.
+ - a packet with reserved2 == 0xFF dumped up to 1600 bytes of hex at
+   KERN_INFO, synchronously to a 115200 console: about two seconds of UART per
+   packet, remotely triggerable, for a wake-on-LAN path this design does not
+   have.
+ - the bootup event's TLV walk used a length from the wire without comparing
+   it against what was left of the event.
+ - the Kconfig selected WIRELESS_EXT, CRYPTO, CRYPTO_SKCIPHER, WEXT_SPY and
+   WEXT_PRIV. There is no crypto or skcipher call in the driver, and with
+   CFG80211_WEXT off and no wireless_handlers the whole WEXT path is
+   unreachable code that only publishes a misleading /proc/net/wireless.
+ - WEP40, WEP104, TKIP and SMS4 were advertised to cfg80211 by a board that
+   joins WPA2 networks.
+ - a static counter was incremented on every transmitted packet and never read.
+
+diff -ruN a/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c b/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c
+@@ -97,11 +97,11 @@
+ 
+ /* Supported crypto cipher suits to be advertised to cfg80211 */
+ static const u32 esp_cipher_suites[] = {
+-	WLAN_CIPHER_SUITE_WEP40,
+-	WLAN_CIPHER_SUITE_WEP104,
+-	WLAN_CIPHER_SUITE_TKIP,
++	/* WEP40, WEP104, TKIP and SMS4 were advertised here. This board joins
++	 * WPA2 networks; offering ciphers broken for a decade only gives a
++	 * hostile AP a downgrade to ask for.
++	 */
+ 	WLAN_CIPHER_SUITE_CCMP,
+-	WLAN_CIPHER_SUITE_SMS4,
+ 	WLAN_CIPHER_SUITE_AES_CMAC,
+ };
+ 
+@@ -117,14 +117,20 @@
+ 	unsigned long event, void *data)
+ {
+ 	struct in_ifaddr *ifa = data;
+-	struct net_device *netdev = ifa->ifa_dev ? ifa->ifa_dev->dev : NULL;
+-	struct esp_wifi_device *priv = netdev_priv(netdev);
++	struct net_device *netdev = ifa && ifa->ifa_dev ? ifa->ifa_dev->dev : NULL;
++	struct esp_wifi_device *priv;
+ 
+-	/*esp_info("------- IP event -------: %d\n", priv->if_type);*/
++	/* This notifier is global: it fires for lo and for every other netdev
++	 * in the system, and ifa_dev can be NULL. netdev_priv(NULL) was being
++	 * computed before anything checked.
++	 */
++	if (!netdev)
++		return NOTIFY_DONE;
+ 
+-	if (!strstr(netdev->name, "espsta")) {
+-		return 0;
+-	}
++	if (!strstr(netdev->name, "espsta"))
++		return NOTIFY_DONE;
++
++	priv = netdev_priv(netdev);
+ 
+ 	switch (event) {
+ 
+@@ -229,11 +235,20 @@
+ 	return &esp_wdev->wdev;
+ 
+ free_and_return:
++	/* esp_wdev is netdev_priv(ndev): it lives inside the net_device, so it
++	 * is gone the moment free_netdev() returns and the two stores that used
++	 * to follow were writes to freed memory. adapter->priv[] was left
++	 * pointing at it too, and get_priv_from_payload_header() would walk it
++	 * on the next packet. This path is taken when cmd_init_interface() or
++	 * cmd_get_mac() time out, which is exactly when core 0 is slow or
++	 * wedged at boot.
++	 */
+ 	clear_bit(ESP_DRIVER_ACTIVE, &esp_wdev->adapter->state_flags);
+-	dev_net_set(ndev, NULL);
+-	free_netdev(ndev);
++	esp_wdev->adapter->priv[esp_nw_if_num] = NULL;
+ 	esp_wdev->ndev = NULL;
+ 	esp_wdev->wdev.netdev = NULL;
++	dev_net_set(ndev, NULL);
++	free_netdev(ndev);
+ 	ndev = NULL;
+ 	return NULL;
+ }
+diff -ruN a/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c b/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c
+@@ -49,6 +49,16 @@
+ 	cmd_node->cmd_skb = esp_alloc_skb(ESP_SIZE_OF_CMD_NODE);
+ 	if (!cmd_node->cmd_skb) {
+ 		esp_err("No free cmd node skb found\n");
++		/* Put it back. Returning a node with no skb leaked it: every
++		 * caller checks cmd_skb and gives up without recycling, so a
++		 * run of allocation failures emptied the pool permanently and
++		 * every later scan or association failed with "No free cmd
++		 * node found" until reboot.
++		 */
++		spin_lock_bh(&adapter->cmd_free_queue_lock);
++		list_add_tail(&cmd_node->list, &adapter->cmd_free_queue);
++		spin_unlock_bh(&adapter->cmd_free_queue_lock);
++		return NULL;
+ 	}
+ 
+ 	return cmd_node;
+@@ -72,9 +82,9 @@
+ 	spin_lock_bh(&adapter->cmd_pending_queue_lock);
+ 
+ 	if (flag_high_prio)
+-		list_add_rcu(&cmd_node->list, &adapter->cmd_pending_queue);
++		list_add(&cmd_node->list, &adapter->cmd_pending_queue);
+ 	else
+-		list_add_tail_rcu(&cmd_node->list, &adapter->cmd_pending_queue);
++		list_add_tail(&cmd_node->list, &adapter->cmd_pending_queue);
+ 
+ 	spin_unlock_bh(&adapter->cmd_pending_queue_lock);
+ }
+@@ -198,8 +208,10 @@
+ 	ret = wait_event_interruptible_timeout(adapter->wait_for_cmd_resp,
+ 			adapter->cmd_resp == cmd_node->cmd_code, COMMAND_RESPONSE_TIMEOUT);
+ 
+-	if (!test_bit(ESP_DRIVER_ACTIVE, &adapter->state_flags))
++	if (!test_bit(ESP_DRIVER_ACTIVE, &adapter->state_flags)) {
++		recycle_cmd_node(adapter, cmd_node);
+ 		return 0;
++	}
+ 
+ 	if (ret == 0) {
+ 		esp_err("Command[%u] timed out\n", cmd_node->cmd_code);
+@@ -322,7 +334,6 @@
+ 	if (!test_bit(ESP_DRIVER_ACTIVE, &adapter->state_flags))
+ 		return;
+ 
+-	synchronize_rcu();
+ 	spin_lock_bh(&adapter->cmd_lock);
+ 	if (adapter->cur_cmd) {
+ 		/* Busy in another command */
+@@ -357,6 +368,7 @@
+ 		esp_dbg("cmd_node->cmd_skb NULL\n");
+ 		spin_unlock_bh(&adapter->cmd_pending_queue_lock);
+ 		spin_unlock_bh(&adapter->cmd_lock);
++		recycle_cmd_node(adapter, cmd_node);
+ 		return;
+ 	}
+ 
+@@ -404,7 +416,6 @@
+ static void destroy_cmd_wq(struct esp_adapter *adapter)
+ {
+ 	if (adapter->cmd_wq) {
+-		flush_scheduled_work();
+ 		destroy_workqueue(adapter->cmd_wq);
+ 		adapter->cmd_wq = NULL;
+ 	}
+@@ -430,6 +441,17 @@
+ 		return NULL;
+ 	}
+ 
++	if (len > ESP_SIZE_OF_CMD_NODE - sizeof(struct esp_payload_header)) {
++		/* skb_put() past the tail is skb_over_panic(). The association
++		 * command carries information elements whose length the peer
++		 * influences, so refuse rather than panic.
++		 */
++		esp_err("command 0x%X payload %u exceeds the %u byte node\n",
++			cmd_code, len,
++			(unsigned int)(ESP_SIZE_OF_CMD_NODE - sizeof(struct esp_payload_header)));
++		return NULL;
++	}
++
+ 	node = get_free_cmd_node(adapter);
+ 
+ 	if (!node || !node->cmd_skb) {
+@@ -914,10 +936,11 @@
+ 		priv->assoc_req_ie = NULL;
+ 	}
+ 
+-	priv->assoc_req_ie = kmemdup(req->ie, req->ie_len, GFP_ATOMIC);
++	priv->assoc_req_ie = kmemdup(req->ie, req->ie_len, GFP_KERNEL);
+ 
+ 	if (!priv->assoc_req_ie) {
+ 		esp_err("Failed to allocate buffer for assoc request IEs\n");
++		recycle_cmd_node(adapter, cmd_node);
+ 		return -ENOMEM;
+ 	}
+ 
+diff -ruN a/drivers/net/wireless/espressif/esp32-ng/esp_cmd.h b/drivers/net/wireless/espressif/esp32-ng/esp_cmd.h
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_cmd.h
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_cmd.h
+@@ -11,7 +11,12 @@
+ #include "esp.h"
+ 
+ #define ESP_NUM_OF_CMD_NODES 20
+-#define ESP_SIZE_OF_CMD_NODE 2048
++/* The shmem transport caps a packet at SHMEM_BUF_SIZE, so a command node
++ * larger than that could never be sent: write_packet() drops it. 2048 landed
++ * every command in the kmalloc-4096 slab; 1600 fits kmalloc-2048 and still
++ * holds anything the transport can carry.
++ */
++#define ESP_SIZE_OF_CMD_NODE 1600
+ 
+ #define ESP_CMD_HIGH_PRIO    1
+ #define ESP_CMD_DFLT_PRIO    0
+diff -ruN a/drivers/net/wireless/espressif/esp32-ng/esp_shmem.c b/drivers/net/wireless/espressif/esp32-ng/esp_shmem.c
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_shmem.c
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_shmem.c
+@@ -118,6 +118,7 @@
+ 	struct esp_payload_header *header;
+ 	u16 len = 0;
+ 	u16 offset = 0;
++	u32 total;
+ 
+ 	if (!skb)
+ 		return -EINVAL;
+@@ -143,15 +144,19 @@
+ 		return -EINVAL;
+ 	}
+ 
+-	len += sizeof(struct esp_payload_header);
++	/* In u32: len is u16 and adding the header to it wrapped, so a length
++	 * near 65535 passed the test below and left an 11 byte packet of
++	 * whatever happened to be in the buffer.
++	 */
++	total = (u32)len + sizeof(struct esp_payload_header);
+ 
+-	if (len > SHMEM_BUF_SIZE) {
+-		pr_err("%s: bad len %d\n", __func__, len);
++	if (total > SHMEM_BUF_SIZE) {
++		pr_err("%s: bad len %u\n", __func__, total);
+ 		return -EINVAL;
+ 	}
+ 
+ 	/* Trim SKB to actual size */
+-	skb_trim(skb, len);
++	skb_trim(skb, total);
+ 
+ 	/* enqueue skb for read_packet to pick it */
+ 	if (header->if_type == ESP_INTERNAL_IF)
+@@ -166,15 +171,30 @@
+ 
+ static bool esp_wifi_shmem_handle_rx(struct esp_wifi_shmem *hw, void *p)
+ {
+-	struct sk_buff *rx_skb = esp_alloc_skb(SHMEM_BUF_SIZE);
++	const struct esp_payload_header *src = p;
++	struct sk_buff *rx_skb;
++	u32 total;
+ 	u8 *rx_buf;
+ 	int ret;
+ 
++	/* Read the header first and copy only what the packet says it is. The
++	 * firmware allocates exactly payload plus header -- as little as 12
++	 * bytes for a short command response -- so copying a fixed
++	 * SHMEM_BUF_SIZE read past the end of core 0's allocation, and paid
++	 * for 1600 bytes on every packet besides.
++	 */
++	total = (u32)le16_to_cpu(src->len) + le16_to_cpu(src->offset);
++	if (total < sizeof(*src) || total > SHMEM_BUF_SIZE) {
++		pr_err("%s: bad length %u\n", __func__, total);
++		return false;
++	}
++
++	rx_skb = esp_alloc_skb(total);
+ 	if (!rx_skb)
+ 		return false;
+ 
+-	rx_buf = skb_put(rx_skb, SHMEM_BUF_SIZE);
+-	memcpy(rx_buf, p, SHMEM_BUF_SIZE);
++	rx_buf = skb_put(rx_skb, total);
++	memcpy(rx_buf, p, total);
+ 
+ 	ret = process_rx_buf(hw, rx_skb);
+ 	if (ret)
+@@ -213,6 +233,10 @@
+ 	struct esp_wifi_shmem *hw = dev;
+ 
+ 	esp_process_new_packet_intr(&hw->adapter);
++	/* Transmit completion must not depend on a receive having succeeded:
++	 * this is the only caller of handle_tx, which is the only place skbs
++	 * leave tx_q and the only place esp_tx_resume() wakes the queue.
++	 */
+ 	esp_wifi_shmem_handle_tx(hw, tag);
+ }
+ 
+diff -ruN a/drivers/net/wireless/espressif/esp32-ng/Kconfig b/drivers/net/wireless/espressif/esp32-ng/Kconfig
+--- a/drivers/net/wireless/espressif/esp32-ng/Kconfig
++++ b/drivers/net/wireless/espressif/esp32-ng/Kconfig
+@@ -3,11 +3,6 @@
+ config ESP32_WIFI
+ 	tristate "Espressif esp32/esp32sx/esp32cx devices"
+ 	depends on CFG80211
+-	select WIRELESS_EXT
+-	select CRYPTO
+-	select CRYPTO_SKCIPHER
+-	select WEXT_SPY
+-	select WEXT_PRIV
+ 	help
+ 	  This is the standard Linux driver to support wifi on esp32 device
+ 	  family.
+diff -ruN a/drivers/net/wireless/espressif/esp32-ng/main.c b/drivers/net/wireless/espressif/esp32-ng/main.c
+--- a/drivers/net/wireless/espressif/esp32-ng/main.c
++++ b/drivers/net/wireless/espressif/esp32-ng/main.c
+@@ -55,10 +55,8 @@
+ 	u8 pad_len = 0, realloc_skb = 0;
+ 	u16 len = 0;
+ 	u16 total_len = 0;
+-	static u8 c;
+ 	u8 *pos = NULL;
+ 
+-	c++;
+ 	/* Get the priv */
+ 	cb = (struct esp_skb_cb *) skb->cb;
+ 	priv = cb->priv;
+@@ -279,8 +277,20 @@
+ 	pos = evt_buf;
+ 
+ 	while (len_left > 0) {
++		if (len_left < 2)
++			break;
+ 		tag_len = *(pos + 1);
+ 
++		/* tag_len arrives from the firmware and was used both to
++		 * advance pos and to size process_fw_data()'s read, with
++		 * nothing checking it against what is left of the event.
++		 */
++		if (tag_len + 2 > len_left) {
++			esp_err("bootup event tag %x claims %d bytes, %d left\n",
++				*pos, tag_len, len_left);
++			break;
++		}
++
+ 		esp_info("Bootup Event tag: %d\n", *pos);
+ 
+ 		switch (*pos) {
+@@ -678,10 +688,6 @@
+ 	len = le16_to_cpu(payload_header->len);
+ 	offset = le16_to_cpu(payload_header->offset);
+ 
+-	if (payload_header->reserved2 == 0xFF) {
+-		print_hex_dump(KERN_INFO, "Wake up packet: ", DUMP_PREFIX_ADDRESS, 16, 1, skb->data, len+offset, 1);
+-	}
+-
+ 	if (adapter->capabilities & ESP_CHECKSUM_ENABLED) {
+ 		rx_checksum = le16_to_cpu(payload_header->checksum);
+ 		payload_header->checksum = 0;
+@@ -850,8 +856,12 @@
+ 		/* Align SKB data pointer */
+ 		offset = ((unsigned long)skb->data) & (SKB_DATA_ADDR_ALIGNMENT - 1);
+ 
+-		if (offset)
+-			skb_reserve(skb, INTERFACE_HEADER_PADDING - offset);
++		/* Unconditional: the term is zero when the pointer is already
++		 * aligned, which is the usual case, and skipping the reserve
++		 * there left no headroom at all -- forcing process_tx_packet()
++		 * to allocate a second skb and copy every outgoing frame.
++		 */
++		skb_reserve(skb, INTERFACE_HEADER_PADDING - offset);
+ 	}
+ 
+ 	return skb;
