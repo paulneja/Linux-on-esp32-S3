@@ -1,24 +1,50 @@
-#!/usr/bin/lua
+#!/bin/sh
+# Board status as JSON. This used to be a lua script, which cost 223 KB of
+# flash for liblua plus the interpreter, and started a lua VM on every hit --
+# the page polls it every three seconds per open tab. awk is already in
+# busybox and reads the same five files.
+printf 'Content-type: application/json\r\n\r\n'
 
-local function slurp(p)
-	local f = io.open(p)
-	if not f then return "" end
-	local s = f:read("*a")
-	f:close()
+exec awk '
+function slurp(path,   line, all) {
+	all = ""
+	while ((getline line < path) > 0)
+		all = all (all == "" ? "" : "\n") line
+	close(path)
+	return all
+}
+function escape(s) {
+	gsub(/\\/, "\\\\", s)
+	gsub(/"/, "\\\"", s)
 	return s
-end
-local function trim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
+}
+BEGIN {
+	host = slurp("/proc/sys/kernel/hostname")
+	sub(/[ \t\n]+$/, "", host)
 
-local uptime  = slurp("/proc/uptime"):match("^(%d+)")
-local mem     = slurp("/proc/meminfo")
-local memtot  = mem:match("MemTotal:%s*(%d+)")
-local memfree = mem:match("MemAvailable:%s*(%d+)") or mem:match("MemFree:%s*(%d+)")
-local host    = trim(slurp("/proc/sys/kernel/hostname"))
-local kver    = slurp("/proc/version"):match("Linux version (%S+)")
-local rsa     = slurp("/proc/crypto"):find("rsa%-esp32s3") and "active" or "absent"
+	uptime = slurp("/proc/uptime")
+	if (match(uptime, /^[0-9]+/))
+		up = substr(uptime, 1, RLENGTH)
+	else
+		up = 0
 
-io.write("Content-type: application/json\r\n\r\n")
-io.write(string.format(
-	'{"host":"%s","kernel":"%s","uptime_s":%s,' ..
-	'"mem_total_kb":%s,"mem_free_kb":%s,"hw_rsa":"%s"}\n',
-	host, kver or "?", uptime or "0", memtot or "0", memfree or "0", rsa))
+	mem = slurp("/proc/meminfo")
+	total = free = 0
+	n = split(mem, lines, "\n")
+	for (i = 1; i <= n; i++) {
+		if (lines[i] ~ /^MemTotal:/)     { split(lines[i], f, /[ \t]+/); total = f[2] }
+		if (lines[i] ~ /^MemAvailable:/) { split(lines[i], f, /[ \t]+/); free  = f[2] }
+		else if (free == 0 && lines[i] ~ /^MemFree:/) { split(lines[i], f, /[ \t]+/); free = f[2] }
+	}
+
+	version = slurp("/proc/version")
+	if (match(version, /Linux version [^ ]+/))
+		kernel = substr(version, RSTART + 14, RLENGTH - 14)
+	else
+		kernel = "?"
+
+	rsa = (index(slurp("/proc/crypto"), "rsa-esp32s3") > 0) ? "active" : "absent"
+
+	printf "{\"host\":\"%s\",\"kernel\":\"%s\",\"uptime_s\":%s,", escape(host), escape(kernel), up + 0
+	printf "\"mem_total_kb\":%s,\"mem_free_kb\":%s,\"hw_rsa\":\"%s\"}\n", total + 0, free + 0, rsa
+}' < /dev/null

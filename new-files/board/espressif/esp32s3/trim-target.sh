@@ -2,11 +2,12 @@
 
 set -e
 
-rm -f "$1/usr/bin/luac"
-
-if [ -f "$1/etc/init.d/S35iptables" ]; then
-	mv -f "$1/etc/init.d/S35iptables" "$1/etc/init.d/iptables"
-fi
+# Nothing NEEDs these: readelf -d over every ELF in the image lists
+# libncurses for nano and bash, and libnl-3 and libnl-genl-3 for iw and
+# wpa_supplicant, and none of them names these four. buildroot's own
+# trim-libs.sh already does the same for libnl-nf, libnl-route and libnl-xfrm.
+rm -f "$1/usr/lib/"libform* "$1/usr/lib/"libmenu* "$1/usr/lib/"libpanel*
+rm -f "$1/usr/lib/"libnl-idiag*
 
 # Buildroot's esp32s3 board directory carries four dropbear private host keys
 # and they are tracked in a public repository, so every board built from it
