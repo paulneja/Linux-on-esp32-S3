@@ -149,7 +149,10 @@ kernel does not build), lua (223683 bytes, for one CGI now written in sh and
 awk), the duplicate MicroPython and the untested payloads under
 `/usr/share/mmu` (468 KB), the gpio tools that duplicate `espctl`, and four
 libraries no ELF in the image lists as `NEEDED`. The kernel itself is 320 KB
-smaller.
+smaller. One trade was tried and reverted: compressing busybox's help text
+saves 45 KB of flash but makes every `--help` allocate about 450 KB of RAM
+for bunzip2, in one contiguous block — `nc --help` went from 76 KB private to
+584 KB on the board.
 
 ### Behaviour
 
