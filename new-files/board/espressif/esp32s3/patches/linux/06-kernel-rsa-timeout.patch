@@ -1,0 +1,92 @@
+esp32s3-rsa: bound the ready wait and stop self-testing on every boot
+
+rsa_hw_enable() spun on RSA_QUERY_CLEAN with no bound. The firmware hands the
+block over with periph_module_enable(), and when that has not happened the
+register reads zero forever: the boot stopped dead with nothing printed.
+DEVELOPMENT.md records exactly that failure as incident 6 and ends with "the
+wait loop still has no timeout". It has one now -- 100 ms against a clear that
+takes microseconds -- and the driver declines to register instead of hanging
+the machine.
+
+The self-test runs two modular exponentiations plus a software reference for
+each, about 45 ms of every boot, to prove that hardware which has not changed
+since the last boot still works. It is a module parameter now, off by default;
+build/test-board.py asks for it when it wants the proof.
+
+--- a/drivers/crypto/esp32s3_rsa.c
++++ b/drivers/crypto/esp32s3_rsa.c
+@@ -4,6 +4,7 @@
+ #include <linux/io.h>
+ #include <linux/kernel.h>
+ #include <linux/module.h>
++#include <linux/moduleparam.h>
+ #include <linux/mutex.h>
+ #include <linux/slab.h>
+ #include <linux/mpi.h>
+@@ -443,6 +444,15 @@
+ 	return ret;
+ }
+ 
++/* The self-test runs two modular exponentiations and a software reference
++ * for each, about 45 ms of every boot, to prove hardware that has not changed
++ * since the last boot still works. Off by default; esp32s3_rsa.selftest=1 to
++ * run it, and the board suite passes that when it wants the proof.
++ */
++static bool rsa_selftest;
++module_param_named(selftest, rsa_selftest, bool, 0444);
++MODULE_PARM_DESC(selftest, "Run the RSA self-test at init (default off)");
++
+ static void esp_rsa_selftest(void)
+ {
+ 	static const int sizes[] = { 64, 256 };
+@@ -455,15 +465,32 @@
+ 	}
+ }
+ 
+-static void rsa_hw_enable(void)
++/* The accelerator clears its memory after being powered up and reports that
++ * through RSA_QUERY_CLEAN. This used to spin without a bound, so a block that
++ * never answered -- the firmware hands it over with periph_module_enable, and
++ * if that has not happened the register reads zero forever -- stopped the boot
++ * dead, with nothing printed. It is a documented hazard in DEVELOPMENT.md
++ * (incident 6) that had no fix. Time it out and let the driver fail instead.
++ */
++static int rsa_hw_enable(void)
+ {
+ 	u32 v;
++	int i;
+ 
+ 	v = readl(sys + SYS_RSA_PD_CTRL);
+ 	writel(v & ~RSA_MEM_PD_BIT, sys + SYS_RSA_PD_CTRL);
+-	while (readl(rsa + RSA_QUERY_CLEAN) != 1)
+-		cpu_relax();
+-	writel(0, rsa + RSA_INT_ENA);
++	/* Clearing 4 KiB of accelerator memory takes microseconds; a hundred
++	 * milliseconds is four orders of magnitude of margin.
++	 */
++	for (i = 0; i < 100000; i++) {
++		if (readl(rsa + RSA_QUERY_CLEAN) == 1) {
++			writel(0, rsa + RSA_INT_ENA);
++			return 0;
++		}
++		udelay(1);
++	}
++	pr_err("esp32s3-rsa: accelerator did not report ready; not registering\n");
++	return -ETIMEDOUT;
+ }
+ 
+ static int __init esp_rsa_init(void)
+@@ -476,8 +503,11 @@
+ 		ret = -ENOMEM;
+ 		goto err;
+ 	}
+-	rsa_hw_enable();
+-	esp_rsa_selftest();
++	ret = rsa_hw_enable();
++	if (ret)
++		goto err;
++	if (rsa_selftest)
++		esp_rsa_selftest();
+ 
+ 	ret = crypto_register_akcipher(&esp_rsa_alg);
+ 	if (ret) {

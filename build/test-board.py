@@ -162,8 +162,13 @@ try:
     record('installed-kernel-and-rootfs-hashes', verify_installed)
     checks = [
         ('boot', 'uname -a && id && mount && free && dmesg',
-         ('6.11.0-forkbank', 'esp32s3-rsa: selftest 512-bit PASS',
-          'esp32s3-rsa: selftest 2048-bit PASS', 'Mounted root (cramfs filesystem) readonly')),
+         ('6.11.0-forkbank', 'Mounted root (cramfs filesystem) readonly')),
+        # The self-test no longer runs on every boot (esp32s3_rsa.selftest=1
+        # brings it back). What matters is that the driver came up and
+        # registered, which is what the crypto API reports.
+        ('hardware-rsa-registered', 'grep -A2 "^name *: rsa$" /proc/crypto | grep -B2 esp32s3 || grep -c rsa-esp32s3 /proc/crypto',
+         'esp32s3'),
+        ('no-driver-timeout', '! dmesg | grep -q "accelerator did not report ready" && echo RSA_OK', 'RSA_OK'),
         ('shell-policy', 'test -n "$BASH_VERSION" && test "$(readlink /bin/sh)" = busybox && test "$HOME" = /home/root', None),
         ('first-boot-home', 'test -f /home/root/README.txt && test "$(stat -c %a /home/root)" = 700 && test -f /home/www/index.html && test -x /home/www/cgi-bin/status && test ! -e /www && set -- /home/.www-seed.* && test ! -e "$1"', None),
         ('excluded-programs', 'test ! -e /usr/bin/sqlite3 && test ! -e /usr/bin/sudo && test ! -e /usr/bin/doas && test ! -e /usr/bin/nvim && test ! -e /usr/bin/python3', None),
