@@ -30,6 +30,17 @@ if [ -L /home/www ] || [ ! -d /home/www ]; then
     echo 'home-init: refusing a symlink or non-directory /home/www' >&2
     exit 1
 fi
+# A board upgraded with /home preserved still has the lua status CGI from
+# before, and lua is no longer in the image, so the page would 500. Replace
+# it only if it is the stock lua one -- a user's own CGI is left alone.
+cgi=/home/www/cgi-bin/status
+if [ -f "$cgi" ] && [ "$(head -c 14 "$cgi" 2>/dev/null)" = '#!/usr/bin/lua' ]; then
+    umask 022
+    gzip -dc /usr/share/esp32-home/www.tar.gz | tar -xf - -C /home -O www/cgi-bin/status > "$cgi.new" &&
+        chmod 755 "$cgi.new" && mv "$cgi.new" "$cgi" &&
+        echo 'home-init: replaced the lua status CGI with the sh one'
+    rm -f "$cgi.new"
+fi
 if ! grep -qxF /usr/bin/user-shell /etc/shells; then
     printf '%s\n' /usr/bin/user-shell >> /etc/shells
 fi

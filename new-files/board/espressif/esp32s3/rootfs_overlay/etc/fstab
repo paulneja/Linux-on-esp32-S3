@@ -2,13 +2,15 @@
 /dev/root	/		ext2	rw,noauto	0	1
 proc		/proc		proc	defaults	0	0
 devpts		/dev/pts	devpts	defaults,gid=5,mode=620,ptmxmode=0666	0	0
-# tmpfs is RAM. Without a size= it defaults to half of memory, so one runaway
-# write -- a download, a log, a core of output -- can take the machine down to
-# where a fork stops working. These caps are the point at which a program
-# should fail rather than the system.
-tmpfs		/dev/shm	tmpfs	mode=0777,size=512k,nr_inodes=256	0	0
-tmpfs		/tmp		tmpfs	mode=1777,size=2m,nr_inodes=1024	0	0
-tmpfs		/run		tmpfs	mode=0755,nosuid,nodev,size=512k,nr_inodes=256	0	0
+# These are RAM with no cap, and that cannot be fixed here. On NOMMU the
+# kernel has no SHMEM (init/Kconfig: "depends on MMU"), so what answers to
+# "tmpfs" is the tiny-shmem stub over ramfs, whose only mount parameter is
+# mode. A size= or nr_inodes= option is rejected at mount time and the
+# filesystem is not mounted at all -- verified on the board. A runaway write
+# to /tmp takes memory until the OOM killer acts; keep large files on /home.
+tmpfs		/dev/shm	tmpfs	mode=0777	0	0
+tmpfs		/tmp		tmpfs	mode=1777	0	0
+tmpfs		/run		tmpfs	mode=0755,nosuid,nodev	0	0
 sysfs		/sys		sysfs	defaults	0	0
 mtd:etc		/etc		jffs2	nofail		0	0
 mtd:home	/home		jffs2	nofail		0	0

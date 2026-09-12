@@ -52,8 +52,11 @@ instead of 4.23 s. `tainted` 0, no OOM, panic, BUG or Oops.
 - `LOG_BUF_SHIFT` 17 to 15, `LEGACY_PTYS` off, and `TICK_CPU_ACCOUNTING`
   instead of `VIRT_CPU_ACCOUNTING_GEN`, which pulls in a debugging option that
   adds work to every syscall return.
-- tmpfs mounts have `size=` and inode limits; without them one runaway write
-  could take the machine to where a fork stops working.
+- tmpfs cannot be capped on this kernel, and the fstab now says why instead
+  of pretending: `SHMEM` depends on MMU, so what answers to tmpfs is the
+  tiny-shmem stub over ramfs, whose only mount option is `mode`. A `size=`
+  is rejected and the filesystem is not mounted at all. Keep large files on
+  `/home`.
 
 ### Fork
 
