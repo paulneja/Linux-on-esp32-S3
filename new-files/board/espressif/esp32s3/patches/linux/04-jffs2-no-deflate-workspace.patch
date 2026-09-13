@@ -22,6 +22,13 @@ The inflate workspace stays unconditionally: the shipped /etc and /home images
 are built by mkfs.jffs2 with compression on, so reading them needs it whatever
 the write-side mode is.
 
+CMODE_NONE is only a default: `mount -o compr=zlib` (or a remount) overrides
+it per superblock and would reach jffs2_zlib_compress() with a NULL
+workspace, and zlib_deflateInit2() stores through that pointer before it
+validates anything. So under CMODE_NONE the zlib compressor also refuses to
+compress: jffs2_compress() falls back to storing the data uncompressed, which
+is what the mode meant in the first place. Decompression is unaffected.
+
 --- a/fs/jffs2/compr_zlib.c
 +++ b/fs/jffs2/compr_zlib.c
 @@ -42,6 +42,12 @@
@@ -60,3 +67,17 @@ the write-side mode is.
  	vfree(inf_strm.workspace);
  }
  #else
+@@ -78,6 +89,13 @@
+ 	if (*dstlen <= STREAM_END_SPACE)
+ 		return -1;
+ 
++#ifdef CONFIG_JFFS2_CMODE_NONE
++	/* No deflate workspace was allocated (see alloc_workspaces), so this
++	 * must never run: compr=zlib on the mount line is the one way in.
++	 * Returning -1 makes jffs2_compress() store the node uncompressed.
++	 */
++	return -1;
++#endif
+ 	mutex_lock(&deflate_mutex);
+ 
+ 	if (Z_OK != zlib_deflateInit(&def_strm, 3)) {
