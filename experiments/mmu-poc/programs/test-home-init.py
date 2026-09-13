@@ -11,7 +11,7 @@ repo = Path(__file__).resolve().parents[3]
 source = repo / 'new-files/board/espressif/esp32s3/rootfs_overlay/usr/sbin/home-init'
 with tempfile.TemporaryDirectory(prefix='esp32-init-test-') as directory:
     root = Path(directory)
-    for name in ('home', 'etc', 'share', 'bin'):
+    for name in ('home', 'etc', 'share', 'bin', 'run'):
         (root / name).mkdir()
     (root / 'etc/shells').write_text('/bin/sh\n')
     (root / 'share/README.txt').write_text('Welcome\n')
@@ -39,6 +39,7 @@ with tempfile.TemporaryDirectory(prefix='esp32-init-test-') as directory:
         ('/usr/share/esp32-home', str(root / 'share')),
         ('/usr/sbin/web-server', str(root / 'bin/web-server')),
         ('/etc/shells', str(root / 'etc/shells')),
+        ('/run/', str(root / 'run') + '/'),
         ('/home', str(root / 'home')),
     ):
         text = text.replace(old, new)
@@ -50,8 +51,21 @@ with tempfile.TemporaryDirectory(prefix='esp32-init-test-') as directory:
     assert result.returncode != 0
     assert not (root / 'home/www').exists()
     assert not list((root / 'home').glob('.www-seed.*'))
+    # A gzip whose trailing CRC is wrong: gzip streams the whole archive and
+    # only then fails, tar succeeds, and a plain pipeline reports success.
+    # The seed must be rejected, nothing published, nothing left behind.
+    bad_crc = bytearray(good_seed)
+    bad_crc[-8] ^= 0xff
+    seed.write_bytes(bytes(bad_crc))
+    result = subprocess.run(['sh', script], env=env, capture_output=True)
+    assert result.returncode != 0, 'a bad trailing CRC was accepted'
+    assert b'did not decompress cleanly' in result.stderr, result.stderr
+    assert not (root / 'home/www').exists()
+    assert not list((root / 'home').glob('.www-seed.*'))
+    assert not list((root / 'run').glob('www.tar.*')), 'temporary tar left behind'
     seed.write_bytes(good_seed)
     subprocess.run(['sh', script], env=env, check=True)
+    assert not list((root / 'run').glob('www.tar.*')), 'temporary tar left behind'
     index = root / 'home/www/index.html'
     assert index.read_bytes() == b'test seed\n'
     assert (root / 'home/www/cgi-bin/status').stat().st_mode & 0o777 == 0o755
@@ -61,4 +75,4 @@ with tempfile.TemporaryDirectory(prefix='esp32-init-test-') as directory:
     assert index.read_text() == 'user changes\n'
     assert not list((root / 'home').glob('.www-seed.*'))
     assert (root / 'etc/shells').read_text().count('/usr/bin/user-shell') == 1
-print('PASS: plain tar, fresh seed, failed gzip cleanup, retry, modes, existing web preserved')
+print('PASS: plain tar, fresh seed, failed gzip cleanup, bad trailing CRC rejected, retry, modes, existing web preserved')

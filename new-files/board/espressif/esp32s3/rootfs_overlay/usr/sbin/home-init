@@ -12,12 +12,27 @@ if [ ! -e /home/root/README.txt ] && [ ! -L /home/root/README.txt ]; then
     cp /usr/share/esp32-home/README.txt /home/root/README.txt
     chmod 600 /home/root/README.txt
 fi
+# gzip's exit status is lost behind a pipe: with a bad trailing CRC it emits
+# the whole archive, then fails, tar succeeds, and the pipeline reports 0. So
+# decompress to a file first and only unpack what gzip finished cleanly.
+unpack_www() {
+    tar=$(mktemp /run/www.tar.XXXXXX) || return 1
+    if ! gzip -dc /usr/share/esp32-home/www.tar.gz > "$tar"; then
+        rm -f -- "$tar"
+        echo 'home-init: www.tar.gz did not decompress cleanly' >&2
+        return 1
+    fi
+    tar -xf "$tar" "$@"
+    status=$?
+    rm -f -- "$tar"
+    return $status
+}
 if [ ! -e /home/www ] && [ ! -L /home/www ]; then
     umask 077
     seed=$(mktemp -d /home/.www-seed.XXXXXX)
     trap 'rm -rf -- "$seed"' EXIT
     trap 'exit 1' HUP INT TERM
-    gzip -dc /usr/share/esp32-home/www.tar.gz | tar -xf - -C "$seed"
+    unpack_www -C "$seed"
     chown -R 0:0 "$seed/www"
     find "$seed/www" -type d -exec chmod 755 {} +
     find "$seed/www/cgi-bin" -type f -exec chmod 755 {} +
@@ -36,7 +51,7 @@ fi
 cgi=/home/www/cgi-bin/status
 if [ -f "$cgi" ] && [ "$(head -c 14 "$cgi" 2>/dev/null)" = '#!/usr/bin/lua' ]; then
     umask 022
-    gzip -dc /usr/share/esp32-home/www.tar.gz | tar -xf - -C /home -O www/cgi-bin/status > "$cgi.new" &&
+    unpack_www -C /home -O www/cgi-bin/status > "$cgi.new" &&
         chmod 755 "$cgi.new" && mv "$cgi.new" "$cgi" &&
         echo 'home-init: replaced the lua status CGI with the sh one'
     rm -f "$cgi.new"
