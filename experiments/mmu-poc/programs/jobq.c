@@ -1,11 +1,11 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include <signal.h>
+#include <spawn.h>
 #include <stdlib.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include "proc-metrics.h"
-extern pid_t fork(void);
 struct job {char **argv;pid_t pid;long long started;};
 static volatile sig_atomic_t cancelled;
 static void stop(int sig) {cancelled=sig;}
@@ -32,6 +32,16 @@ int main(int argc,char **argv) {
         argv[i]=NULL;jobs[count++].argv=argv+i+1;
     }
     signal(SIGINT,stop);signal(SIGTERM,stop);
+    /* No file actions: uClibc's spawn falls back to fork() the moment it is
+       given any, and on NOMMU there is nothing to fall back to -- it returns
+       ENOSYS. USEVFORK keeps setpgid and the signal defaults from vetoing the
+       vfork path, and vfork is what makes a job cost no fork shadow at all. */
+    posix_spawnattr_t attr;sigset_t dfl;
+    sigemptyset(&dfl);sigaddset(&dfl,SIGINT);sigaddset(&dfl,SIGTERM);
+    posix_spawnattr_init(&attr);
+    posix_spawnattr_setflags(&attr,POSIX_SPAWN_USEVFORK|POSIX_SPAWN_SETPGROUP|POSIX_SPAWN_SETSIGDEF);
+    posix_spawnattr_setpgroup(&attr,0);
+    posix_spawnattr_setsigdefault(&attr,&dfl);
     long long blocked_since=monotonic_ms();
     while(finished<count) {
         long long now=monotonic_ms();
@@ -52,23 +62,27 @@ int main(int argc,char **argv) {
         if(cancelled && next<count) {finished+=count-next;next=count;failed=1;}
         if(next<count && active<(unsigned)parallel) {
             long avail=proc_field("/proc/meminfo","MemAvailable:");
-            long own=process_field(getpid(),"PrivateRAM:");if(own<0)own=256;
-            long long required=(long long)reserve+need+2LL*own;
+            /* No term for the queue's own RAM: spawning costs no copy of it. */
+            long long required=(long long)reserve+need;
             for(unsigned i=0;i<next;i++)if(jobs[i].pid>0) {
                 long used=process_field(jobs[i].pid,"PrivateRAM:");
                 required+=used<0?need:used<need?need-used:0;
             }
             if(avail>=0 && (long long)avail>=required) {
-                fflush(NULL);pid_t p=fork();
-                if(!p) {
-                    setpgid(0,0);signal(SIGINT,SIG_DFL);signal(SIGTERM,SIG_DFL);
-                    execvp(jobs[next].argv[0],jobs[next].argv);_exit(errno==ENOENT?127:126);
-                }
-                if(p>0) {
-                    setpgid(p,p);jobs[next].pid=p;jobs[next].started=monotonic_ms();active++;
+                pid_t p;fflush(NULL);
+                int rc=posix_spawnp(&p,jobs[next].argv[0],NULL,&attr,jobs[next].argv,environ);
+                if(!rc) {
+                    jobs[next].pid=p;jobs[next].started=monotonic_ms();active++;
                     printf("START job=%u pid=%ld active=%u available_kib=%ld required_kib=%lld\n",next+1,(long)p,active,avail,required);
                     next++;waiting=0;blocked_since=now;
-                } else if(errno!=ENOMEM && errno!=EAGAIN) {perror("fork");failed=1;finished++;next++;}
+                } else if(rc!=ENOMEM && rc!=EAGAIN) {
+                    /* glibc reports a failed exec from posix_spawn itself; the
+                       NOMMU path cannot and the child exits 127 instead. Both
+                       have to produce the same line. */
+                    errno=rc;perror("posix_spawnp");
+                    printf("EXIT job=%u pid=0 code=%d elapsed_ms=0\n",next+1,rc==ENOENT?127:126);
+                    failed=1;finished++;next++;
+                }
             } else if(!waiting) {
                 printf("WAIT job=%u available_kib=%ld required_kib=%lld\n",next+1,avail,required);waiting=1;
             }

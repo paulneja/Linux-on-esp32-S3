@@ -1,0 +1,103 @@
+--- a/master.c
++++ b/master.c
+@@ -57,6 +57,65 @@
+ pid_t forkpty(int *amaster, char *name, struct termios *termp,
+ 	      struct winsize *winp);
+ #endif
++#ifndef HAVE_OPENPTY
++int openpty(int *amaster, int *aslave, char *name, struct termios *termp,
++	    struct winsize *winp);
++#endif
++
++/* forkpty() has to return in the child, and a vfork()ed child may not return
++** from the function that called vfork(): it would run off the stack frame it
++** shares with the suspended parent. So the pty setup and the exec live in one
++** frame here. The child only makes syscalls -- it never writes to dtach's own
++** memory, and it writes its error with write() because the stdio buffers
++** belong to the parent. On NOMMU this makes the session's second process cost
++** no copy of dtach at all; the first one, the daemonized master, still forks
++** because it never execs. */
++static pid_t
++spawnpty(int *amaster, struct termios *termp, char **argv, int statusfd)
++{
++	int master, slave;
++	pid_t pid;
++
++	if (openpty(&master, &slave, NULL, termp, NULL) < 0)
++		return -1;
++
++	pid = vfork();
++	if (pid < 0)
++	{
++		close(master);
++		close(slave);
++		return -1;
++	}
++	else if (pid == 0)
++	{
++		setsid();
++#ifdef TIOCSCTTY
++		if (ioctl(slave, TIOCSCTTY, NULL) < 0)
++			_exit(1);
++#endif
++		dup2(slave, 0);
++		dup2(slave, 1);
++		dup2(slave, 2);
++		if (slave > 2)
++			close(slave);
++		close(master);
++
++		execvp(*argv, argv);
++
++		if (statusfd != -1)
++			dup2(statusfd, 1);
++		else
++			write(1, EOS "\r\n", sizeof(EOS "\r\n") - 1);
++		write(1, progname, strlen(progname));
++		write(1, ": could not execute ", 20);
++		write(1, *argv, strlen(*argv));
++		write(1, "\r\n", 2);
++		_exit(1);
++	}
++	close(slave);
++	*amaster = master;
++	return pid;
++}
+ 
+ /* Unlink the socket */
+ static void
+@@ -112,30 +171,14 @@
+ 	the_pty.term = orig_term;
+ 	memset(&the_pty.ws, 0, sizeof(struct winsize));
+ 
+-	/* Create the pty process */
++	/* Create the pty process. spawnpty() never returns in the child. */
++	fflush(NULL);
+ 	if (!dont_have_tty)
+-		the_pty.pid = forkpty(&the_pty.fd, NULL, &the_pty.term, NULL);
++		the_pty.pid = spawnpty(&the_pty.fd, &the_pty.term, argv, statusfd);
+ 	else
+-		the_pty.pid = forkpty(&the_pty.fd, NULL, NULL, NULL);
++		the_pty.pid = spawnpty(&the_pty.fd, NULL, argv, statusfd);
+ 	if (the_pty.pid < 0)
+ 		return -1;
+-	else if (the_pty.pid == 0)
+-	{
+-		/* Child.. Execute the program. */
+-		execvp(*argv, argv);
+-
+-		/* Report the error to statusfd if we can, or stdout if we
+-		** can't. */
+-		if (statusfd != -1)
+-			dup2(statusfd, 1);
+-		else
+-			printf(EOS "\r\n");
+-
+-		printf("%s: could not execute %s: %s\r\n", progname,
+-		       *argv, strerror(errno));
+-		fflush(stdout);
+-		_exit(1);
+-	}
+ 	/* Parent.. Finish up and return */
+ #ifdef BROKEN_MASTER
+ 	{

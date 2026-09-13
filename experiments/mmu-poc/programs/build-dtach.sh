@@ -6,6 +6,7 @@ archive="$programs_out/dtach-b027c27.tar.gz"
 echo "2ec8db52ed99700cf80258b52e77461068abf24a2798cb91f9c0b2bc6e6ee8f4  $archive" | sha256sum -c -
 source_dir="$programs_out/dtach-$revision"
 if [[ ! -d "$source_dir" ]]; then tar -xzf "$archive" -C "$programs_out"; fi
+apply_program_patch "$source_dir" dtach-vfork.patch
 cd "$source_dir"
 export CFLAGS="$CFLAGS -D_GNU_SOURCE"
 export LIBS='-l:libfork.so.0'

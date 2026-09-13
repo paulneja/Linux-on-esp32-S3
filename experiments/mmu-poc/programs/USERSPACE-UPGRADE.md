@@ -150,10 +150,18 @@ limita trabajadores; `-m` declara el presupuesto de RAM por trabajo en KiB;
 `-r` deja una reserva; `-w` limita la espera de admisión y `-t` el tiempo de
 cada trabajo. Hasta 64 trabajos y 32 trabajadores por invocación.
 
-La admisión consulta MemAvailable, reserva hasta dos veces la RAM privada de
-la cola para un fork y el presupuesto aún no consumido de trabajos activos.
-Si no alcanza, espera. ENOMEM/EAGAIN reales se reintentan con límite; jamás
-se devuelve un fork ficticio. Informa START/WAIT/EXIT y propaga fallos.
+La admisión consulta MemAvailable, reserva la reserva declarada y el
+presupuesto aún no consumido de trabajos activos. Ya no reserva nada para la
+copia de sí misma: lanza con `posix_spawn`, que en esta libc cae en `vfork`
+y no copia la memoria de la cola, así que el trabajo no cuesta un banco de
+fork. Si no alcanza, espera. ENOMEM/EAGAIN reales se reintentan con límite.
+Informa START/WAIT/EXIT y propaga fallos.
+
+`posix_spawn` en NOMMU solo funciona sin `file_actions`: en cuanto recibe
+alguna, uClibc intenta `fork()` y devuelve `ENOSYS` porque no lo hay
+(`librt/spawn.c`). La cola no los necesita — el grupo de proceso y los
+manejadores por defecto se piden con atributos, y `POSIX_SPAWN_USEVFORK`
+evita que esos atributos descarten el camino de `vfork`.
 
 Es un control cooperativo, **no una garantía contra OOM**: los trabajos pueden
 superar su presupuesto, otros servicios consumir memoria y NOMMU requiere

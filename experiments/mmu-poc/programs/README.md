@@ -96,6 +96,48 @@ Requiere los binarios `out/real-bins/dash` y `make` de `fork/real/build.sh`.
 Produce `out/programs/rootfs-programs.cramfs`; comprueba tamaño y cramfs.
 Los scripts de construcción no flashean. Neovim/CPython quedan excluidos.
 
+## Qué programa copia memoria al lanzar otro
+
+En NOMMU `fork()` lo implementa el backend de bancos del kernel: copia la
+memoria privada del proceso. `vfork()` no copia nada — comparte la memoria y
+suspende al padre hasta el `exec`. Un programa que solo lanza a otro y hace
+`exec` enseguida no necesita esa copia, y cada uno que se pasa a `vfork` baja
+el pico de RAM de la imagen entera.
+
+| programa | lanza con | por qué |
+|---|---|---|
+| BusyBox, wpa_supplicant, udhcpc, crond | `vfork` | ya lo hacían en NOMMU |
+| make | `vfork` | solo lanza recetas; ver [fork/real](../fork/real/README.md) |
+| jobq | `posix_spawn`, que aquí cae en `vfork` | lanza y hace `exec`, sin nada en medio |
+| dtach, el shell de la sesión | `vfork` | `dtach-vfork.patch` |
+| dtach, el maestro que se demoniza | `fork` | ese hijo nunca hace `exec` |
+| dash, bash | `vfork` en comandos externos simples, `fork` en el resto | tuberías, `$(...)`, subshells y `&` necesitan memoria separada |
+| socat | `fork` | ver abajo |
+| programbench, process-test | `fork` | son las herramientas que lo miden |
+
+`posix_spawn` en esta libc solo llega a `vfork` si no se le pasan
+`file_actions`: en cuanto recibe alguna intenta `fork()` y devuelve `ENOSYS`,
+porque en NOMMU no hay ninguno (`librt/spawn.c:123`). Los atributos sí sirven,
+con `POSIX_SPAWN_USEVFORK` para que pedir grupo de proceso o manejadores por
+defecto no descarte el camino de `vfork`. El `execvp()` de esta uClibc está
+escrito para ese caso: en NOMMU reserva con `mmap` cacheado en vez de `malloc`,
+justamente para no dejar basura en el padre suspendido (`libc/unistd/exec.c`).
+
+### socat se queda en fork
+
+Socat tiene un solo `xio_fork()` y doce sitios que lo llaman. Once son el modo
+de un proceso por conexión (`xio-listen.c`, `xio-socket.c` ×2, `xio-udp.c`,
+`xio-socks.c`, `xio-socks5.c`, `xio-proxy.c`, `xio-unix.c`, `xio-ipapp.c`,
+`xio-openssl.c`, `xio-posixmq.c`): el hijo se queda corriendo el bucle de
+transferencia y **nunca hace `exec`**. Ahí `vfork` es imposible por definición.
+El doceavo, `xio-progcall.c:412`, es `EXEC:`/`SYSTEM:` y sí termina en `exec`,
+pero `xio_fork()` devuelve 0 al que lo llamó — cosa que un hijo de `vfork` no
+puede hacer, porque corre sobre la pila del padre — y antes escribe estado
+global (`num_child`, `diedunknown[]`, `xiodroplocks()`, `diag_fork()`,
+`xiosetenvulong("PID")`) que bajo `vfork` caería en la memoria del padre
+suspendido. Convertirlo es reescribir `xio_fork` y sus doce llamadas: un socat
+propio, no un parche. Se queda como está.
+
 ## Reducción de metadatos ELF
 
 `make-image.sh` ahora aplica `strip-rootfs.py` a una copia de los archivos,
