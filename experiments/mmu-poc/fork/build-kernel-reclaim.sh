@@ -3,7 +3,19 @@ set -euo pipefail
 task_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 source "$task_dir/../programs/env.sh"
 kernel_dir="$experiment_dir/out/linux-fork"
-if patch -d "$kernel_dir" --force --dry-run -R -p1 < "$task_dir/quiet-trace.patch" >/dev/null 2>&1; then
+applied() { patch -d "$kernel_dir" --force --dry-run -R -p1 < "$task_dir/$1" >/dev/null 2>&1; }
+# Dependencies come off first. swap-banks and switch-latency rewrite the
+# code the base patches touch, so on a warm tree that still carries them the
+# base patches' own checks below would fail on changed context before this
+# script ever reached the line that removes them. Strip them in reverse
+# order; the block near the end puts them back when FORK_SWAP_BANKS=1.
+if applied switch-latency.patch; then
+    patch -d "$kernel_dir" --force --batch -R -p1 < "$task_dir/switch-latency.patch"
+fi
+if applied swap-banks.patch; then
+    patch -d "$kernel_dir" --force --batch -R -p1 < "$task_dir/swap-banks.patch"
+fi
+if applied quiet-trace.patch; then
     patch -d "$kernel_dir" --force --batch -R -p1 < "$task_dir/quiet-trace.patch"
 fi
 if ! patch -d "$kernel_dir" --force --dry-run -R -p1 < "$task_dir/reclaim.patch" >/dev/null 2>&1; then
@@ -26,18 +38,10 @@ patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/quiet-trace.patch"
 # so it has to see them already applied. switch-latency.patch edits the swap
 # version of nommu_bank_switch(), so it rides along.
 if [ "${FORK_SWAP_BANKS:-0}" = 1 ]; then
-    if ! patch -d "$kernel_dir" --force --dry-run -R -p1 < "$task_dir/swap-banks.patch" >/dev/null 2>&1; then
-        patch -d "$kernel_dir" --forward --batch --dry-run -p1 < "$task_dir/swap-banks.patch"
-        patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/swap-banks.patch"
-    fi
-    if ! patch -d "$kernel_dir" --force --dry-run -R -p1 < "$task_dir/switch-latency.patch" >/dev/null 2>&1; then
-        patch -d "$kernel_dir" --forward --batch --dry-run -p1 < "$task_dir/switch-latency.patch"
-        patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/switch-latency.patch"
-    fi
-elif patch -d "$kernel_dir" --force --dry-run -R -p1 < "$task_dir/switch-latency.patch" >/dev/null 2>&1; then
-    # A warm tree built with them still has them applied; take them back off.
-    patch -d "$kernel_dir" --force --batch -R -p1 < "$task_dir/switch-latency.patch"
-    patch -d "$kernel_dir" --force --batch -R -p1 < "$task_dir/swap-banks.patch"
+    patch -d "$kernel_dir" --forward --batch --dry-run -p1 < "$task_dir/swap-banks.patch"
+    patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/swap-banks.patch"
+    patch -d "$kernel_dir" --forward --batch --dry-run -p1 < "$task_dir/switch-latency.patch"
+    patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/switch-latency.patch"
 fi
 python3 "$task_dir/check-kernel-config.py" \
     "$repo_dir/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config" \
