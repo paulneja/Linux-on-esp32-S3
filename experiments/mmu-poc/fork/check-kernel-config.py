@@ -65,8 +65,11 @@ if __name__ == '__main__':
           file=sys.stderr)
     for symbol, wanted, got in found:
         print(f'  {symbol}: seed says {show(wanted)}, built has {show(got)}', file=sys.stderr)
-    print('\nThe kernel tree is stale. It is copied only when it does not exist,'
-          '\nso a config change never reached it. Recover with:'
-          '\n  rm -rf experiments/mmu-poc/out/linux-fork'
-          '\nand build again, or run a clean build/reproduce.sh.', file=sys.stderr)
+    print('\nThe built tree is older than the board config. out/linux-fork is a copy'
+          '\nof buildroot\'s kernel tree, taken only when it does not already exist, so'
+          '\nboth of them can be the stale one:'
+          '\n  rm -rf experiments/mmu-poc/out/linux-fork    # the copy'
+          '\nand if that still reports the same symbols, buildroot\'s own tree predates'
+          '\nthe config -- rebuild it (build/reproduce.sh); removing the copy cannot'
+          '\nfix what it is copied from.', file=sys.stderr)
     raise SystemExit(1)

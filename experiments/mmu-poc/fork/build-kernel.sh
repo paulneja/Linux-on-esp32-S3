@@ -8,6 +8,17 @@ kernel_dir="$task_dir/../out/linux-fork"
 prefix="$build_dir/crosstool-NG/builds/xtensa-esp32s3-linux-uclibcfdpic/bin/xtensa-esp32s3-linux-uclibcfdpic-"
 export XTENSA_GNU_CONFIG="$build_dir/xtensa-dynconfig/esp32s3.so"
 if [[ ! -e "$kernel_dir" ]]; then
+    # The copy inherits buildroot's config and its applied patches, so a stale
+    # buildroot tree yields a stale copy and deleting the copy does not help.
+    # Catch that here rather than after 1.7 GB and a full build.
+    if ! python3 "$task_dir/check-kernel-config.py" \
+            "$repo_dir/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config" \
+            "$source_dir/.config" >/dev/null 2>&1; then
+        echo "build-kernel.sh: buildroot's kernel tree predates the board config:" >&2
+        echo "  $source_dir" >&2
+        echo "This copy comes from there, so rebuild it first (build/reproduce.sh)." >&2
+        exit 1
+    fi
     cp -a --reflink=auto "$source_dir" "$kernel_dir"
 fi
 cd -- "$kernel_dir"
