@@ -397,6 +397,41 @@ that one directory match `new-files/` exactly.
    which would have `nommu_bank_switch()` exchange the same region twice.
    `FORK_SWAP_BANKS=1` builds it back in.
 
+12. **Measurement, incident 12**: the first soak runner called a boot "ok"
+   when nothing in its fault list matched -- including boots that never
+   reached the login prompt -- and its list missed `Illegal Instruction in
+   'sleep'` and busybox's `Caught unhandled exception`. On that basis the 0.7
+   release was declared clean (0/5) and user space "ruled out"; both were
+   wrong. With the corrected classifier the 0.7 kernel faults in about one
+   factory boot in ten, so the corruption predates this batch and this batch
+   made it more frequent. And 0/5 says little anyway: at a true rate of 20%
+   it happens a third of the time. `build/soak-boot.py` now has three states,
+   passes only on the login prompt plus the last init script, prints a 95%
+   upper bound, and has its own host tests. Ten rounds minimum before
+   reading anything into a zero; twenty to compare two variants.
+13. **Environment, incident 13**: `/tmp` is a 16 GiB tmpfs shared by every
+   session; copies of the kernel's `drivers/` tree in a scratch directory
+   filled it, after which every shell command returned exit 1 with no output
+   -- the shell could not write its own transcript. Nothing in the repo was
+   damaged, but two edits were silently lost and a patch was regenerated
+   from a half-applied tree. Keep scratch trees under `build-output/`, which
+   is on disk and ignored by git.
+14. **Flash protocol, incident 14** (found by an external review of the
+   handoff): `drivers/mtd/chips/map_esp32.c` shares one command object with
+   core 0 and nothing serialised its users -- MTD provides no exclusion and
+   `/etc` and `/home` are two jffs2 superblocks. XIP reads had no lock at all,
+   while core 0 disables the flash cache to write, so a read from another task
+   during a write returned whatever the cache held. A user-space `sleep` took
+   an illegal instruction on a legal XIP instruction with `PS.UM` set, which
+   is what that looks like. `07-kernel-flash-ipc-lock.patch` puts one mutex
+   around erase, write and read. The same review found `recycle_cmd_node`
+   after teardown (a regression of patch 05, reverted), the TX completion
+   pass gated on a successful RX (`08-kernel-ipc-tx-completion.patch`), the
+   jffs2 patch trusting a default (`compr=zlib` now refuses), `home-init`
+   publishing a seed whose gzip failed after streaming, and `S03keepconfig`
+   restoring an old password over a new one. All are fixed and tested on the
+   host; the board-side effect is measured with the soak runner.
+
 ## What's here
 
 - `patches/00-esp32-linux-build.patch` — changes to upstream's build driver
