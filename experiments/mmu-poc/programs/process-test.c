@@ -35,6 +35,9 @@ static long shadows(void) { return field("/proc/self/status","ForkShadow:"); }
  * so the copy belonging to a forked child shows up here, not in the parent's
  * own status. */
 static long shadows_global(void) { return field("/proc/meminfo","ForkShadow:"); }
+/* Which bank model this kernel was built with. ForkSwitchMax comes from
+ * switch-latency.patch, which is applied only alongside swap-banks.patch. */
+static int swapping(void) { return field("/proc/meminfo","ForkSwitchMax:")>=0; }
 
 int main(int argc,char **argv) {
     int a[2],b[2],s,fd; pid_t p,q; char c;
@@ -52,16 +55,20 @@ int main(int argc,char **argv) {
     send_byte(b[1],'G');reap(p,0);close(a[0]);close(b[1]);
     long after=shadows(), after_all=shadows_global();CHECK(state==123);
     if(before>=0) {
-        /* This process is the resident one throughout, so it must never hold
-         * a shadow set of its own -- that is what makes a fork cost P rather
-         * than 2P. The child's saved copy is what the system wide counter
-         * sees while it is alive, and it has to be gone afterwards. */
-        CHECK(before==0 && during==0 && after==0);
+        /* True of either model: nothing is banked before the fork, the child's
+         * saved copy shows up in the system wide counter while it is alive,
+         * and everything is released once it is gone. */
+        CHECK(before==0 && after==0);
         CHECK(during_all>before_all && after_all==before_all);
+        /* Where that copy lives is what the two models disagree about. With
+         * swapping this process stays resident and owns no set of its own,
+         * which is what makes a fork cost P rather than 2P; without it, every
+         * process keeps a private backup, this one included. */
+        if(swapping()) CHECK(during==0); else CHECK(during>0);
     }
     printf("RECLAIM parent_kib before=%ld live=%ld after=%ld global live=%ld\n",
            before,during,after,during_all-before_all);
-    pass("a fork costs one backup, not two, and the child's is released");
+    pass("fork banks the expected set for this kernel and releases it");
 
     char path[]="/tmp/process-test.XXXXXX";
     fd=mkstemp(path);CHECK(fd>=0);CHECK(unlink(path)==0);
