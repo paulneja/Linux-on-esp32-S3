@@ -12,11 +12,17 @@ suite, largest free contiguous block 2048 kB, **33 board tests, 0 failed**,
 `tainted` 0. `build/verification/2026-09-13-full-image.md` has the hashes and
 the per-program figures.
 
-> One thing this release does **not** carry a number for is the fault rate.
-> DEVELOPMENT.md incident 15 is open: roughly two factory boots in ten take a
-> kernel fault in the first seconds, against about one in ten for 0.7. The
-> verified boot above was clean, but one boot is not a rate, and
-> `build/soak-boot.py --rounds 20` has not been run on this image.
+Twenty factory boots of that image, every one rewriting `/etc` and `/home`
+first so the run repeats the load that provokes it: **20 PASS, 0 FAIL**, a
+fault rate under 14% at 95% confidence. The kernels the incident-15
+experiments measured took 2 to 4 faults in the same number of decided rounds;
+they held the config at 0.7's and carried debugging symbols, and this is the
+whole current configuration. Two independent builds of the commit differ in
+one file, `/etc/shadow`, whose hash is salted per build.
+
+> DEVELOPMENT.md incident 15 stays **open**. Zero of twenty is not zero, the
+> bound is 14%, and the cause was never found. What is measured is that the
+> image being released came up clean twenty times.
 
 ### Stability
 

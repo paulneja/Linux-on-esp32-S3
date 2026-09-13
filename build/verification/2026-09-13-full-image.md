@@ -21,10 +21,8 @@ checks that had to be run separately last time -- home users, cron, COM
 reconnect, persistence across reboot -- ran inside the suite and passed.
 
 The flash erased all 16 MB, so this was a factory boot: `/home` formatted and
-`home-init` filling it, which is the load that DEVELOPMENT.md incident 15
-faults under about twice in ten. This one was clean. One clean boot is not a
-rate; the twenty-round soak that would give one has not been run on this
-image.
+`home-init` filling it, which is the load DEVELOPMENT.md incident 15 faults
+under.
 
 ## Memory
 
@@ -65,9 +63,43 @@ It does not apply to the rest. bash, dash and micropython fork for pipelines,
 subshells and `os.fork`, and socat forks one process per connection that never
 execs; those children need memory of their own.
 
+## The fault rate
+
+`build/soak-boot.py --rounds 20 --identity` on this image, each round
+rewriting `/etc` and `/home` from the artifacts so every boot is a factory
+boot: **20 PASS, 0 FAIL, 0 INCONCLUSIVE**. Upper bound on the fault rate,
+one-sided 95% over 20 decided rounds: **14%**. Transcripts and the partition
+hashes read back at the start of the run are in
+[`2026-09-13-soak.json`](2026-09-13-soak.json).
+
+This is not the same kernel the incident-15 experiments measured. Those held
+the config at 0.7's and added debugging symbols to read the faults; the worst
+of them took 4 faults of 4 decided rounds, and the best, with
+`CONFIG_PREEMPT_NONE`, 2 of 7. This is the shipping image with the whole
+current configuration. If its true rate were still 20%, twenty clean rounds
+would happen 1.2% of the time, so the rate is genuinely lower -- but 0 of 20
+is not 0, the bound is 14%, and nobody found the cause. Incident 15 stays
+open. What can be said is that the image being released measured clean twenty
+times over the load that provokes it.
+
+## Reproducibility
+
+Two complete builds of `24f0faf` from pinned sources, in parallel on separate
+runners, compared artifact by artifact
+([run 34780294252](https://github.com/paulneja/Linux-on-esp32-S3-Preview/actions/runs/34780294252)):
+
+**Five of eight artifacts are byte-identical** -- `bootloader.bin`,
+`partition-table.bin`, `network_adapter.bin`, `home.jffs2` and the kernel
+`xipImage`. All 611 rootfs entries match, and 127 of the 128 `etc.jffs2`
+nodes.
+
+The single difference is `/etc/shadow`, in both filesystems and therefore in
+the combined image: root's password hash is salted, so it is drawn fresh on
+each build. The comparison reports the non-password fields equal and the same
+hash algorithm in both. Nothing else in the image differs between two
+independent builds of the same commit.
+
 ## Not covered
 
-The fault rate: one boot is one boot, and `build/soak-boot.py --rounds 20`
-was not run on this image. WiFi was not associated and no traffic was passed;
-the BLE dialog was not exercised. Reproducibility is a separate claim -- a
-single build cannot make it; the two-build comparison in CI can.
+WiFi was not associated and no traffic was passed; the BLE dialog was not
+exercised.

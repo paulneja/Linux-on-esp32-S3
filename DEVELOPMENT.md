@@ -460,6 +460,16 @@ that one directory match `new-files/` exactly.
    number beside it, not as the fix. Next: a canary that starts in
    `mm_core_init`, in internal SRAM. Reproduce with `build/soak-boot.py`,
    twenty rounds.
+   **2026-09-13, the shipping image**: the same runner, twenty rounds, on the
+   image built clean from `24f0faf` and verified in
+   `build/verification/2026-09-13-full-image.md` -- **20 PASS, 0 FAIL, 0
+   INCONCLUSIVE**, bound 14%. Every measurement above was taken on a kernel
+   held at 0.7's config with debugging symbols added to read the faults; this
+   one is the whole current configuration, so it is not a controlled
+   comparison and no single change can be credited. A true rate of 20% would
+   produce twenty clean rounds 1.2% of the time, so the rate really is lower.
+   It is not zero and the cause is still unknown: the fault landed before any
+   user process existed, which nothing here explains. Open.
 
 16. **Fork backend, incident 16**: the bank swap was given a proper try and
    still loses. An external audit of the two models side by side found four

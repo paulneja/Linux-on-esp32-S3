@@ -1,0 +1,237 @@
+{
+  "label": "24f0faf, imagen verificada f9b30da3, copia, PREEMPT_NONE",
+  "identity": {
+    "linux": "1d93c5dc96785047b8e83ac304a78be995ae31d7b7eacff38db922b7ab52c9e3",
+    "factory": "e24097f9314a7088ebd7b3b03e762a8e670d728dcde910cc283a77d9d9ca1c05"
+  },
+  "artifacts": "/home/paulneja/Arduino/prueba/Linux-on-esp32-S3-Preview/build-output/reproduce.ezXq2y/artifacts",
+  "rounds": [
+    {
+      "round": 1,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.6,
+      "marker_s": 13.3,
+      "observed_s": 38.6,
+      "bytes": 1059
+    },
+    {
+      "round": 2,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.6,
+      "marker_s": 13.3,
+      "observed_s": 38.6,
+      "bytes": 1059
+    },
+    {
+      "round": 3,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.9,
+      "marker_s": 13.5,
+      "observed_s": 38.9,
+      "bytes": 1059
+    },
+    {
+      "round": 4,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.6,
+      "marker_s": 13.3,
+      "observed_s": 38.6,
+      "bytes": 1059
+    },
+    {
+      "round": 5,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.5,
+      "marker_s": 13.2,
+      "observed_s": 38.5,
+      "bytes": 1059
+    },
+    {
+      "round": 6,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.6,
+      "marker_s": 13.3,
+      "observed_s": 38.6,
+      "bytes": 1059
+    },
+    {
+      "round": 7,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.6,
+      "marker_s": 13.3,
+      "observed_s": 38.6,
+      "bytes": 1059
+    },
+    {
+      "round": 8,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.6,
+      "marker_s": 13.3,
+      "observed_s": 38.6,
+      "bytes": 1059
+    },
+    {
+      "round": 9,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.5,
+      "marker_s": 13.2,
+      "observed_s": 38.5,
+      "bytes": 1059
+    },
+    {
+      "round": 10,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.8,
+      "marker_s": 13.5,
+      "observed_s": 38.8,
+      "bytes": 1059
+    },
+    {
+      "round": 11,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.6,
+      "marker_s": 13.3,
+      "observed_s": 38.6,
+      "bytes": 1059
+    },
+    {
+      "round": 12,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.8,
+      "marker_s": 13.5,
+      "observed_s": 38.8,
+      "bytes": 1059
+    },
+    {
+      "round": 13,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.6,
+      "marker_s": 13.3,
+      "observed_s": 38.6,
+      "bytes": 1059
+    },
+    {
+      "round": 14,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.9,
+      "marker_s": 13.5,
+      "observed_s": 38.9,
+      "bytes": 1059
+    },
+    {
+      "round": 15,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.7,
+      "marker_s": 13.3,
+      "observed_s": 38.7,
+      "bytes": 1059
+    },
+    {
+      "round": 16,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.6,
+      "marker_s": 13.3,
+      "observed_s": 38.6,
+      "bytes": 1059
+    },
+    {
+      "round": 17,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.5,
+      "marker_s": 13.2,
+      "observed_s": 38.6,
+      "bytes": 1059
+    },
+    {
+      "round": 18,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.5,
+      "marker_s": 13.2,
+      "observed_s": 38.6,
+      "bytes": 1059
+    },
+    {
+      "round": 19,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.9,
+      "marker_s": 13.6,
+      "observed_s": 38.9,
+      "bytes": 1059
+    },
+    {
+      "round": 20,
+      "state": "PASS",
+      "faults": [],
+      "resets_seen": 0,
+      "probes": {},
+      "login_s": 13.6,
+      "marker_s": 13.2,
+      "observed_s": 38.6,
+      "bytes": 1059
+    }
+  ],
+  "counts": {
+    "PASS": 20,
+    "FAIL": 0,
+    "INCONCLUSIVE": 0
+  },
+  "fault_rate_upper_95": 0.139,
+  "verdict": "0 FAIL, 20 PASS, 0 INCONCLUSIVE of 20; fault rate <= 14% (95% one-sided, over the 20 decided)"
+}
