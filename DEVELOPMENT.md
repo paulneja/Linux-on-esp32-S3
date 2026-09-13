@@ -432,6 +432,32 @@ that one directory match `new-files/` exactly.
    restoring an old password over a new one. All are fixed and tested on the
    host; the board-side effect is measured with the soak runner.
 
+15. **Fork backend, incident 15 -- OPEN**: with a byte-exact rebuild of the
+   0.7 kernel config (recovered by an external review), the same firmware and
+   the same rootfs, ten factory boots each, measured with the corrected soak
+   runner: fork backend on, 3 FAIL + 5 INCONCLUSIVE of 10; fork backend off,
+   1 FAIL + 7 PASS of 10; the 0.7 release itself, 1 FAIL of 10 (a user-space
+   `Illegal Instruction` the old runner could not see). The flash mutex
+   (patch 07) and the WiFi/IPC fixes (05, 08) do not move the rate with fork
+   on (4 of 4). The faults land anywhere: `slab_caches` walked into a bad
+   pointer at 147 ms, the DTB at 393 ms, `kmalloc` from `pinctrl` at 735 ms,
+   `add_nommu_region` on a duplicate `vm_start` at 10 s, a `kworker`
+   dereferencing `-4` in `kernfs_notify_workfn` at 3.2 s. The first three are
+   before any process exists, so `nommu_bank_switch()` cannot have run yet;
+   whatever the fork backend does to make this four times more likely, it is
+   not only its context-switch copy. Ruled out with experiments: the PSRAM
+   (`memtest=4`, clean), a kernel stack overflow (canary never tripped,
+   >5 KiB free), `SLUB_TINY`, the jffs2 and WiFi driver patches, the RSA
+   patch, the seven config symbols, the embedded `regulatory.db`, the
+   firmware watchdogs, the firmware's own PSRAM memtest (it lowers the rate,
+   does not clear it), the cross-core IPC interrupt level (1, masked), and the
+   space the kernel puts in the shared vectors page (fits). A canary of free
+   RAM could not be tried: the fault arrives before `late_initcall`. Turning
+   the backend off is not an option -- bash, dtach, make and micropython link
+   against `libfork.so.0`. Next: a canary that starts in `mm_core_init`, in
+   internal SRAM, and a `CONFIG_PREEMPT_NONE` build, neither of which was
+   reached today. Reproduce with `build/soak-boot.py`, twenty rounds.
+
 ## What's here
 
 - `patches/00-esp32-linux-build.patch` — changes to upstream's build driver
