@@ -6,12 +6,17 @@ notes and the binaries are on the
 
 ## Unreleased — the memory the board was reserving and never using
 
-> The figures that used to open this section were measured with the bank
-> swap enabled, which no longer ships, on a board that had not been through a
-> factory boot, with a test runner that could not see a user-space illegal
-> instruction. They are gone until the final image is measured again with
-> `build/soak-boot.py` and `build/test-board.py`; the verification record
-> for that run will carry the numbers.
+Measured on the shipping image, built from a clean clone and read back off
+the board: **MemAvailable 1340 kB to 3712 kB** at the same point of the same
+suite, largest free contiguous block 2048 kB, **33 board tests, 0 failed**,
+`tainted` 0. `build/verification/2026-09-13-full-image.md` has the hashes and
+the per-program figures.
+
+> One thing this release does **not** carry a number for is the fault rate.
+> DEVELOPMENT.md incident 15 is open: roughly two factory boots in ten take a
+> kernel fault in the first seconds, against about one in ten for 0.7. The
+> verified boot above was clean, but one boot is not a rate, and
+> `build/soak-boot.py --rounds 20` has not been run on this image.
 
 ### Stability
 
@@ -199,6 +204,31 @@ the login bash needs 368 KiB, so every value that keeps the system working
 costs more than a tick. Exchanging pages instead of copying them was the way
 out of that and it was tried and rejected -- see Fork above -- so the number
 stands as the cost of the backend, not as the start of a fix.
+
+### Launching without forking
+
+On NOMMU `vfork` copies nothing: it shares the memory and suspends the parent
+until the `exec`. A program that only launches another and execs it does not
+need the backend's copy at all, and the two in this image that did were moved
+off it. `make` is configured onto `vfork` instead of being forced onto the
+fork backend, which it had been on purpose, to exercise it. `jobq` launches
+through `posix_spawn`, which reaches `vfork` here -- but only without file
+actions: given any, uClibc tries `fork()` and returns `ENOSYS`, because on
+NOMMU there is none. Attributes work, with `POSIX_SPAWN_USEVFORK` so that
+asking for a process group and default handlers does not veto the vfork path.
+jobq no longer reserves twice its own RAM for a copy it does not make.
+
+Measured on the board: the peak system-wide fork shadow for a `make` run and
+for a `jobq` run is **0 kB**, down from 432 kB and 248 kB. The page-set
+exchange, at its best, only halved those two.
+
+dtach's session shell gets a `vfork` as well. `forkpty()` has to return in the
+child and a `vfork` child may not -- it runs on the stack frame it shares with
+the suspended parent -- so the pty setup and the exec live in one frame, and
+the child makes syscalls only. The daemonized master still forks: it never
+execs. socat stays on `fork` for the same reason, eleven times over: of its
+twelve fork sites, only one ends in an `exec`, and that one returns into its
+caller after writing global state.
 
 ### Behaviour
 
