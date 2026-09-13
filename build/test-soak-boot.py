@@ -35,23 +35,31 @@ soak = load()
 
 CLEAN = (b'ESP-ROM:esp32s3-20210327\nLinux version 6.11.0\nStarting cron: OK\n'
          b'\nWelcome to Buildroot\nbuildroot login: ')
+# A round that reached a login always reads the ring buffer and the taint
+# flags back; a quiet console says almost nothing without them.
+OK_PROBES = {'dmesg': 'Linux version 6.11.0\nRun /sbin/init as init process\n',
+             'cat /proc/sys/kernel/tainted': '0\n'}
+
+
+def classify(data, login_at, marker_at, probes=OK_PROBES):
+    return soak.classify(data, login_at, marker_at, probes)
 
 
 class ClassifyTests(unittest.TestCase):
     def test_a_full_boot_is_a_pass(self):
-        self.assertEqual(soak.classify(CLEAN, 30.0, 12.0)[0], 'PASS')
+        self.assertEqual(classify(CLEAN, 30.0, 12.0)[0], 'PASS')
 
     def test_no_login_is_never_a_pass(self):
         data = b'ESP-ROM:esp32s3\nRunning sysctl: OK\n'
-        self.assertEqual(soak.classify(data, None, None)[0], 'INCONCLUSIVE')
+        self.assertEqual(classify(data, None, None, {})[0], 'INCONCLUSIVE')
 
     def test_login_without_the_marker_is_inconclusive(self):
         data = b'ESP-ROM:esp32s3\nbuildroot login: '
-        self.assertEqual(soak.classify(data, 30.0, None)[0], 'INCONCLUSIVE')
+        self.assertEqual(classify(data, 30.0, None, {})[0], 'INCONCLUSIVE')
 
     def test_a_silent_reset_before_login_is_inconclusive(self):
         data = b'ESP-ROM:esp32s3\nRunning sysctl: OK\n' + CLEAN
-        state, hits, resets = soak.classify(data, 60.0, 40.0)
+        state, hits, resets = classify(data, 60.0, 40.0)
         self.assertEqual(resets, 2)
         self.assertEqual(state, 'INCONCLUSIVE')
 
@@ -64,7 +72,7 @@ class ClassifyTests(unittest.TestCase):
                      b'[    7.0] list_del corruption. prev->next should be 1, but was 2',
                      b'[    7.0] WARNING: CPU: 0 PID: 73 at lib/list_debug.c:62'):
             with self.subTest(line=line):
-                state, hits, _ = soak.classify(CLEAN + line + b'\n', 30.0, 12.0)
+                state, hits, _ = classify(CLEAN + line + b'\n', 30.0, 12.0)
                 self.assertEqual(state, 'FAIL', line)
                 self.assertTrue(hits)
 
@@ -73,11 +81,48 @@ class ClassifyTests(unittest.TestCase):
                      b'Caught unhandled exception',
                      b'gzip: invalid compressed data--crc error'):
             with self.subTest(line=line):
-                self.assertEqual(soak.classify(CLEAN + line + b'\n', 30.0, 12.0)[0], 'FAIL')
+                self.assertEqual(classify(CLEAN + line + b'\n', 30.0, 12.0)[0], 'FAIL')
 
     def test_slab_debug_in_the_bootargs_is_not_a_fault(self):
         data = CLEAN + b'Kernel command line: rw panic=10 slab_nomerge slab_debug=FZPU\n'
-        self.assertEqual(soak.classify(data, 30.0, 12.0)[0], 'PASS')
+        self.assertEqual(classify(data, 30.0, 12.0)[0], 'PASS')
+
+
+class QuietConsoleTests(unittest.TestCase):
+    """The shipping image boots with `quiet`. Everything below KERN_ERR --
+    a user-space illegal instruction, a WARN, list corruption -- reaches the
+    ring buffer and never the console, so the console alone cannot decide."""
+
+    def test_a_fault_only_in_dmesg_is_a_fail(self):
+        probes = dict(OK_PROBES, dmesg="[   38.8] Illegal Instruction in 'sleep' "
+                                       "(pid = 75, pc = 0x426d66da)\n")
+        state, hits, _ = classify(CLEAN, 30.0, 12.0, probes)
+        self.assertEqual(state, 'FAIL')
+        self.assertTrue(any(h.startswith('dmesg: ') for h in hits), hits)
+
+    def test_a_warn_only_in_dmesg_is_a_fail(self):
+        probes = dict(OK_PROBES, dmesg='[ 7.0] WARNING: CPU: 0 PID: 73 at lib/list_debug.c:62\n')
+        self.assertEqual(classify(CLEAN, 30.0, 12.0, probes)[0], 'FAIL')
+
+    def test_a_tainted_kernel_is_a_fail_even_with_a_silent_log(self):
+        probes = dict(OK_PROBES, **{'cat /proc/sys/kernel/tainted': '512\n'})
+        state, hits, _ = classify(CLEAN, 30.0, 12.0, probes)
+        self.assertEqual(state, 'FAIL')
+        self.assertIn('tainted=512', hits)
+
+    def test_tainted_zero_is_clean(self):
+        self.assertEqual(classify(CLEAN, 30.0, 12.0)[0], 'PASS')
+
+    def test_a_login_whose_log_could_not_be_read_is_not_a_pass(self):
+        state, hits, _ = classify(CLEAN, 30.0, 12.0, {})
+        self.assertEqual(state, 'INCONCLUSIVE')
+        self.assertIn('kernel log not read back', hits)
+
+    def test_a_wedged_console_after_login_is_a_fail(self):
+        probes = {'error': "TimeoutError('no prompt')"}
+        state, hits, _ = classify(CLEAN, 30.0, 12.0, probes)
+        self.assertEqual(state, 'FAIL')
+        self.assertTrue(any('wedged' in h for h in hits), hits)
 
 
 class BoundTests(unittest.TestCase):

@@ -13,16 +13,18 @@ suite, largest free contiguous block 2048 kB, **33 board tests, 0 failed**,
 the per-program figures.
 
 Twenty factory boots of that image, every one rewriting `/etc` and `/home`
-first so the run repeats the load that provokes it: **20 PASS, 0 FAIL**, a
-fault rate under 14% at 95% confidence. The kernels the incident-15
-experiments measured took 2 to 4 faults in the same number of decided rounds;
-they held the config at 0.7's and carried debugging symbols, and this is the
-whole current configuration. Two independent builds of the commit differ in
-one file, `/etc/shadow`, whose hash is salted per build.
+first so the run repeats the load that provokes it: **no Oops, no panic, no
+`BUG:` and no user-space crash in any of the twenty**. Two independent builds
+of the commit differ in one file, `/etc/shadow`, whose hash is salted per
+build.
 
-> DEVELOPMENT.md incident 15 stays **open**. Zero of twenty is not zero, the
-> bound is 14%, and the cause was never found. What is measured is that the
-> image being released came up clean twenty times.
+> DEVELOPMENT.md incident 15 stays **open**, and those twenty rounds are not
+> the 0 that answers its 2. The image ships with `quiet`; every incident-15
+> measurement used a diagnostic command line without it, and three of the
+> runner's signatures -- a user-space illegal instruction, a `WARNING:`, list
+> corruption -- are below what `quiet` lets through. `soak-boot.py` now reads
+> `dmesg` and the taint flags back after login so the two are comparable, but
+> that change came after this run.
 
 ### Stability
 

@@ -63,24 +63,36 @@ It does not apply to the rest. bash, dash and micropython fork for pipelines,
 subshells and `os.fork`, and socat forks one process per connection that never
 execs; those children need memory of their own.
 
-## The fault rate
+## The fault rate: measured, but not against the earlier numbers
 
 `build/soak-boot.py --rounds 20 --identity` on this image, each round
 rewriting `/etc` and `/home` from the artifacts so every boot is a factory
-boot: **20 PASS, 0 FAIL, 0 INCONCLUSIVE**. Upper bound on the fault rate,
-one-sided 95% over 20 decided rounds: **14%**. Transcripts and the partition
-hashes read back at the start of the run are in
+boot: **20 PASS, 0 FAIL, 0 INCONCLUSIVE**, bound 14% one-sided at 95%.
+Transcripts and the partition hashes are in
 [`2026-09-13-soak.json`](2026-09-13-soak.json).
 
-This is not the same kernel the incident-15 experiments measured. Those held
-the config at 0.7's and added debugging symbols to read the faults; the worst
-of them took 4 faults of 4 decided rounds, and the best, with
-`CONFIG_PREEMPT_NONE`, 2 of 7. This is the shipping image with the whole
-current configuration. If its true rate were still 20%, twenty clean rounds
-would happen 1.2% of the time, so the rate is genuinely lower -- but 0 of 20
-is not 0, the bound is 14%, and nobody found the cause. Incident 15 stays
-open. What can be said is that the image being released measured clean twenty
-times over the load that provokes it.
+**It does not compare to the 2-in-10 and 1-in-10 of incident 15**, and the
+reason is the console. Every one of those runs booted with a diagnostic
+command line -- `rw root=mtd:rootfs no_hash_pointers`, no `quiet`. This image
+ships with `quiet`, which leaves the console at KERN_ERR and above, and three
+of the runner's fault signatures are quieter than that: a user-space illegal
+instruction is `pr_info_ratelimited` (`arch/xtensa/kernel/traps.c:371`), and
+`WARNING: CPU` and `list_del corruption` are KERN_WARNING. The first of those
+is the exact signature that caught the 0.7 release. They were in the ring
+buffer of these twenty boots and never on the wire.
+
+So what these twenty rounds establish is narrower than it looks: **no Oops, no
+panic, no `BUG:`, and no user-space crash message in twenty factory boots**.
+Those are KERN_EMERG and KERN_ALERT and print through `quiet`, and they are
+what the incident-15 faults mostly were. It is real evidence and it is good
+news. It is not a like-for-like 0 against the earlier 2.
+
+`soak-boot.py` now closes the gap rather than the record explaining it away:
+every round that reaches a login reads `dmesg` and
+`/proc/sys/kernel/tainted` back and runs the fault list over the ring buffer,
+so a quiet image measures the same as a diagnostic one. A round that reaches a
+login but cannot be read back is INCONCLUSIVE, not a pass. The numbers above
+predate that change; the next run on this image will be comparable.
 
 ## Reproducibility
 

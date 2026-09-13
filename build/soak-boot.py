@@ -17,6 +17,7 @@ on positive evidence:
 
   PASS          the login prompt appeared, the last init script ran (the
                 system reached the run level that does the work under test),
+                the kernel's own log and taint flags were read back clean,
                 and nothing in the fault list was printed
   FAIL          something in the fault list was printed
   INCONCLUSIVE  no fault, but no login prompt or no marker within the budget:
@@ -58,6 +59,16 @@ LOGIN = re.compile(rb'buildroot login: ?')
 # have finished, which is the work the boot has to have done to count.
 MARKER = re.compile(rb'Starting cron: OK')
 RESET_BANNER = re.compile(rb'ESP-ROM:esp32s3')
+# The shipping image boots with `quiet`, so the console carries KERN_ERR and
+# worse and nothing else. A user-space illegal instruction is
+# pr_info_ratelimited and a WARN is KERN_WARNING: neither is ever typed, and
+# the first of those is the signature that caught the 0.7 release. The ring
+# buffer holds them regardless of the console level, so every round that
+# reaches a login reads it back, and the taint flags with it. Without this a
+# run on a quiet image measures less than a run on a diagnostic one and the
+# two are not comparable.
+HEALTH = ('cat /proc/sys/kernel/tainted', 'dmesg')
+TAINTED = re.compile(rb'^\s*(\d+)\s*$', re.M)
 OFFSETS = {'etc.jffs2': '0xd0000', 'home.jffs2': '0xcc0000'}
 # Kernel and firmware partitions, read back to identify what actually booted.
 IDENTITY = {'linux': ('0x140000', 0x400000), 'factory': ('0x10000', 0xc0000)}
@@ -117,12 +128,13 @@ def read_identity():
 
 
 def run_probes(console):
-    # Only after a login prompt was seen: log in and read what was asked for.
+    # Only after a login prompt was seen: log in, read the kernel's own record
+    # of the boot, then whatever else was asked for.
     out = {}
     try:
         console.login()
-        for command in args.probe:
-            out[command] = console.command(command, 20, check=False)
+        for command in HEALTH + tuple(args.probe):
+            out[command] = console.command(command, 30, check=False)
     except Exception as error:  # a wedged console is itself a finding
         out['error'] = repr(error)
     return out
@@ -146,16 +158,31 @@ def boot_and_watch(transcript):
                 login_at = time.monotonic() - started
             if marker_at is not None and login_at is not None:
                 deadline = min(deadline, started + max(marker_at, login_at) + args.settle_seconds)
-        probes = run_probes(console) if (args.probe and login_at is not None) else {}
+        probes = run_probes(console) if login_at is not None else {}
         if probes:
             log.write(('\n--- probes ---\n' + json.dumps(probes, indent=1) + '\n').encode())
     console.port.close()
     return data, login_at, marker_at, time.monotonic() - started, probes
 
 
-def classify(data, login_at, marker_at):
-    hits = sorted(set(m.decode() for m in FAULT.findall(data)))
+def classify(data, login_at, marker_at, probes=None):
+    probes = probes or {}
+    hits = set(m.decode() for m in FAULT.findall(data))
     resets = len(RESET_BANNER.findall(data))
+
+    # What the console was too quiet to say, read out of the ring buffer.
+    log = probes.get('dmesg')
+    if log:
+        hits |= set('dmesg: ' + m.decode() for m in FAULT.findall(log.encode()))
+    flags = probes.get('cat /proc/sys/kernel/tainted')
+    if flags:
+        found = TAINTED.search(flags.encode())
+        if found and found.group(1) != b'0':
+            hits.add('tainted=' + found.group(1).decode())
+    if 'error' in probes:
+        hits.add('console wedged after login: ' + str(probes['error'])[:80])
+
+    hits = sorted(hits)
     if hits:
         return 'FAIL', hits, resets
     if login_at is None or marker_at is None:
@@ -163,6 +190,10 @@ def classify(data, login_at, marker_at):
     if resets > 1:
         # It came up, but not on the first try: a silent reset happened.
         return 'INCONCLUSIVE', ['reset without a fault message'], resets
+    if not probes.get('dmesg'):
+        # Reached a login but the kernel log could not be read: on a quiet
+        # image that is most of the evidence, so this is not a pass.
+        return 'INCONCLUSIVE', ['kernel log not read back'], resets
     return 'PASS', [], resets
 
 
@@ -190,7 +221,7 @@ for number in range(1, args.rounds + 1):
     if not args.no_flash:
         restore_factory()
     data, login_at, marker_at, observed, probes = boot_and_watch(args.output / f'boot-{number:02d}.log')
-    state, hits, resets = classify(data, login_at, marker_at)
+    state, hits, resets = classify(data, login_at, marker_at, probes)
     record = {'round': number, 'state': state, 'faults': hits, 'resets_seen': resets, 'probes': probes,
               'login_s': None if login_at is None else round(login_at, 1),
               'marker_s': None if marker_at is None else round(marker_at, 1),

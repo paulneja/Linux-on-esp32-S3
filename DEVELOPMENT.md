@@ -460,16 +460,21 @@ that one directory match `new-files/` exactly.
    number beside it, not as the fix. Next: a canary that starts in
    `mm_core_init`, in internal SRAM. Reproduce with `build/soak-boot.py`,
    twenty rounds.
-   **2026-09-13, the shipping image**: the same runner, twenty rounds, on the
-   image built clean from `24f0faf` and verified in
-   `build/verification/2026-09-13-full-image.md` -- **20 PASS, 0 FAIL, 0
-   INCONCLUSIVE**, bound 14%. Every measurement above was taken on a kernel
-   held at 0.7's config with debugging symbols added to read the faults; this
-   one is the whole current configuration, so it is not a controlled
-   comparison and no single change can be credited. A true rate of 20% would
-   produce twenty clean rounds 1.2% of the time, so the rate really is lower.
-   It is not zero and the cause is still unknown: the fault landed before any
-   user process existed, which nothing here explains. Open.
+   **2026-09-13, the shipping image**: twenty rounds on the image built clean
+   from `24f0faf` (`build/verification/2026-09-13-full-image.md`) -- 20 PASS,
+   0 FAIL. Two differences make it not a like-for-like answer to the 2 above.
+   The kernel is the whole current configuration, not 0.7's config with debug
+   symbols, so no single change can be credited. And every measurement above
+   booted with `no_hash_pointers` and **no `quiet`**, while the shipping image
+   has `quiet`: the console then carries KERN_ERR and worse only, so the
+   user-space `Illegal Instruction` (`pr_info_ratelimited`,
+   `arch/xtensa/kernel/traps.c:371`) that caught the 0.7 release, and the
+   KERN_WARNING `WARNING: CPU` and `list_del corruption`, were in the ring
+   buffer and not on the wire. What the twenty rounds do establish is no
+   Oops, panic or `BUG:` -- KERN_EMERG and KERN_ALERT print through `quiet` --
+   and no user-space crash message. `soak-boot.py` now reads `dmesg` and
+   `/proc/sys/kernel/tainted` back after every login and runs the fault list
+   over them, so the next run measures the same on either command line. Open.
 
 16. **Fork backend, incident 16**: the bank swap was given a proper try and
    still loses. An external audit of the two models side by side found four
