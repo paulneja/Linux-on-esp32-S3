@@ -104,12 +104,16 @@ hostapd fits and works. SoftAP remains unsupported.
 
 ## Fork and memory banking
 
-Linux still runs in NOMMU mode. The fork patches keep private page backups
-and exchange the resident contents with them on scheduling transitions: the
-running process owns no backup of its own, so N processes sharing a region
-need N-1 page sets, and a first fork costs one set rather than two. The final
-owner releases unnecessary backups; `/proc/meminfo` and `/proc/PID/status`
-expose the associated accounting. The backend requires UP Linux, rejects
+Linux still runs in NOMMU mode. The fork patches keep a private page backup
+per process and save and restore it on scheduling transitions. The final owner
+releases unnecessary backups; `/proc/meminfo` and `/proc/PID/status` expose the
+associated accounting.
+
+`swap-banks.patch` replaces that with exchanging the resident contents, so the
+running process owns no backup and N processes sharing a region need N-1 page
+sets instead of N. **It is not built in.** On the board it corrupts memory:
+see `experiments/mmu-poc/fork/README.md`. Build it with `FORK_SWAP_BANKS=1`
+only to work on that. The backend requires UP Linux, rejects
 multithreaded fork and limits private memory per fork to 512 KiB by default
 (`fork_bank_max_bytes`). `libfork.so.0` exposes the compatible userspace entry
 points; it does not replace the whole C library.

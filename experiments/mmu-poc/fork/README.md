@@ -32,7 +32,18 @@ cambio de contexto, y referencias de región para evitar liberar memoria
 residente mientras otro proceso aún la utiliza. Los accesos remotos de
 `/proc` y ptrace consultan el banco correspondiente, no el residente ajeno.
 
-### Bancos por intercambio (`swap-banks.patch`)
+### Bancos por intercambio (`swap-banks.patch`) — NO se compila
+
+> **Este parche corrompe memoria en la placa y está desactivado.** Un build
+> limpio de `1af3a5b` tomó `Illegal instruction in kernel` en `sys_stat64` en
+> un arranque y un `Oops` en `__rb_erase_color` bajo `exit_mmap` en otro, y
+> bash se declaró restringido y se cerró solo. Los tres son páginas de un
+> proceso apareciendo dentro de otro, que es justo lo que este parche mueve.
+> El modelo de host (`test-reclaim.py`) pasa, así que lo que está mal no está
+> en la contabilidad de páginas que ese test cubre. Se compila con
+> `FORK_SWAP_BANKS=1` para seguir trabajándolo. Lo de abajo describe el diseño
+> y las mediciones, que fueron reales, no lo que se entrega.
+
 
 El proceso residente no tiene respaldo propio: sus datos están en la región
 misma, así que un juego de páginas a su nombre era peso muerto. En el cambio de

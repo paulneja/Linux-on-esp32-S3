@@ -43,7 +43,7 @@ static unsigned irq_depth;
  * per read -- one microsecond at the board's nominal clock -- so the switch
  * timing around local_irq_save is exercised here rather than only on target.
  */
-static unsigned long fake_ccount;
+static unsigned long fake_ccount __attribute__((unused));
 #define get_ccount() (fake_ccount += 240)
 struct list_head { struct list_head *next,*prev; };
 #define INIT_LIST_HEAD(h) ((h)->next=(h)->prev=(h))
@@ -72,7 +72,13 @@ static unsigned long __get_free_page(int ignored) {
  return (unsigned long)calloc(1,PAGE_SIZE);
 }
 '''
-tests = r'''
+# The board can be built with either bank model, so assert the one that is
+# actually in the source: swapping exchanges page sets between descriptors
+# and needs N-1 of them, while the original keeps a private backup per
+# process. build-kernel-reclaim.sh applies swap-banks.patch only when
+# FORK_SWAP_BANKS=1.
+swapping = 'bank_swap_page' in source
+tests_swapping = r'''
 static struct vm_area_struct *departing;
 static void exit_during_alloc(void) { bank_detach(departing); }
 static void init(struct vm_area_struct *v,struct mm_struct *m,struct vm_region *r) {
@@ -126,6 +132,50 @@ int main(void) {
  return 0;
 }
 '''
+tests_private = r'''
+static struct vm_area_struct *departing;
+static void exit_during_alloc(void) { bank_detach(departing); }
+static void init(struct vm_area_struct *v,struct mm_struct *m,struct vm_region *r) {
+ INIT_LIST_HEAD(&m->context.nommu_banks);*v=(struct vm_area_struct){NULL,r,m};
+}
+int main(void) {
+ struct mm_struct ma,mb,mc;
+ struct vm_area_struct a,b,c;
+ unsigned *memory=calloc(2,PAGE_SIZE);
+ struct vm_region r={(unsigned long)memory,(unsigned long)memory+2*PAGE_SIZE,NULL};
+ init(&a,&ma,&r);init(&b,&mb,&r);init(&c,&mc,&r);
+ *memory=111;
+ assert(bank_clone(&b,&a)==0);assert(nommu_bank_shadow_pages==4);
+ nommu_bank_switch(&mb);*memory=222;
+ bank_detach(&b);
+ assert(*memory==111 && a.nommu_bank->count==0 && nommu_bank_pages(&ma)==0);
+ assert(nommu_bank_shadow_pages==0 && nommu_bank_recovered_pages==2);
+ puts("PASS: departing resident restores survivor and frees both backups");
+ for(int i=0;i<100;i++) {
+  assert(bank_clone(&b,&a)==0);nommu_bank_switch(&mb);*memory=222;
+  assert(bank_clone(&c,&b)==0);nommu_bank_switch(&mc);*memory=333;
+  bank_detach(&b);assert(nommu_bank_shadow_pages==4);
+  nommu_bank_switch(&ma);assert(*memory==111);
+  nommu_bank_switch(&mc);assert(*memory==333);
+  bank_detach(&a);assert(*memory==333 && nommu_bank_shadow_pages==0);
+  bank_detach(&c);init(&a,&ma,&r);init(&b,&mb,&r);init(&c,&mc,&r);*memory=111;
+ }
+ puts("PASS: nested ownership and 100 teardown/refork cycles");
+ for(int i=0;i<4;i++) {
+  fail_after=i;assert(bank_clone(&b,&a)==-ENOMEM);fail_after=-1;
+  assert(nommu_bank_shadow_pages==0 && *memory==111);
+ }
+ puts("PASS: every page allocation failure unwinds without lost state");
+ assert(bank_clone(&b,&a)==0);departing=&b;allocation_hook=exit_during_alloc;
+ assert(bank_clone(&c,&a)==0);assert(nommu_bank_shadow_pages==4);
+ nommu_bank_switch(&mc);assert(*memory==111);*memory=444;
+ bank_detach(&c);assert(*memory==111 && nommu_bank_shadow_pages==0);
+ bank_detach(&a);free(memory);
+ puts("PASS: sibling exits while clone allocation sleeps; backups recreated");
+ return 0;
+}
+'''
+tests = tests_swapping if swapping else tests_private
 with tempfile.TemporaryDirectory(prefix='bank-test-') as tmp:
     executable = str(Path(tmp) / 'test')
     subprocess.run(['cc', '-std=gnu17', '-Wall', '-Wextra', '-Werror',

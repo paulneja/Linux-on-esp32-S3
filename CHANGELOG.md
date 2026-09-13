@@ -60,6 +60,13 @@ instead of 4.23 s. `tainted` 0, no OOM, panic, BUG or Oops.
 
 ### Fork
 
+> The page-set exchange described here is **disabled in this build**. It
+> corrupts memory on the board -- an "Illegal instruction in kernel" on one
+> boot, an Oops in `__rb_erase_color` under `exit_mmap` on another, and a bash
+> that turned itself restricted and exited. The patch stays in the tree behind
+> `FORK_SWAP_BANKS=1`; the measurements below were real but do not describe
+> what ships. The fork backend is otherwise unchanged and still works.
+
 The backend gave every process its own page set, including the resident one,
 whose set is dead weight: its data is in the region itself. Exchanging the
 resident page with the incoming shadow page leaves the outgoing process's data

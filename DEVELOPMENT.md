@@ -382,6 +382,21 @@ that one directory match `new-files/` exactly.
    per read, so the timing around the interrupts-off region is exercised on
    the host too rather than merely compiling.
 
+11. **Fork backend, incident 11**: `swap-banks.patch` corrupts memory on the
+   board and is now off by default. A clean build of `1af3a5b` took `Illegal
+   instruction in kernel` in `sys_stat64` with the PC pointing at ASCII text on
+   one boot, an `Oops` at `__rb_erase_color` under `exit_mmap -> delete_vma` on
+   another, and on a third the login bash declared itself restricted and exited.
+   All three are one process's pages turning up inside another, which is what
+   this patch moves around. Eight plain resets on an initialised board produced
+   none of it: the trigger is load, and the first boot after a flash -- where
+   `home-init` populates a freshly formatted `/home` -- hits it reliably enough
+   to wedge the console. `test-reclaim.py` passes against both models, so the
+   defect is not in the page bookkeeping that test covers; the likely gap is
+   what it cannot model, such as two VMAs of one mm sharing a `vm_region`,
+   which would have `nommu_bank_switch()` exchange the same region twice.
+   `FORK_SWAP_BANKS=1` builds it back in.
+
 ## What's here
 
 - `patches/00-esp32-linux-build.patch` — changes to upstream's build driver
