@@ -38,7 +38,7 @@ measurement.
  void nommu_bank_switch(struct mm_struct *mm);
 --- a/mm/nommu-bank.inc
 +++ b/mm/nommu-bank.inc
-@@ -59,6 +59,17 @@
+@@ -105,6 +105,17 @@
  	dump_stack();
  }
  
@@ -56,7 +56,7 @@ measurement.
  /* A single-owner descriptor survives, but owns no backup pages. Keeping
   * that descriptor stable matters when another mm exits while fork sleeps
   * in bank_alloc(). Only the owning mm can replace its descriptor.
-@@ -205,12 +216,13 @@
+@@ -251,12 +262,13 @@
  void nommu_bank_switch(struct mm_struct *mm)
  {
  	struct nommu_bank *bank;
@@ -71,7 +71,7 @@ measurement.
  	list_for_each_entry(bank, &mm->context.nommu_banks, link) {
  		struct vm_region *region = bank->region;
  		struct nommu_bank *out = region->bank_owner;
-@@ -247,6 +259,12 @@
+@@ -297,6 +309,12 @@
  		}
  		region->bank_owner = bank;
  	}

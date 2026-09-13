@@ -27,6 +27,7 @@ shim = r'''
 #define unlikely(x) (x)
 #define pr_err(...) fprintf(stderr, __VA_ARGS__)
 #define dump_stack() ((void)0)
+#define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 #define PAGE_SHIFT 12
 #define PAGE_SIZE 4096
 #define GFP_KERNEL 0

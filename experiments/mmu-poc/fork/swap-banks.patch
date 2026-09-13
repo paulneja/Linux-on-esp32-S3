@@ -52,10 +52,11 @@ exit, which may sleep.
 
 The "nobody owns what is resident" arm called bank_release_pages(), that is
 free_page(), from inside that same context switch. The copy model's switch
-does no allocation and no freeing at all, deliberately. bank_detach() now
-promotes an heir on every departure so the arm should be unreachable; it
-restores from its own set, keeps the pages, does not claim ownership, and
-latches the report.
+does no allocation and no freeing at all, deliberately. It restores from its own set and does take
+ownership -- a region left ownerless makes every later fork of it fail, and
+init hangs on its first one, which is what happened when this was first
+written -- and the pages it can no longer hold go on an orphan list that the
+next fork or exit, both of which may sleep, frees.
 
 bank_release_pages() left freed pointers in pages[]. Harmless in the copy
 model, where a descriptor is only emptied on its way out of the switch list;
@@ -68,9 +69,10 @@ one pass: the second visit swaps it back, leaving the process on a stale
 snapshot with its live pages parked in a descriptor that no longer owns them.
 dup_mmap()'s vm_usage check happens to prevent it today, but that check is
 there for other reasons.
+
 --- a/mm/nommu-bank.inc
 +++ b/mm/nommu-bank.inc
-@@ -7,20 +7,58 @@
+@@ -7,20 +7,104 @@
  static bool nommu_bank_trace;
  module_param_named(fork_bank_trace, nommu_bank_trace, bool, 0600);
  MODULE_PARM_DESC(fork_bank_trace, "Log successful NOMMU bank forks (default off)");
@@ -117,6 +119,52 @@ there for other reasons.
 + */
 +static bool nommu_bank_broken;
 +
++/* Pages a context switch had to give up but could not free: free_page()
++ * under the runqueue lock with interrupts off is not allowed. Pushed by the
++ * switch, drained by fork and exit, which may sleep.
++ */
++static void *nommu_bank_orphans[64];
++static unsigned int nommu_bank_orphan_count;
++
++static void bank_orphan_pages(struct nommu_bank *bank)
++{
++	unsigned int i;
++
++	for (i = 0; i < bank->count; i++) {
++		if (nommu_bank_orphan_count < ARRAY_SIZE(nommu_bank_orphans)) {
++			nommu_bank_orphans[nommu_bank_orphan_count++] = bank->pages[i];
++		} else {
++			/* The list is drained on every fork and exit, so it
++			 * filling up means something is very wrong. Leak the
++			 * page rather than free it from here.
++			 */
++			nommu_bank_broken = true;
++		}
++		bank->pages[i] = NULL;
++	}
++	atomic_long_sub(bank->count, &nommu_bank_shadow_pages);
++	atomic_long_add(bank->count, &nommu_bank_recovered_pages);
++	bank->count = 0;
++}
++
++static void bank_drain_orphans(void)
++{
++	void *pages[ARRAY_SIZE(nommu_bank_orphans)];
++	unsigned long flags;
++	unsigned int i, n;
++
++	if (likely(!READ_ONCE(nommu_bank_orphan_count)))
++		return;
++	local_irq_save(flags);
++	n = nommu_bank_orphan_count;
++	for (i = 0; i < n; i++)
++		pages[i] = nommu_bank_orphans[i];
++	nommu_bank_orphan_count = 0;
++	local_irq_restore(flags);
++	for (i = 0; i < n; i++)
++		free_page((unsigned long)pages[i]);
++}
++
 +static void bank_report_broken(const char *where)
 +{
 +	if (likely(!READ_ONCE(nommu_bank_broken)))
@@ -130,7 +178,7 @@ there for other reasons.
  /* A single-owner descriptor survives, but owns no backup pages. Keeping
   * that descriptor stable matters when another mm exits while fork sleeps
   * in bank_alloc(). Only the owning mm can replace its descriptor.
-@@ -28,8 +66,14 @@
+@@ -28,8 +112,14 @@
  static void bank_release_pages(struct nommu_bank *bank)
  {
  	unsigned int i;
@@ -146,7 +194,7 @@ there for other reasons.
  	atomic_long_sub(bank->count, &nommu_bank_shadow_pages);
  	bank->count = 0;
  }
-@@ -40,26 +84,53 @@
+@@ -40,26 +130,53 @@
  	kfree(bank);
  }
  
@@ -206,7 +254,7 @@ there for other reasons.
  	return bank;
  }
  
-@@ -76,6 +147,61 @@
+@@ -76,6 +193,61 @@
  	}
  }
  
@@ -268,7 +316,7 @@ there for other reasons.
  void nommu_bank_switch(struct mm_struct *mm)
  {
  	struct nommu_bank *bank;
-@@ -87,11 +213,38 @@
+@@ -87,11 +259,42 @@
  	local_irq_save(flags);
  	list_for_each_entry(bank, &mm->context.nommu_banks, link) {
  		struct vm_region *region = bank->region;
@@ -301,23 +349,28 @@ there for other reasons.
 +			 * Restore from our own set and leave it alone -- freeing
 +			 * pages here would be free_page() under the runqueue lock
 +			 * with interrupts off. Ownership is not claimed either, so
-+			 * the invariant "the owner holds no pages" still holds and
-+			 * the next switch simply restores again.
++			 * the invariant "the owner holds no pages" still holds.
++			 * The pages cannot be freed from here -- that is
++			 * free_page() under the runqueue lock with interrupts
++			 * off -- so they go on the orphan list for the next
++			 * fork or exit to release. Ownership must be taken:
++			 * a region left without an owner makes every later
++			 * fork of it fail, and init hangs on its first one.
 +			 */
-+			nommu_bank_broken = true;
 +			bank_copy(bank, false);
-+			continue;
++			bank_orphan_pages(bank);
 +		}
  		region->bank_owner = bank;
  	}
  	local_irq_restore(flags);
-@@ -101,29 +254,36 @@
+@@ -101,29 +304,37 @@
  {
  	struct nommu_bank *bank = vma->nommu_bank;
  	unsigned long flags;
 +	bool was_owner;
 +
 +	bank_report_broken("exit");
++	bank_drain_orphans();
  	if (!bank)
  		return;
  	local_irq_save(flags);
@@ -362,7 +415,7 @@ there for other reasons.
  	}
  	vma->nommu_bank = NULL;
  	local_irq_restore(flags);
-@@ -133,27 +293,58 @@
+@@ -133,27 +344,59 @@
  static int bank_clone(struct vm_area_struct *dst, struct vm_area_struct *src)
  {
  	struct vm_region *region = src->vm_region;
@@ -372,6 +425,7 @@ there for other reasons.
  	bool fresh;
  
 +	bank_report_broken("fork");
++	bank_drain_orphans();
 +
  	/* Allocate the child first: sleeping here can let the last sibling
  	 * exit and release the parent's shadows. Recheck AFTER allocation.
@@ -425,7 +479,7 @@ there for other reasons.
  	if (fresh) {
  		src->nommu_bank = parent;
  		list_add_tail(&parent->link, &src->vm_mm->context.nommu_banks);
-@@ -165,8 +356,6 @@
+@@ -165,8 +408,6 @@
  	list_add_tail(&child->siblings, &parent->siblings);
  	list_add_tail(&child->link, &dst->vm_mm->context.nommu_banks);
  	local_irq_restore(flags);
@@ -434,7 +488,7 @@ there for other reasons.
  	return 0;
  }
  
-@@ -276,19 +465,27 @@
+@@ -276,19 +517,27 @@
  {
  	struct nommu_bank *bank = vma->nommu_bank;
  	unsigned long flags;
