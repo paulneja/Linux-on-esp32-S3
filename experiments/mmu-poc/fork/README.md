@@ -43,6 +43,17 @@ residente mientras otro proceso aún la utiliza. Los accesos remotos de
 > en la contabilidad de páginas que ese test cubre. Se compila con
 > `FORK_SWAP_BANKS=1` para seguir trabajándolo. Lo de abajo describe el diseño
 > y las mediciones, que fueron reales, no lo que se entrega.
+>
+> **Actualización 2026-09-13.** Se le corrigieron cuatro defectos estructurales,
+> todos en `nommu_bank_switch()`, que corre dentro del cambio de contexto con el
+> lock del runqueue tomado y las interrupciones apagadas (ver incidente 16 en
+> DEVELOPMENT.md). El latch de inconsistencia que se añadió **nunca disparó**:
+> la contabilidad de páginas es correcta. Aun así, diez arranques de fábrica
+> contra diez del modelo de copia en el mismo kernel dan swap 2 FAIL / 1 PASS /
+> 7 INCONCLUSIVE contra copia 2 FAIL / 5 PASS / 3 INCONCLUSIVE. Sigue apagado.
+> La diferencia que queda no es de contabilidad: el modelo de copia guarda la
+> memoria de cada proceso en dos lugares y el de intercambio en uno, así que la
+> corrupción del incidente 15 es sobrevivible con copia y fatal con intercambio.
 
 
 El proceso residente no tiene respaldo propio: sus datos están en la región

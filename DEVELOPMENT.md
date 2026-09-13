@@ -461,6 +461,33 @@ that one directory match `new-files/` exactly.
    `mm_core_init`, in internal SRAM. Reproduce with `build/soak-boot.py`,
    twenty rounds.
 
+16. **Fork backend, incident 16**: the bank swap was given a proper try and
+   still loses. An external audit of the two models side by side found four
+   real defects, all in `nommu_bank_switch()`, which runs inside
+   `context_switch()` under the runqueue lock with interrupts off: its guards
+   called `printk` from there (waking the console thread, which re-enters the
+   scheduler), went silent after the first hit, and returned with the page
+   contents already swapped and the ownership assignment still to come -- one
+   refusal handed live memory to the wrong process permanently; one arm called
+   `free_page()` from there, which the copy model never does; freed pointers
+   were left in a live descriptor's `pages[]`, which in this model is the
+   owner's normal state; and nothing stopped two banks for one region in one
+   mm, which would make a single switch pass swap that region twice. All four
+   are fixed in `swap-banks.patch`, and the first fix for the second one was
+   wrong in an instructive way: leaving the region ownerless makes every later
+   fork of it fail, so init hung on its first one and **nought of ten boots
+   reached a login**. The pages now go on an orphan list that fork and exit
+   drain.
+   With all of that, ten factory boots against ten of the copy model on the
+   same kernel: swap 2 FAIL / 1 PASS / 7 INCONCLUSIVE, copy 2 FAIL / 5 PASS /
+   3 INCONCLUSIVE. The inconsistency latch **never fired**, so the page
+   bookkeeping stayed correct throughout -- the swap model is now internally
+   sound and still roughly four times more likely to leave the board wedged.
+   It stays behind `FORK_SWAP_BANKS=1`. Whatever the remaining cause is, it is
+   not the accounting; the difference that is left is that the copy model keeps
+   every process's memory in two places and the swap model in one, so the
+   incident-15 corruption is survivable under copy and fatal under swap.
+
 ## What's here
 
 - `patches/00-esp32-linux-build.patch` — changes to upstream's build driver
