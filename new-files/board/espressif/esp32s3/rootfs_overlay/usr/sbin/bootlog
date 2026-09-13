@@ -1,0 +1,60 @@
+#!/bin/sh
+#
+# How much of the kernel's log reaches the console.
+#
+# The image boots with `quiet`, which is compiled into the device tree and so
+# cannot be changed from here: the console carries KERN_ERR and worse, which
+# is a panic, an Oops or a BUG: and very little else. That is worth about
+# 0.73 s of every boot, because printk to a 115200 console is synchronous and
+# the log is 8.4 KB against a 13.7 s boot.
+#
+# Nothing is lost either way -- the ring buffer holds all of it and dmesg
+# prints it -- so this switch does not touch the command line. It raises the
+# console level, and at boot S00bootlog also replays what was buffered before
+# it could run. The setting lives in /etc and survives a reboot.
+#
+# What it cannot do: show a fault that happens before that script runs, about
+# 1.4 s in. DEVELOPMENT.md incident 15 faults as early as 147 ms, and reading
+# those needs an image built without `quiet` -- see
+# board/espressif/esp32s3/patches/linux/03-kernel-cmdline-no-debug.patch.
+
+set -e
+DIR=${BOOTLOG_DIR:-/etc/bootlog}
+LEVEL=${BOOTLOG_LEVEL:-/proc/sys/kernel/printk}
+VERBOSE=8	# every level, KERN_DEBUG included
+QUIET=4		# CONSOLE_LOGLEVEL_QUIET: KERN_ERR and worse
+
+if [ "$(id -u)" != 0 ]; then
+	echo "bootlog: must be run as root" >&2
+	exit 1
+fi
+
+# The file is four tab-separated numbers; the first is the console level.
+# Writing a single number sets that one and leaves the other three alone.
+now() { cut -f1 "$LEVEL" 2>/dev/null || echo '?'; }
+set_level() { echo "$1" > "$LEVEL" 2>/dev/null || echo "bootlog: could not write $LEVEL" >&2; }
+
+case "${1:-status}" in
+verbose|on)
+	mkdir -p "$DIR"
+	: > "$DIR/verbose"
+	set_level "$VERBOSE"
+	echo 'Console shows the whole kernel log, now and at every boot.'
+	echo 'Messages from before init are replayed at boot; dmesg has them already.'
+	;;
+quiet|off)
+	mkdir -p "$DIR"
+	rm -f "$DIR/verbose"
+	set_level "$QUIET"
+	echo 'Console shows KERN_ERR and worse, the default. dmesg still has all of it.'
+	;;
+status)
+	if [ -e "$DIR/verbose" ]; then echo 'setting: verbose'
+	else echo 'setting: quiet (the default)'; fi
+	echo "console level now: $(now)	(4 = quiet, 8 = everything)"
+	;;
+*)
+	echo 'usage: bootlog {verbose|quiet|status}' >&2
+	exit 1
+	;;
+esac

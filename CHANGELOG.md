@@ -213,6 +213,24 @@ costs more than a tick. Exchanging pages instead of copying them was the way
 out of that and it was tried and rejected -- see Fork above -- so the number
 stands as the cost of the backend, not as the start of a fix.
 
+### The console
+
+`quiet` in the kernel command line replaced `debug`: the console now carries
+KERN_ERR and worse. The log is about 140 lines and 8.4 KB pushed synchronously
+to a 115200 console, which is 0.73 s of a 13.7 s boot spent in the UART, and
+the ring buffer still holds all of it for `dmesg`. `panic=10` came with it, so
+a panic reboots instead of hanging forever, and `no_hash_pointers` went, which
+had been printing every `%p` as a real kernel address to anyone who could read
+`dmesg` on a board that ships SSH.
+
+`bootlog verbose` turns the console back up and `bootlog quiet` restores the
+default; the setting lives in `/etc` and survives a reboot. The command line
+is compiled into the device tree and cannot be changed from a running system,
+so `S00bootlog` raises the console level as early as an init script can and
+replays the buffer once to cover what came before it. That leaves a real gap:
+a fault before it runs, about 1.4 s in, is still only in the buffer, and
+reading those needs an image built without `quiet`. The script says so.
+
 ### Launching without forking
 
 On NOMMU `vfork` copies nothing: it shares the memory and suspends the parent

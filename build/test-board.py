@@ -247,6 +247,13 @@ try:
         ('network-tools', '/usr/bin/dash /usr/share/program-tests/network-tools-test.sh', 'PASS'),
         ('hush-login', '/usr/bin/dash /usr/share/program-tests/hush-login-test.sh', 'PASS'),
         ('jobq', '/usr/bin/dash /usr/share/program-tests/jobq-test.sh', 'PASS'),
+        # The console switch: default quiet, verbose raises the level for real,
+        # and it goes back. Left as it was found, which is the default.
+        ('bootlog-default-is-quiet', 'bootlog status', 'quiet (the default)'),
+        ('bootlog-verbose-raises-the-level',
+         'bootlog verbose >/dev/null && cut -f1 /proc/sys/kernel/printk', '8'),
+        ('bootlog-quiet-restores-it',
+         'bootlog quiet >/dev/null && cut -f1 /proc/sys/kernel/printk', '4'),
     ]
     for name, text, expected in checks:
         record(name, lambda text=text, expected=expected: command(text, 180, expected))

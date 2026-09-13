@@ -27,6 +27,10 @@ banks, not a hardware MMU.
 - **Scheduled jobs and detachable sessions.** Persistent per-user
   `cron`/`crontab`, `@reboot` jobs, `session`/dtach consoles and
   `nohup ... &` for background work.
+- **A console you can turn up.** The image boots quietly, which is worth
+  0.73 s of a 13.7 s boot on a 115200 console. `bootlog verbose` shows the
+  whole kernel log at every boot and `bootlog quiet` puts it back; `dmesg`
+  has all of it either way.
 - **Tools for working within 8 MiB of RAM.** `jobq` limits job concurrency
   and checks available memory; `programbench` measures program costs.
   Image profiles select programs, and checked ELF stripping saves flash.
