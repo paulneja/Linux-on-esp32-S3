@@ -80,35 +80,24 @@ notes and the binaries are on the
 
 ### Fork
 
-> The page-set exchange described here is **disabled in this build**. It
-> corrupts memory on the board -- an "Illegal instruction in kernel" on one
-> boot, an Oops in `__rb_erase_color` under `exit_mmap` on another, and a bash
-> that turned itself restricted and exited. The patch stays in the tree behind
-> `FORK_SWAP_BANKS=1`; the measurements below were real but do not describe
-> what ships. The fork backend is otherwise unchanged and still works.
+**The page-set exchange does not ship, and is not being pursued.** The idea
+was sound: the backend gives every process its own page set, including the
+resident one, whose set is dead weight because its data is in the region
+itself. Exchanging the resident page with the incoming shadow page would let
+N processes share N-1 sets at the same traffic per switch, and `programbench`
+measured it -- socat 296 kB of peak backup down to 144, micropython 512 to
+384, dash 560 to 420, bash 892 to 800.
 
-The backend gave every process its own page set, including the resident one,
-whose set is dead weight: its data is in the region itself. Exchanging the
-resident page with the incoming shadow page leaves the outgoing process's data
-in the set the incoming one vacated, so N processes need N-1 sets and the
-resident owner holds none. Two loads and two stores per word is what the
-save-then-restore pair of memcpy already cost, so the traffic per context
-switch is unchanged.
-
-Measured with `programbench`, peak system-wide backup during each run:
-
-| program | before | after |
-|---|---:|---:|
-| socat, a plain fork and exec | 296 kB | 144 kB |
-| micropython | 512 kB | 384 kB |
-| dash | 560 kB | 420 kB |
-| bash | 892 kB | 800 kB |
-
-The halving is exact for a single fork of one region, which is what socat
-does and what the arithmetic predicts. A shell benchmark keeps several
-processes alive at once, where N-1 against N is a smaller proportion, so the
-improvement there is 10 to 25 per cent. `fork-test` passes 5/5 static and
-5/5 dynamic on the board.
+It corrupts memory on the board. An external audit found four real defects in
+`nommu_bank_switch()`, all fixed; with the fixes in and an inconsistency latch
+that **never fired** across ten factory boots, it still measured 2 FAIL /
+1 PASS / 7 INCONCLUSIVE against the copy model's 2 / 5 / 3 on the same kernel.
+The accounting is correct and the model still loses, because the copy model
+keeps each process's memory in two places and this one in a single place: the
+corruption of DEVELOPMENT.md incident 15 is survivable under copy and fatal
+under exchange. The patch stays in the tree behind `FORK_SWAP_BANKS=1` as a
+record of the attempt; the figures above describe something that is not built.
+Incident 16 has the detail. The copying backend is unchanged and works.
 
 Copy-on-write is not possible on this chip, and the reason is now written
 down rather than remembered: the TRM's section 15.6 says an unpermitted write
@@ -207,8 +196,9 @@ context switch held interrupts off. A switch over the full 512 KiB ceiling
 takes 21.5 ms, longer than the 10 ms timer tick, at about 10 cycles per
 memory operation through PSRAM. Lowering the ceiling was tried and reverted:
 the login bash needs 368 KiB, so every value that keeps the system working
-costs more than a tick. Exchanging pages lazily is where that gets fixed; the
-measurement is recorded so the work starts from a number.
+costs more than a tick. Exchanging pages instead of copying them was the way
+out of that and it was tried and rejected -- see Fork above -- so the number
+stands as the cost of the backend, not as the start of a fix.
 
 ### Behaviour
 

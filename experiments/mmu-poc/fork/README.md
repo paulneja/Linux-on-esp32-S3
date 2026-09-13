@@ -41,8 +41,8 @@ residente mientras otro proceso aún la utiliza. Los accesos remotos de
 > proceso apareciendo dentro de otro, que es justo lo que este parche mueve.
 > El modelo de host (`test-reclaim.py`) pasa, así que lo que está mal no está
 > en la contabilidad de páginas que ese test cubre. Se compila con
-> `FORK_SWAP_BANKS=1` para seguir trabajándolo. Lo de abajo describe el diseño
-> y las mediciones, que fueron reales, no lo que se entrega.
+> `FORK_SWAP_BANKS=1`, como registro del intento. Lo de abajo describe el
+> diseño y las mediciones, que fueron reales, no lo que se entrega.
 >
 > **Actualización 2026-09-13.** Se le corrigieron cuatro defectos estructurales,
 > todos en `nommu_bank_switch()`, que corre dentro del cambio de contexto con el
@@ -54,6 +54,11 @@ residente mientras otro proceso aún la utiliza. Los accesos remotos de
 > La diferencia que queda no es de contabilidad: el modelo de copia guarda la
 > memoria de cada proceso en dos lugares y el de intercambio en uno, así que la
 > corrupción del incidente 15 es sobrevivible con copia y fatal con intercambio.
+> **Decisión: queda fuera.** No se retoma mientras el incidente 15 siga abierto;
+> con esa corrupción presente, un modelo de una sola copia no es viable por
+> correcto que sea. El camino que sí dio ahorro sin tocar el kernel es sacar
+> programas del `fork()`: ver «Qué programa copia memoria al lanzar otro» en
+> [programs/README.md](../programs/README.md).
 
 
 El proceso residente no tiene respaldo propio: sus datos están en la región
