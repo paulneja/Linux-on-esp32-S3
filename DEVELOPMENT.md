@@ -454,9 +454,12 @@ that one directory match `new-files/` exactly.
    space the kernel puts in the shared vectors page (fits). A canary of free
    RAM could not be tried: the fault arrives before `late_initcall`. Turning
    the backend off is not an option -- bash, dtach, make and micropython link
-   against `libfork.so.0`. Next: a canary that starts in `mm_core_init`, in
-   internal SRAM, and a `CONFIG_PREEMPT_NONE` build, neither of which was
-   reached today. Reproduce with `build/soak-boot.py`, twenty rounds.
+   against `libfork.so.0`. `CONFIG_PREEMPT_NONE` with everything else equal:
+   2 FAIL, 5 PASS, 3 INCONCLUSIVE of 10, against 4 FAIL of 4 with
+   `CONFIG_PREEMPT`; the seed config now has it, as a mitigation with the
+   number beside it, not as the fix. Next: a canary that starts in
+   `mm_core_init`, in internal SRAM. Reproduce with `build/soak-boot.py`,
+   twenty rounds.
 
 ## What's here
 
