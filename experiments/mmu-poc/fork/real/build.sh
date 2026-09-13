@@ -42,10 +42,19 @@ make|all)
     cd "$out_dir/real-bins/make-4.4.1"
     apply_source_patch "$task_dir/make.patch"
     make distclean >/dev/null 2>&1 || test ! -f Makefile
-    ac_cv_func_posix_spawn=no ac_cv_func_vfork=no ac_cv_func_fork=yes \
-    ac_cv_func_fork_works=yes ac_cv_func_vfork_works=no \
+    # make only ever spawns a recipe and execs it, so it never needs the
+    # copying fork backend. Its non-posix_spawn path in job.c is vfork() plus
+    # dup2() plus exec, which is exactly what vfork allows, and vfork on
+    # NOMMU costs no copy at all. It used to be configured onto fork() to
+    # exercise the backend, at a full private-memory copy per live recipe.
+    #
+    # posix_spawn stays off on purpose: this uClibc's __spawni() returns
+    # ENOSYS on NOMMU whenever file actions are given, and make always gives
+    # them. AC_FUNC_FORK cannot run its probes when cross-compiling, so the
+    # answers are supplied: vfork works, and it is not to be aliased to fork.
+    ac_cv_func_vfork=yes ac_cv_func_vfork_works=yes ac_cv_func_fork_works=yes \
         ./configure --host=xtensa-esp32s3-linux-uclibcfdpic --prefix=/usr \
-        --without-guile --disable-nls --disable-load
+        --without-guile --disable-nls --disable-load --disable-posix-spawn
     make -j4
     "$STRIP" --strip-unneeded -R .xt.prop -R .xt.lit -o "$out_dir/real-bins/make-$variant" make
     if [[ "$variant" == baseline ]]; then cp "$out_dir/real-bins/make-$variant" "$out_dir/real-bins/make"; fi

@@ -20,9 +20,16 @@ El único cambio de fuentes en cada programa incorpora una declaración de
 La shell predeterminada `/bin/sh` no se reemplazó.
 
 Dash mantiene su ruta original de `vfork()` para ciertos comandos externos;
-las subshells, pipelines y sustituciones probadas usan `fork()`. Make fue
-configurado sin `posix_spawn` ni `vfork` para ejercitar su fallback a `fork`.
-`readelf` confirmó que el Make compilado importa `fork`, no aquellos dos.
+las subshells, pipelines y sustituciones probadas usan `fork()`.
+
+Make usa `vfork()`: solo lanza una receta y hace `exec`, así que nunca necesita
+el respaldo copiado, y `vfork()` en NOMMU no copia nada. Antes se lo configuraba
+a propósito sin `posix_spawn` ni `vfork` para ejercitar el `fork()` del backend,
+lo que costaba una copia completa de la memoria privada por receta viva.
+`posix_spawn` sigue descartado, pero por una razón concreta: el `__spawni()` de
+esta uClibc devuelve `ENOSYS` en NOMMU en cuanto se le pasan acciones de
+archivo, y Make siempre se las pasa. `readelf` confirma que el Make compilado
+importa `vfork` y no `fork`.
 
 Pruebas ejecutadas:
 
