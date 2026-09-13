@@ -27,9 +27,10 @@ of 20% still happen a third of the time, so the summary prints a one-sided
 95% upper bound on the rate alongside the count; ask for --rounds 20 before
 reading anything into a zero.
 
-Each run records the SHA-256 of the kernel and firmware partitions as read
-back from the board, so a transcript can always be tied to the exact image it
-came from. Never flashes the kernel or the rootfs: those are the image under
+With --identity a run records the SHA-256 of the kernel and firmware
+partitions as read back from the board, so a transcript can be tied to the
+exact image it came from; it costs about seven minutes, so it is off by
+default and meant for the run that goes into a verification record. Never flashes the kernel or the rootfs: those are the image under
 test.
 """
 import argparse
@@ -72,7 +73,9 @@ parser.add_argument('--settle-seconds', type=int, default=25,
                     help='keep watching this long after login and marker: the network and BLE come up later')
 parser.add_argument('--esptool', default='esptool')
 parser.add_argument('--no-flash', action='store_true', help='only reset; do not restore /etc and /home')
-parser.add_argument('--no-identity', action='store_true', help='skip reading the kernel/firmware hashes back')
+parser.add_argument('--identity', action='store_true',
+                    help='read the kernel and firmware partitions back and record their hashes; '
+                         'about seven minutes at 115200 baud, so off by default')
 parser.add_argument('--label', default='', help='free text stored in the summary (which variant this is)')
 parser.add_argument('--probe', action='append', default=[],
                     help='after a round that reached login, log in and run this command; its output is '
@@ -181,7 +184,7 @@ def upper_bound_95(fails, n):
     return hi
 
 
-identity = {} if args.no_identity else read_identity()
+identity = read_identity() if args.identity else {}
 rounds = []
 for number in range(1, args.rounds + 1):
     if not args.no_flash:
