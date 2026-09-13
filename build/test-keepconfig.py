@@ -124,13 +124,47 @@ class KeepConfigTests(unittest.TestCase):
         self.assertFalse(self.backup.exists())
 
     def test_missing_files_are_skipped(self):
-        # A board that never joined a network has no wpa_supplicant.conf.
+        # A board that never joined a network has no wpa_supplicant.conf,
+        # but it may well have its own root password, and that must come
+        # back after an update just the same.
         self.write('shadow', 'root:$6$MINE:19000:0:99999:7:::\n', 0o600)
         self.run_script('stop')
         self.assertTrue((self.backup / 'shadow').is_file())
         self.assertFalse((self.backup / 'wpa_supplicant.conf').exists())
-        # and with no saved wifi config, a reflash restores nothing
         self.reflash_etc()
+        self.assertIn('restored /etc/shadow', self.run_script('start'))
+        self.assertIn('MINE', (self.etc / 'shadow').read_text())
+        self.assertFalse((self.etc / 'wpa_supplicant.conf').exists())
+
+    def test_deleting_the_wifi_config_does_not_bring_the_old_password_back(self):
+        # The case that was wrong: the old gate took "no wpa_supplicant.conf"
+        # as proof of a factory /etc. A user who removes the network and then
+        # changes the password would get the old password restored on the
+        # next boot -- and the network they deleted.
+        self.configure()
+        self.run_script('stop')
+        (self.etc / 'wpa_supplicant.conf').unlink()
+        self.write('shadow', 'root:$6$NEWER:19100:0:99999:7:::\n', 0o600)
+        self.assertEqual(self.run_script('start'), '')
+        self.assertIn('NEWER', (self.etc / 'shadow').read_text())
+        self.assertFalse((self.etc / 'wpa_supplicant.conf').exists())
+
+    def test_a_live_etc_is_stamped_and_the_stamp_survives_saves(self):
+        self.configure()
+        self.run_script('stop')
+        stamp = (self.etc / '.keepconfig-generation').read_text()
+        self.assertTrue(stamp.strip())
+        self.assertEqual((self.backup / 'generation').read_text(), stamp)
+        self.run_script('stop')
+        self.assertEqual((self.etc / '.keepconfig-generation').read_text(), stamp)
+
+    def test_a_restored_etc_is_stamped_so_the_next_boot_is_quiet(self):
+        self.configure()
+        self.run_script('stop')
+        self.reflash_etc()
+        self.assertIn('restored', self.run_script('start'))
+        self.assertTrue((self.etc / '.keepconfig-generation').is_file())
+        # second boot: live /etc now, nothing to do
         self.assertEqual(self.run_script('start'), '')
 
     def test_save_action_is_the_same_as_stop(self):

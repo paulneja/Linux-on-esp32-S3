@@ -12,10 +12,15 @@
 # host keys. They hold credentials, so the directory is 0700 and every file
 # keeps the mode it had.
 #
-# Restoring is deliberately conservative. A file is only put back when /etc
-# does not have one, or has the factory one -- never over something written
-# after the update. Leave /home/.etc-backup/disabled to turn the whole thing
-# off.
+# Restoring is deliberately conservative, and the test for "this /etc just
+# came from the factory" is a generation stamp, not the absence of a file.
+# Every save writes a random id into /etc/.keepconfig-generation and records
+# the same id beside the backup. On start, a restore happens only when /etc
+# carries NO stamp at all -- which is what a freshly written etc.jffs2 looks
+# like. An /etc that still has its stamp is a live one, whatever the user
+# deleted from it since; deleting the wifi configuration on purpose must not
+# bring the old password back. Leave /home/.etc-backup/disabled to turn the
+# whole thing off.
 
 # Overridable so build/test-keepconfig.py can drive this on a host with a
 # fake /etc and /home rather than a board.
@@ -24,8 +29,20 @@
 : "${KEEP_MOUNTS:=/proc/mounts}"
 
 BACKUP=$KEEP_BACKUP
+STAMP=$KEEP_ETC/.keepconfig-generation
 FILES="wpa_supplicant.conf shadow passwd group"
 KEYS="dropbear/dropbear_rsa_host_key dropbear/dropbear_ecdsa_host_key dropbear/dropbear_ed25519_host_key dropbear/dropbear_dss_host_key"
+
+# A random id. /dev/urandom is always there; the fallback is good enough to
+# tell two /etc generations apart, which is all the stamp is for.
+new_generation() {
+	if [ -r /dev/urandom ]; then
+		od -An -N8 -tx1 /dev/urandom | tr -d ' \n'
+	else
+		printf '%s-%s' "$(date +%s 2>/dev/null)" "$$"
+	fi
+	echo
+}
 
 home_is_writable() {
 	awk -v want="${KEEP_HOME:-/home}" \
@@ -66,16 +83,18 @@ case "$1" in
 		[ -e "$BACKUP/disabled" ] && exit 0
 		home_is_writable || exit 0
 		[ -d "$BACKUP" ] || exit 0
-		# The gate: a configured board has a wpa_supplicant.conf, and
-		# a factory one never does. Its presence means this is a normal
-		# boot and nothing should be touched. Its absence right after an
-		# update means /etc was just rewritten, and everything below is
-		# what this board had before.
-		[ -e "$KEEP_ETC/wpa_supplicant.conf" ] && exit 0
-		# Nothing to restore if the wifi config was not saved either.
-		[ -f "$BACKUP/wpa_supplicant.conf" ] || exit 0
+		# The gate. A stamped /etc is a live one: leave it alone, no
+		# matter what it is missing. Only an /etc with no stamp at all
+		# was just rewritten from an image, and only then is what the
+		# board had before worth putting back.
+		[ -e "$STAMP" ] && exit 0
+		# Nothing to restore unless a save actually happened.
+		[ -f "$BACKUP/generation" ] || exit 0
 		echo 'Restoring the configuration saved before this update:'
 		for f in $FILES $KEYS; do restore_one "$f"; done
+		# Stamp the restored /etc with the generation it now carries, so
+		# the next boot sees a live /etc and does nothing.
+		cp -p "$BACKUP/generation" "$STAMP" 2>/dev/null
 		echo '  (delete /home/.etc-backup, or touch /home/.etc-backup/disabled, to stop this)'
 		;;
 	stop)
@@ -83,7 +102,17 @@ case "$1" in
 		home_is_writable || exit 0
 		mkdir -p "$BACKUP" 2>/dev/null || exit 0
 		chmod 700 "$BACKUP" 2>/dev/null
+		# A live /etc gets a stamp the first time it is saved; an /etc
+		# that already has one keeps it, so the id names this /etc for
+		# as long as it exists.
+		if [ ! -e "$STAMP" ]; then
+			new_generation > "$STAMP.new" 2>/dev/null &&
+				mv "$STAMP.new" "$STAMP" 2>/dev/null
+		fi
 		for f in $FILES $KEYS; do save_one "$f"; done
+		# The backup records which /etc it came from.
+		cp -p "$STAMP" "$BACKUP/generation.new" 2>/dev/null &&
+			mv "$BACKUP/generation.new" "$BACKUP/generation" 2>/dev/null
 		;;
 	save) "$0" stop && echo "Configuration saved to $BACKUP" ;;
 	restart|reload) "$0" stop; "$0" start ;;
