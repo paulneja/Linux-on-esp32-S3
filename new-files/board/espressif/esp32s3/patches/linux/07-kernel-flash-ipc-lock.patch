@@ -1,0 +1,109 @@
+map_esp32: serialise every flash operation on the one shared command
+
+The driver has a single command object shared with core 0 and a single
+flash controller behind it, but nothing serialised its users. MTD does not
+provide that exclusion, jffs2's alloc_sem is per superblock, and this board
+mounts two (/etc and /home), so under PREEMPT a second task could rewrite
+the command's fields while the first was between publishing it and entering
+the IRAM wait, and both could enqueue the same pointer. XIP reads had no
+lock at all: core 0 disables the flash cache while it writes, so a read
+from another task during a write returned whatever the cache held.
+
+One mutex now covers erase, write and read from the first field written to
+the result consumed.
+
+--- a/drivers/mtd/chips/map_esp32.c	2026-09-13 12:14:54.368620383 -0300
++++ b/drivers/mtd/chips/map_esp32.c	2026-09-13 12:14:54.386440265 -0300
+@@ -6,6 +6,7 @@
+ #include <linux/init.h>
+ #include <linux/kernel.h>
+ #include <linux/module.h>
++#include <linux/mutex.h>
+ #include <linux/mtd/map.h>
+ #include <linux/mtd/mtd.h>
+ #include <linux/mtd/partitions.h>
+@@ -54,6 +55,16 @@
+ 	struct map_info *map;
+ 	struct esp32_ipc_flash_cmd *cmd;
+ 	struct completion *completion;
++	/* One command object is shared with core 0 and there is one flash
++	 * controller, so every operation must own both from the first field
++	 * written to the result consumed. MTD gives no such exclusion: two
++	 * jffs2 superblocks (/etc and /home) write concurrently, and with
++	 * PREEMPT a second caller can rewrite the command while the first is
++	 * still between publishing it and entering the IRAM wait. XIP reads
++	 * take the same lock: while core 0 writes it disables the flash cache,
++	 * and a read from another task in that window returns garbage.
++	 */
++	struct mutex lock;
+ };
+ 
+ static int esp32_ipc_flash_erase(struct esp32_ipc_flash *hw, u32 off, u32 size);
+@@ -156,7 +167,9 @@
+ 	struct esp32_ipc_flash *hw = mtd->priv;
+ 	struct map_info *map = hw->map;
+ 
++	mutex_lock(&hw->lock);
+ 	map_copy_from(map, buf, from, len);
++	mutex_unlock(&hw->lock);
+ 	*retlen = len;
+ 	return 0;
+ }
+@@ -219,31 +232,46 @@
+ 
+ static int esp32_ipc_flash_erase(struct esp32_ipc_flash *hw, u32 off, u32 size)
+ {
++	int ret;
++
++	mutex_lock(&hw->lock);
+ 	hw->cmd->code = ESP_IPC_FLASH_CMD_ERASE;
+ 	hw->cmd->addr = off;
+ 	hw->cmd->size = size;
+ 	hw->cmd->data = NULL;
+-	return esp32_ipc_flash_io(hw, hw->cmd);
++	ret = esp32_ipc_flash_io(hw, hw->cmd);
++	mutex_unlock(&hw->lock);
++	return ret;
+ }
+ 
+ static int esp32_ipc_flash_read(struct esp32_ipc_flash *hw, u32 off, u32 size,
+ 				void *data)
+ {
++	int ret;
++
++	mutex_lock(&hw->lock);
+ 	hw->cmd->code = ESP_IPC_FLASH_CMD_READ;
+ 	hw->cmd->addr = off;
+ 	hw->cmd->size = size;
+ 	hw->cmd->data = data;
+-	return esp32_ipc_flash_io(hw, hw->cmd);
++	ret = esp32_ipc_flash_io(hw, hw->cmd);
++	mutex_unlock(&hw->lock);
++	return ret;
+ }
+ 
+ static int esp32_ipc_flash_write(struct esp32_ipc_flash *hw, u32 off, u32 size,
+ 				 const void *data)
+ {
++	int ret;
++
++	mutex_lock(&hw->lock);
+ 	hw->cmd->code = ESP_IPC_FLASH_CMD_WRITE;
+ 	hw->cmd->addr = off;
+ 	hw->cmd->size = size;
+ 	hw->cmd->data = (void *)data;
+-	return esp32_ipc_flash_io(hw, hw->cmd);
++	ret = esp32_ipc_flash_io(hw, hw->cmd);
++	mutex_unlock(&hw->lock);
++	return ret;
+ }
+ 
+ static int esp32_ipc_flash_rx(void *p, void *data)
+@@ -265,6 +293,7 @@
+ 	if (!hw)
+ 		return -ENOMEM;
+ 	platform_set_drvdata(pdev, hw);
++	mutex_init(&hw->lock);
+ 
+ 	init_completion(&completion);
+ 	hw->completion = &completion;

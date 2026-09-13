@@ -1,0 +1,53 @@
+esp32-ipc: run the completion pass whenever core 0 consumed something
+
+rx_batch_done is where a client frees the transmit buffers core 0 has
+finished with and wakes its netdev queue. The thread handler ran it only for
+a client whose receive callback had just returned true in the same batch,
+so a batch of transmit completions alone, or of receives that failed for
+lack of memory, freed nothing. Under memory pressure that is exactly when
+those buffers are needed back, and with nothing to wake it the transmit
+queue could stay stopped.
+
+Track the write queue's read index and run the pass for every registered
+client when it moved, keeping the run after a successful receive as before.
+
+--- a/drivers/misc/esp32-ipc.c
++++ b/drivers/misc/esp32-ipc.c
+@@ -33,6 +33,11 @@
+ 	struct esp32_ipc_queue *hw_q;
+ 	spinlock_t lock;
+ 	struct esp32_ipc_client client[ESP32_IPC_CLIENTS_MAX];
++	/* Read index of the write queue as of the last completion pass, so a
++	 * pass runs whenever core 0 consumed something, not only when a
++	 * receive in the same batch happened to succeed.
++	 */
++	u32 tx_read_seen;
+ };
+ 
+ int esp32_ipc_register_rx(void *ipc, u32 addr, void *p,
+@@ -132,12 +137,22 @@
+ 	r = READ_ONCE(q->read);
+ 	rmb();
+ 
+-	/* postprocessing calls */
+-
++	/* Completion pass. rx_batch_done is where a client frees the buffers
++	 * core 0 has finished with and wakes its transmit queue. It used to
++	 * run only for a client whose receive callback had just returned
++	 * true, so a batch made of transmit completions alone, or of receives
++	 * that failed for lack of memory, freed nothing -- and under memory
++	 * pressure that is exactly when the buffers are needed back. Run it
++	 * for every client when core 0 has consumed anything since the last
++	 * pass, and still after a successful receive as before.
++	 */
+ 	for (i = 0; i < ESP32_IPC_CLIENTS_MAX; ++i) {
+-		if (rx_done[i] && hw->client[i].rx_batch_done)
++		if (!hw->client[i].rx_batch_done)
++			continue;
++		if (rx_done[i] || r != hw->tx_read_seen)
+ 			hw->client[i].rx_batch_done(hw->client[i].p, r);
+ 	}
++	hw->tx_read_seen = r;
+ 
+ 	return IRQ_HANDLED;
+ }
