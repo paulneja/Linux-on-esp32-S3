@@ -38,9 +38,9 @@ measurement.
  void nommu_bank_switch(struct mm_struct *mm);
 --- a/mm/nommu-bank.inc
 +++ b/mm/nommu-bank.inc
-@@ -43,6 +43,17 @@
- atomic_long_t nommu_bank_shadow_pages = ATOMIC_LONG_INIT(0);
- atomic_long_t nommu_bank_recovered_pages = ATOMIC_LONG_INIT(0);
+@@ -59,6 +59,17 @@
+ 	dump_stack();
+ }
  
 +/* How long a context switch spends with interrupts disabled, in CPU cycles.
 + * This is the number that decides how large fork_bank_max_bytes may safely
@@ -56,7 +56,7 @@ measurement.
  /* A single-owner descriptor survives, but owns no backup pages. Keeping
   * that descriptor stable matters when another mm exits while fork sleeps
   * in bank_alloc(). Only the owning mm can replace its descriptor.
-@@ -168,12 +179,13 @@
+@@ -205,12 +216,13 @@
  void nommu_bank_switch(struct mm_struct *mm)
  {
  	struct nommu_bank *bank;
@@ -71,7 +71,7 @@ measurement.
  	list_for_each_entry(bank, &mm->context.nommu_banks, link) {
  		struct vm_region *region = bank->region;
  		struct nommu_bank *out = region->bank_owner;
-@@ -200,6 +212,12 @@
+@@ -247,6 +259,12 @@
  		}
  		region->bank_owner = bank;
  	}

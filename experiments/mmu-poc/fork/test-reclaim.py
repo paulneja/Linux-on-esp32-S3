@@ -22,6 +22,11 @@ shim = r'''
 #define MODULE_PARM_DESC(name,desc)
 #define WARN_ON_ONCE(cond) ({ int __w = !!(cond); if (__w) { fprintf(stderr, "WARN_ON_ONCE(%s) at %d\n", #cond, __LINE__); abort(); } __w; })
 #define READ_ONCE(x) (x)
+#define WRITE_ONCE(x,v) ((x) = (v))
+#define likely(x) (x)
+#define unlikely(x) (x)
+#define pr_err(...) fprintf(stderr, __VA_ARGS__)
+#define dump_stack() ((void)0)
 #define PAGE_SHIFT 12
 #define PAGE_SIZE 4096
 #define GFP_KERNEL 0

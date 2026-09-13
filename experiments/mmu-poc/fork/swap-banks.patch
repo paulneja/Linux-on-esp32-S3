@@ -34,9 +34,43 @@ The private-memory ceiling becomes a module parameter. It is also the bound on
 how long a switch runs with interrupts disabled, which is the number worth
 tuning against a latency budget rather than fixing at build time.
 
+
+Four things were wrong with the first version of this, and all four are about
+the one context this model added work to: nommu_bank_switch(), which runs
+inside context_switch() with the runqueue lock held and interrupts off.
+
+bank_move_pages() guarded itself with WARN_ON_ONCE and returned on failure.
+That printk wakes the console thread, which re-enters the scheduler from
+inside a context switch; the second occurrence is silent because the latch is
+already set; and the early return left the contents already swapped and
+region->bank_owner about to be assigned unconditionally, so one refusal
+inverted the model permanently -- the new owner holding another process's
+pages and the old owner holding none. The checks now happen in
+bank_can_move() *before* anything is touched, a refusal leaves the region
+exactly as it was, and the report is latched and printed by the next fork or
+exit, which may sleep.
+
+The "nobody owns what is resident" arm called bank_release_pages(), that is
+free_page(), from inside that same context switch. The copy model's switch
+does no allocation and no freeing at all, deliberately. bank_detach() now
+promotes an heir on every departure so the arm should be unreachable; it
+restores from its own set, keeps the pages, does not claim ownership, and
+latches the report.
+
+bank_release_pages() left freed pointers in pages[]. Harmless in the copy
+model, where a descriptor is only emptied on its way out of the switch list;
+in this model the resident owner sits at count 0 for its whole life, so those
+slots are reachable from a live descriptor. They are cleared with the page.
+
+And bank_clone() now refuses a second bank for a region the target mm already
+banks. Two of them would make nommu_bank_switch() walk that region twice in
+one pass: the second visit swaps it back, leaving the process on a stale
+snapshot with its live pages parked in a descriptor that no longer owns them.
+dup_mmap()'s vm_usage check happens to prevent it today, but that check is
+there for other reasons.
 --- a/mm/nommu-bank.inc
 +++ b/mm/nommu-bank.inc
-@@ -7,14 +7,36 @@
+@@ -7,20 +7,58 @@
  static bool nommu_bank_trace;
  module_param_named(fork_bank_trace, nommu_bank_trace, bool, 0600);
  MODULE_PARM_DESC(fork_bank_trace, "Log successful NOMMU bank forks (default off)");
@@ -74,20 +108,58 @@ tuning against a latency budget rather than fixing at build time.
  	void *pages[];
  };
  
-@@ -40,26 +62,53 @@
+ atomic_long_t nommu_bank_shadow_pages = ATOMIC_LONG_INIT(0);
+ atomic_long_t nommu_bank_recovered_pages = ATOMIC_LONG_INIT(0);
+ 
++/* Set from nommu_bank_switch(), which cannot print. Drained by the fork and
++ * exit paths, which can. A single latch is enough: the first inconsistency
++ * is the one worth seeing, and the model does not recover from it.
++ */
++static bool nommu_bank_broken;
++
++static void bank_report_broken(const char *where)
++{
++	if (likely(!READ_ONCE(nommu_bank_broken)))
++		return;
++	WRITE_ONCE(nommu_bank_broken, false);
++	pr_err("nommu-bank: inconsistent bank state seen during a context switch, noticed in %s\n",
++	       where);
++	dump_stack();
++}
++
+ /* A single-owner descriptor survives, but owns no backup pages. Keeping
+  * that descriptor stable matters when another mm exits while fork sleeps
+  * in bank_alloc(). Only the owning mm can replace its descriptor.
+@@ -28,8 +66,14 @@
+ static void bank_release_pages(struct nommu_bank *bank)
+ {
+ 	unsigned int i;
+-	for (i = 0; i < bank->count; i++)
++	for (i = 0; i < bank->count; i++) {
+ 		free_page((unsigned long)bank->pages[i]);
++		/* An owner sits at count 0 for its whole resident life, so a
++		 * stale pointer here would be a freed page reachable from a
++		 * live descriptor. Clear the slot with the page.
++		 */
++		bank->pages[i] = NULL;
++	}
+ 	atomic_long_sub(bank->count, &nommu_bank_shadow_pages);
+ 	bank->count = 0;
+ }
+@@ -40,26 +84,53 @@
  	kfree(bank);
  }
  
 -static struct nommu_bank *bank_alloc(struct vm_region *region)
 +static unsigned int bank_capacity(struct vm_region *region)
- {
--	unsigned int i, count = (region->vm_top - region->vm_start) >> PAGE_SHIFT;
++{
 +	return (region->vm_top - region->vm_start) >> PAGE_SHIFT;
 +}
 +
 +/* A descriptor with no pages: what the resident owner holds. */
 +static struct nommu_bank *bank_alloc_desc(struct vm_region *region)
-+{
+ {
+-	unsigned int i, count = (region->vm_top - region->vm_start) >> PAGE_SHIFT;
 +	unsigned int capacity = bank_capacity(region);
  	struct nommu_bank *bank;
  
@@ -134,7 +206,7 @@ tuning against a latency budget rather than fixing at build time.
  	return bank;
  }
  
-@@ -76,6 +125,46 @@
+@@ -76,6 +147,61 @@
  	}
  }
  
@@ -158,18 +230,33 @@ tuning against a latency budget rather than fixing at build time.
 +	}
 +}
 +
-+/* Hand the page set over: "from" gives up its pages, "to" takes them. */
++/* Whether the set may be handed from "from" to "to". Asked before anything
++ * is touched: this runs inside switch_mm with interrupts off, where there is
++ * no way to report a problem and no way to undo half a move. The receiver is
++ * the outgoing resident owner, so it must hold nothing -- overwriting a live
++ * pages[] would leak every page in it.
++ */
++static bool bank_can_move(struct nommu_bank *to, struct nommu_bank *from)
++{
++	if (to->capacity != from->capacity || to->count) {
++		/* Cannot printk here: this is called under the runqueue lock
++		 * with interrupts off, and printk wakes the console thread,
++		 * which re-enters the scheduler. Latch it and let the next
++		 * fork or exit, which may sleep, report it.
++		 */
++		nommu_bank_broken = true;
++		return false;
++	}
++	return true;
++}
++
++/* Hand the page set over: "from" gives up its pages, "to" takes them.
++ * Only ever called when bank_can_move() has just returned true.
++ */
 +static void bank_move_pages(struct nommu_bank *to, struct nommu_bank *from)
 +{
 +	unsigned int i;
 +
-+	if (WARN_ON_ONCE(to->capacity != from->capacity))
-+		return;
-+	/* The receiver is the outgoing resident owner, so it must hold nothing;
-+	 * overwriting a live pages[] would leak every page in it.
-+	 */
-+	if (WARN_ON_ONCE(to->count))
-+		return;
 +	for (i = 0; i < from->count; i++) {
 +		to->pages[i] = from->pages[i];
 +		from->pages[i] = NULL;
@@ -181,7 +268,7 @@ tuning against a latency budget rather than fixing at build time.
  void nommu_bank_switch(struct mm_struct *mm)
  {
  	struct nommu_bank *bank;
-@@ -87,11 +176,28 @@
+@@ -87,11 +213,38 @@
  	local_irq_save(flags);
  	list_for_each_entry(bank, &mm->context.nommu_banks, link) {
  		struct vm_region *region = bank->region;
@@ -197,29 +284,40 @@ tuning against a latency budget rather than fixing at build time.
 +		if (out) {
 +			/* Swap in place: afterwards the region holds the incoming
 +			 * process's data and bank->pages holds the outgoing one's,
-+			 * so the pages simply change owner.
++			 * so the pages simply change owner. Ask first: a refusal
++			 * here must leave the region exactly as it was, because
++			 * swapping and then failing to move the pages would give
++			 * the incoming process the outgoing one's memory.
 +			 */
++			if (!bank_can_move(out, bank))
++				continue;
 +			for (i = 0; i < bank->count; i++)
 +				bank_swap_page((void *)(region->vm_start + i * PAGE_SIZE),
 +					       bank->pages[i]);
 +			bank_move_pages(out, bank);
 +		} else {
-+			/* Nobody owns what is resident -- the previous owner
-+			 * exited. Restore and give the pages back.
++			/* Nobody owns what is resident: bank_detach() promotes an
++			 * heir on every departure, so this should be unreachable.
++			 * Restore from our own set and leave it alone -- freeing
++			 * pages here would be free_page() under the runqueue lock
++			 * with interrupts off. Ownership is not claimed either, so
++			 * the invariant "the owner holds no pages" still holds and
++			 * the next switch simply restores again.
 +			 */
++			nommu_bank_broken = true;
 +			bank_copy(bank, false);
-+			atomic_long_add(bank->count, &nommu_bank_recovered_pages);
-+			bank_release_pages(bank);
++			continue;
 +		}
  		region->bank_owner = bank;
  	}
  	local_irq_restore(flags);
-@@ -101,29 +207,35 @@
+@@ -101,29 +254,36 @@
  {
  	struct nommu_bank *bank = vma->nommu_bank;
  	unsigned long flags;
 +	bool was_owner;
 +
++	bank_report_broken("exit");
  	if (!bank)
  		return;
  	local_irq_save(flags);
@@ -264,15 +362,17 @@ tuning against a latency budget rather than fixing at build time.
  	}
  	vma->nommu_bank = NULL;
  	local_irq_restore(flags);
-@@ -133,21 +245,35 @@
+@@ -133,27 +293,58 @@
  static int bank_clone(struct vm_area_struct *dst, struct vm_area_struct *src)
  {
  	struct vm_region *region = src->vm_region;
 -	struct nommu_bank *parent, *child, *old = NULL;
-+	struct nommu_bank *parent, *child;
++	struct nommu_bank *parent, *child, *existing;
  	unsigned long flags;
  	bool fresh;
  
++	bank_report_broken("fork");
++
  	/* Allocate the child first: sleeping here can let the last sibling
  	 * exit and release the parent's shadows. Recheck AFTER allocation.
 +	 *
@@ -304,7 +404,28 @@ tuning against a latency budget rather than fixing at build time.
  		if (!parent) {
  			bank_free(child);
  			return -ENOMEM;
-@@ -165,8 +291,6 @@
+ 		}
+ 	}
+ 	local_irq_save(flags);
++	/* One bank per region per mm. Two would make nommu_bank_switch() walk
++	 * the same region twice in one pass: the second visit swaps it back,
++	 * leaving the process on a stale snapshot with its live pages parked
++	 * in a descriptor that no longer owns them. dup_mmap's vm_usage check
++	 * should already prevent it, but that check exists for other reasons.
++	 */
++	list_for_each_entry(existing, &dst->vm_mm->context.nommu_banks, link) {
++		if (existing->region == region) {
++			local_irq_restore(flags);
++			bank_free(child);
++			if (fresh)
++				bank_free(parent);
++			return -EOPNOTSUPP;
++		}
++	}
+ 	if (fresh) {
+ 		src->nommu_bank = parent;
+ 		list_add_tail(&parent->link, &src->vm_mm->context.nommu_banks);
+@@ -165,8 +356,6 @@
  	list_add_tail(&child->siblings, &parent->siblings);
  	list_add_tail(&child->link, &dst->vm_mm->context.nommu_banks);
  	local_irq_restore(flags);
@@ -313,7 +434,7 @@ tuning against a latency budget rather than fixing at build time.
  	return 0;
  }
  
-@@ -276,19 +400,27 @@
+@@ -276,19 +465,27 @@
  {
  	struct nommu_bank *bank = vma->nommu_bank;
  	unsigned long flags;
