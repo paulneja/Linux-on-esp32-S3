@@ -6,10 +6,30 @@ notes and the binaries are on the
 
 ## Unreleased — the memory the board was reserving and never using
 
-Measured on the developer board with the new kernel, against the same board
-before it: `MemAvailable` at idle went from 860 kB to 3484 kB, the worst point
-during the Bash benchmark from 248 kB to 2404 kB, and `init` starts at 1.71 s
-instead of 4.23 s. `tainted` 0, no OOM, panic, BUG or Oops.
+> The figures that used to open this section were measured with the bank
+> swap enabled, which no longer ships, on a board that had not been through a
+> factory boot, with a test runner that could not see a user-space illegal
+> instruction. They are gone until the final image is measured again with
+> `build/soak-boot.py` and `build/test-board.py`; the verification record
+> for that run will carry the numbers.
+
+### Stability
+
+- **A memory corruption that predates this release has a fix under test.**
+  The 0.7 release faults in roughly one factory boot in ten, and this
+  batch had pushed that towards one in two; a kernel `Oops`, an `Illegal
+  instruction` in the kernel or in a user process, or a `gzip: crc error`
+  from `home-init`, always in the first seconds after `/home` is formatted.
+  The flash driver shared one command object with core 0 with nothing
+  serialising its users, and its XIP reads took no lock at all while core 0
+  disables the flash cache to write. One mutex now covers erase, write and
+  read (`07-kernel-flash-ipc-lock.patch`). The cross-core transmit completion
+  pass also ran only after a successful receive in the same batch, so
+  buffers went unfreed exactly under memory pressure
+  (`08-kernel-ipc-tx-completion.patch`).
+- `build/soak-boot.py` reproduces a factory boot in two minutes and classifies
+  it as PASS, FAIL or INCONCLUSIVE on evidence, with a 95% bound on the fault
+  rate. Its first version called silence a pass; DEVELOPMENT.md incident 12.
 
 ### Security
 
@@ -253,7 +273,14 @@ measurement is recorded so the work starts from a number.
   a name in `CONFIG_EXTRA_FIRMWARE` is missing from either build path.
 - Host checks run on every push, over every tracked shell script rather than a
   list, with a bashism check on the scripts busybox runs and guards against a
-  patch carrying a binary hunk or a file that `new-files/` also ships.
+  patch carrying a binary hunk or a file that `new-files/` also ships. The
+  patch check now fetches the pinned kernel commit and applies every patch in
+  build order, failing on fuzz; it used to look for diff headers. The full
+  image build is `workflow_dispatch` only, as the comment always said.
+- `home-init` no longer publishes a `/home/www` whose gzip failed after
+  streaming, and `S03keepconfig` no longer restores an old password over a
+  new one when the network configuration was deleted on purpose: restores
+  are gated on a generation stamp, not on a missing file.
 
 ## 0.7 — fork, Bash and a userspace that fits (2026-09-08)
 
