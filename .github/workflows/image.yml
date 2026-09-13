@@ -56,10 +56,8 @@ jobs:
           done
           exit "$status"
 
-      - name: Check the patches still apply
+      - name: Check the patches are well formed
         run: |
-          # A patch that stopped applying is otherwise only discovered hours
-          # into a build. This checks the ones whose target is in the tree.
           status=0
           for p in new-files/board/espressif/esp32s3/patches/linux/*.patch \
                    patches/*.patch experiments/mmu-poc/fork/*.patch; do
@@ -73,6 +71,49 @@ jobs:
             fi
           done
           exit "$status"
+
+      - name: Check the kernel patches apply to the pinned kernel, in order
+        run: |
+          # A patch that stopped applying is otherwise only discovered an
+          # hour into a build. Fetch just the pinned kernel commit without
+          # blobs, check out only the paths the patches touch, and apply
+          # them in the order buildroot does. Seconds, not minutes.
+          set -e
+          . build/sources.lock
+          git clone --no-checkout --depth 1 --filter=blob:none \
+              https://github.com/jcmvbkbc/linux-xtensa.git kernel-pin
+          cd kernel-pin
+          git fetch --depth 1 origin "$LINUX_KERNEL_REV"
+          sed -n 's|^+++ b/\([^[:space:]]*\).*|\1|p' \
+              ../new-files/board/espressif/esp32s3/patches/linux/*.patch \
+              ../experiments/mmu-poc/fork/kernel.patch \
+              ../experiments/mmu-poc/fork/reclaim.patch \
+              ../experiments/mmu-poc/fork/quiet-trace.patch | sort -u > ../touched
+          # Only files that exist at the pinned commit; the fork patches
+          # create a few. Check them out one by one, so a typo in a patch
+          # header fails here rather than producing an empty tree that
+          # every patch then "applies" to by creating the file.
+          while read -r f; do
+            if git cat-file -e "$LINUX_KERNEL_REV:$f" 2>/dev/null; then
+              git checkout -q "$LINUX_KERNEL_REV" -- "$f"
+            fi
+          done < ../touched
+          test "$(git ls-files | wc -l)" -ge 15 || { echo "checkout produced too few files"; exit 1; }
+          # An offset is fine (an earlier patch inserted lines above); fuzz
+          # or a failed hunk is not, and "No file to patch" means a header
+          # names a path that is not at the pinned commit.
+          apply() {
+            out=$(patch -p1 -f --no-backup-if-mismatch < "$1" 2>&1) || { echo "$out"; return 1; }
+            echo "$out" | grep -qE 'FAILED|fuzz|No file to patch' && { echo "$out"; return 1; }
+            return 0
+          }
+          for p in ../new-files/board/espressif/esp32s3/patches/linux/*.patch; do
+            echo "== $(basename "$p")"; apply "$p"
+          done
+          # The fork backend's own patches come next in the real build.
+          for p in kernel reclaim quiet-trace; do
+            echo "== fork/$p.patch"; apply "../experiments/mmu-poc/fork/$p.patch"
+          done
 
       - name: Check no file is carried by both a patch and new-files
         run: |
@@ -111,6 +152,9 @@ jobs:
   build:
     name: Full image ${{ matrix.run }}
     needs: host-tests
+    # The comment at the top promises this stays manual; without this line
+    # it ran twice on every push.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
