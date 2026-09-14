@@ -106,24 +106,24 @@ build.
 
 ### Fork
 
-**The page-set exchange does not ship, and is not being pursued.** The idea
-was sound: the backend gives every process its own page set, including the
-resident one, whose set is dead weight because its data is in the region
-itself. Exchanging the resident page with the incoming shadow page would let
-N processes share N-1 sets at the same traffic per switch, and `programbench`
-measured it -- socat 296 kB of peak backup down to 144, micropython 512 to
-384, dash 560 to 420, bash 892 to 800.
+**The page-set exchange ships.** The backend gives every process its own
+page set, including the resident one, whose set is dead weight because its
+data is in the region itself. Exchanging the resident page with the incoming
+shadow page lets N processes share N-1 sets at the same traffic per switch.
+`programbench` measured it when it was first written -- socat 296 kB of peak
+backup down to 144, micropython 512 to 384, dash 560 to 420, bash 892 to
+800 -- and then it was switched off for a week because it corrupted memory.
 
-It corrupts memory on the board. An external audit found four real defects in
-`nommu_bank_switch()`, all fixed; with the fixes in and an inconsistency latch
-that **never fired** across ten factory boots, it still measured 2 FAIL /
-1 PASS / 7 INCONCLUSIVE against the copy model's 2 / 5 / 3 on the same kernel.
-The accounting is correct and the model still loses, because the copy model
-keeps each process's memory in two places and this one in a single place: the
-corruption of DEVELOPMENT.md incident 15 is survivable under copy and fatal
-under exchange. The patch stays in the tree behind `FORK_SWAP_BANKS=1` as a
-record of the attempt; the figures above describe something that is not built.
-Incident 16 has the detail. The copying backend is unchanged and works.
+It never had. The corruption was the firmware not invalidating the flash
+cache after any write Linux made (DEVELOPMENT.md incident 15); every model
+was reading stale pages, and this one, which keeps each process's memory in
+one place rather than two, had nothing to survive that with. An external
+audit had meanwhile found four real defects in its context-switch path, all
+fixed, and an inconsistency latch went in that names any broken invariant.
+With the firmware fixed: **twenty factory boots, 20 clean, the latch never
+fired**, the exchange visibly at work in every one (`ForkSwitchMax` 13.8 to
+14.3 ms). `build/verification/2026-09-14-swap.md`. `FORK_SWAP_BANKS=0`
+builds the copy model instead.
 
 Copy-on-write is not possible on this chip, and the reason is now written
 down rather than remembered: the TRM's section 15.6 says an unpermitted write

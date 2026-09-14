@@ -596,10 +596,14 @@ that one directory match `new-files/` exactly.
    3 INCONCLUSIVE. The inconsistency latch **never fired**, so the page
    bookkeeping stayed correct throughout -- the swap model is now internally
    sound and still roughly four times more likely to leave the board wedged.
-   It stays behind `FORK_SWAP_BANKS=1`. Whatever the remaining cause is, it is
-   not the accounting; the difference that is left is that the copy model keeps
-   every process's memory in two places and the swap model in one, so the
-   incident-15 corruption is survivable under copy and fatal under swap.
+   It stayed behind `FORK_SWAP_BANKS=1` for a week. The difference that was
+   left -- the copy model keeps every process's memory in two places and the
+   swap model in one, so the incident-15 corruption was survivable under copy
+   and fatal under swap -- turned out to be the whole story. **Closed
+   2026-09-14, in the swap's favour**: with incident 15 fixed in the firmware,
+   twenty factory boots with the swap on, 20 clean, latch never fired,
+   `ForkSwitchMax` 13.8-14.3 ms in every round. It is the default now.
+   `build/verification/2026-09-14-swap.md`.
 
 ## What's here
 

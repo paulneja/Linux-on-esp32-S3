@@ -32,7 +32,7 @@ cambio de contexto, y referencias de región para evitar liberar memoria
 residente mientras otro proceso aún la utiliza. Los accesos remotos de
 `/proc` y ptrace consultan el banco correspondiente, no el residente ajeno.
 
-### Bancos por intercambio (`swap-banks.patch`) — NO se compila
+### Bancos por intercambio (`swap-banks.patch`) — es el modelo que se entrega
 
 > **Este parche corrompe memoria en la placa y está desactivado.** Un build
 > limpio de `1af3a5b` tomó `Illegal instruction in kernel` en `sys_stat64` en
@@ -54,11 +54,15 @@ residente mientras otro proceso aún la utiliza. Los accesos remotos de
 > La diferencia que queda no es de contabilidad: el modelo de copia guarda la
 > memoria de cada proceso en dos lugares y el de intercambio en uno, así que la
 > corrupción del incidente 15 es sobrevivible con copia y fatal con intercambio.
-> **Decisión: queda fuera.** No se retoma mientras el incidente 15 siga abierto;
-> con esa corrupción presente, un modelo de una sola copia no es viable por
-> correcto que sea. El camino que sí dio ahorro sin tocar el kernel es sacar
-> programas del `fork()`: ver «Qué programa copia memoria al lanzar otro» en
-> [programs/README.md](../programs/README.md).
+> **Actualización 2026-09-14: vuelve, y por defecto.** El incidente 15 se
+> cerró: era el firmware no invalidando la caché de flash tras las escrituras
+> de Linux, no la RAM ni el fork. Con el firmware corregido, veinte arranques
+> de fábrica con el intercambio puesto: **20 limpios, el pestillo nunca
+> disparó**, y el intercambio trabajando en todos (`ForkSwitchMax` 13,8–14,3
+> ms). Lo único que lo mataba era leer páginas rancias, que el modelo de copia
+> sobrevivía por tener dos ejemplares de cada cosa y este no. `FORK_SWAP_BANKS=0`
+> construye el de copia. Lo de sacar programas del `fork()` sigue valiendo y
+> se suma: `make` y `jobq` en 0 kB, más el resto a N−1.
 
 
 El proceso residente no tiene respaldo propio: sus datos están en la región
