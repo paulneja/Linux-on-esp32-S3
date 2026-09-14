@@ -1,0 +1,83 @@
+Build:Mar 27 2021
+rst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce3818,len:0xeec
+load:0x403c9700,len:0x4
+load:0x403c9704,len:0x9b4
+load:0x403cc700,len:0x2c74
+entry 0x403c9880
+pp rom version: e7ae62f
+net80211 rom version: e7ae62f
+MMU: first_free_mmu=10 (firmware uses entries 0..9)
+MMU: kernel e0x14=0x0014 rootfs e0x54=0x0054
+linux ptr = 0x42140000
+vectors ptr = 0x40380000
+[    0.000000] Linux version 6.11.0-forkbank (builder@esp32-repro) (xtensa-esp32s3-linux-uclibcfdpic-gcc (crosstool-NG UNKNOWN) 14.1.0, GNU ld (crosstool-NG UNKNOWN) 2.42.50.20240224) #1 Sat Sep 5 00:00:00 UTC 2026
+[    0.000000] config ID: c2f0fffe:23090f1f
+[    0.000000] earlycon: esp32s3uart0 at MMIO32 0x60000000 (options '115200n8,40000000')
+[    0.000000] printk: legacy bootconsole [esp32s3uart0] enabled
+[    0.478618] Unable to handle kernel paging request at virtual address 821503a0
+[    0.478618]  pc = 422e6601, ra = 821503a4
+[    0.479543] Oops: sig: 11 [#1]
+[    0.482619] CPU: 0 UID: 0 PID: 13 Comm: kworker/0:1 Not tainted 6.11.0-forkbank #1
+[    0.490154] Workqueue: events_power_efficient 0x422e65fc
+[    0.495395] a00: 821503a4 3d8fde30 3d8d2a00 3d85d605 3d80691c 042a03e1 3d82f350 3d85d600
+[    0.495917] a08: 8215003d 00000000 3d82f350 00400000 00000000 00000008 3d82f354 3d861b00
+[    0.511530] pc: 422e6601, ps: 00060f10, depc: 0000001d, excvaddr: 821503a0
+[    0.518384] lbeg: 42361215, lend: 42361237 lcount: ffffffff, sar: 00000015
+[    0.525253] Stack:
+[    0.527421] > 3d8075c0 3d86c000 3d885590 3d8fde00
+[    0.532064]   3d8d2a2c 3d8fde70 3d8d2a00 00000000
+[    0.536735]   3d80691c 3d82ee60 3d82ee5c 3d85d600
+[    0.541428]   42140818 3d8fde90 3d8a7c80 3d879d80
+[    0.546120]   3d8d2a2c 3d885590 3d80691c 3d806938
+[    0.550803]   00000000 3d8fdeb0 4215360c 3d8a7c80
+[    0.555487] > 3d8d2a00 421502c8 3d8fc000 3d8bde00
+[    0.560173]   00000000 3d8fdeb0 4215360c 3d8a7c80
+[    0.564840] > 00000000 00000000 00000000 00000000
+[    0.569540]   00000000 00000000 00000000 00000000
+[    0.574214]   00000000 00000000 00000000 00000000
+[    0.578900]   00000000 00000000 00000000 00000000
+[    0.583588]   00000000 00000000 00000000 00000000
+[    0.588267]   00000000 00000000 00000000 00000000
+[    0.592974]   00000000 00000000 00000000 00000000
+[    0.597641]   00000000 00000000 00000000 00000000
+[    0.602243] Call Trace:
+[    0.604675]  [<42153679>] 0x42153679
+[    0.608231]  [<42140818>] 0x42140818
+[    0.611786] Disabling lock debugging due to kernel taint
+[    0.640353] Initialise system trusted keyrings
+[    0.644467] workingset: timestamp_bits=30 max_order=11 bucket_order=0
+[    0.646820] jffs2: version 2.2. (NAND) © 2001-2006 Red Hat, Inc.
+[    0.649486] Key type asymmetric registered
+[    0.650825] Asymmetric key parser 'x509' registered
+[    0.656897] io scheduler mq-deadline registered
+[    0.661009] io scheduler kyber registered
+[    0.705467] pinctrl-single 60004154.gpio_in_mux: 256 pins, size 1024
+[    0.715210] pinctrl-single 60008484.pinctrl: 22 pins, size 88
+[    0.724661] pinctrl-single 60009004.pinctrl: 49 pins, size 196
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x3 (RTC_SW_SYS_RST),boot:0x8 (SPI_FAST_FLASH_BOOT)
+Saved PC:0x4038128e
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce3818,len:0xeec
+load:0x403c9700,len:0x4
+load:0x403c9704,len:0x9b4
+load:0x403cc700,len:0x2c74
+entry 0x403c9880
+pp rom version: e7ae62f
+net80211 rom version: e7ae62f
+MMU: first_free_mmu=10 (firmware uses entries 0..9)
+MMU: kernel e0x14=0x0014 rootfs e0x54=0x0054
+linux ptr = 0x42140000
+vectors ptr = 0x40380000
+[    0.000000] Linux version 6.11.0-forkbank (builder@esp32-repro) (xtensa-esp32s3-linux-uclibcfdpic-gcc (crosstool-NG UNKNOWN) 14.1.0, GNU ld (crosstool-NG UNKNOWN) 2.42.50.20240224) #1 Sat Sep 5 00:00:00 UTC 2026
+[    0.000000] config ID: c2f0fffe:23090f1f
+[    0.000000] earlycon: esp32s3uart0 at MMIO32 0x60000000 (options '115200n8,40000000')
+[    0.000000] printk: legacy bootconsole [esp32s3uart0] enabled
+Starting syslogd: OK
+Starting klogd: OK
+Running sysctl: OK

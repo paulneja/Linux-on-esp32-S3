@@ -1,0 +1,33 @@
+Build:Mar 27 2021
+rst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce3818,len:0xeec
+load:0x403c9700,len:0x4
+load:0x403c9704,len:0x9b4
+load:0x403cc700,len:0x2c74
+entry 0x403c9880
+pp rom version: e7ae62f
+net80211 rom version: e7ae62f
+MMU: first_free_mmu=10 (firmware uses entries 0..9)
+MMU: kernel e0x14=0x0014 rootfs e0x54=0x0054
+linux ptr = 0x42140000
+vectors ptr = 0x40380000
+[    0.000000] Linux version 6.11.0-forkbank (builder@esp32-repro) (xtensa-esp32s3-linux-uclibcfdpic-gcc (crosstool-NG UNKNOWN) 14.1.0, GNU ld (crosstool-NG UNKNOWN) 2.42.50.20240224) #1 Sat Sep 5 00:00:00 UTC 2026
+[    0.000000] config ID: c2f0fffe:23090f1f
+[    0.000000] earlycon: esp32s3uart0 at MMIO32 0x60000000 (options '115200n8,40000000')
+[    0.000000] printk: legacy bootconsole [esp32s3uart0] enabled
+Starting syslogd: OK
+Starting klogd: OK
+Running sysctl: OK
+Starting network (background): OK
+Starting inetd: OK
+Starting BLE WiFi setup: OK
+Starting cron: OK
+
+Welcome to Buildroot
+buildroot login: 
+--- probes ---
+{
+ "error": "RuntimeError(\"Login failed; password not retried: \\n[   38.023150] Unable to handle kernel paging request at virtual address 00000000\\n[   38.023150]  pc = 423611aa, ra = 8218ed8e\\n[   38.024059] Oops: sig: 11 [#1]\\n[   38.027112] CPU: 0 UID: 0 PID: 8 Comm: ksoftirqd/0 Not tainted 6.11.0-forkbank #1\\n[   38.034521] a00: 8218ed8e 3d887db0 3db22000 00000000 00001000 3db22000 00687361 00000100\\n[   38.035078] a08: 00000003 3d887d80 fffffffc fffffffe 00000000 00000000 0059c1a5 0059c1a5\\n[   38.050656] pc: 423611aa, ps: 00060513, depc: 0000001c, excvaddr: 00000000\\n[   38.057512] lbeg: 423611aa, lend: 423611c0 lcount: 000000ff, sar: 0000001f\\n[   38.064380] Stack:\\n[   38.066526] > 82366417 3d887de0 3d835328 00000000\\n[   38.071177]   3db0a488 3da56efc 00000001 00001000\\n[   38.075866]   8236646c 3d887e00 3d8842a8 3d8079c0\\n[   38.080676]   3d887e10 00060503 3db3d3c0 3da56ee0\\n[   38.085288]   82155e00 3d887e50 00000000 00060700\\n[   38.089939]   82155e10 3d887e50 00000000 00060700\\n[   38.094623]   04208040 3d832ea0 3d839578 ffff99a8\\n[   38.099288]   00000001 4000001f 00000024 00000009\\n[   38.103998]   3d8075c0 3db0a450 3d884000 3d887e00\\n[   38.108673]   82153679 3d887e70 3d85a280 00000000\\n[   38.113373]   00000000 3d886000 3d884000 3d887e50\\n[   38.118149]   42140818 3d887e90 3d859280 3d86fcd0\\n[   38.122750]   00000001 00000000 3d886000 3d8060ac\\n[   38.127421]   00000000 3d887eb0 4215360c 3d859280\\n[   38.132126]   3d85a280 42155d40 3d886000 3d8584c0\\n[   38.136795]   00000000 3d887eb0 4215360c 3d859280\\n[   38.141374] Call Trace:\\n[   38.143806]  [<42165ee2>] 0x42165ee2\\n[   38.147368] Disabling lock debugging due to kernel taint\\n[   38.275682] BUG: failure at kernel/sched/core.c:6546/do_task_dead()!\\n[   38.276534] Kernel panic - not syncing: BUG!\\n[   38.276776] Rebooting in 10 seconds..\\nESP-ROM:esp32s3-20210327\\nBuild:Mar 27 2021\\nrst:0x3 (RTC_SW_SYS_RST),boot:0x8 (SPI_FAST_FLASH_BOOT)\\nSaved PC:0x4038128e\\nSPIWP:0xee\\nmode:DIO, clock div:1\\nload:0x3fce3818,len:0xeec\\nload:0x403c9700,len:0x4\\nload:0x403c9704,len:0x9b4\\nload:0x403cc700,len:0x2c74\\nentry 0x403c9880\\npp rom version: e7ae62f\\nnet80211 rom version: e7ae62f\\nMMU: first_free_mmu=10 (firmware uses entries 0..9)\\nMMU: kernel e0x14=0x0014 rootfs e0x54=0x0054\\nlinux ptr = 0x42140000\\nvectors ptr = 0x40380000\\n[    0.000000] Linux version 6.11.0-forkbank (builder@esp32-repro) (xtensa-esp32s3-linux-uclibcfdpic-gcc (crosstool-NG UNKNOWN) 14.1.0, GNU ld (crosstool-NG UNKNOWN) 2.42.50.20240224) #1 Sat Sep 5 00:00:00 UTC 2026\\n[    0.000000] config ID: c2f0fffe:23090f1f\\n[    0.000000] earlycon: esp32s3uart0 at MMIO32 0x60000000 (options '115200n8,40000000')\\n[    0.000000] printk: legacy bootconsole [esp32s3uart0] enabled\\nStarting syslogd: OK\\nStarting klogd: OK\\nRunning sysctl: OK\\nStarting network (background): OK\\nStarting inetd: OK\\nStarting BLE WiFi setup: OK\\n\\n\\nWelcome to Buildroot\\n\\nbuildroot login: \")"
+}

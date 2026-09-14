@@ -476,6 +476,52 @@ that one directory match `new-files/` exactly.
    `/proc/sys/kernel/tainted` back after every login and runs the fault list
    over them, so the next run measures the same on either command line. Open.
 
+15b. **Incident 15, the mechanism -- OPEN, and it is not RAM**: the day
+   after twenty clean factory boots, the same kernel byte for byte
+   (`xipImage` `48713c61…`) took faults in 10 of 17. The only change to the
+   image was `bootlog`, two overlay scripts, and a controlled run with the
+   previous rootfs (`24f0faf`, from the CI artifacts of that commit) on the
+   same kernel took an Oops at **478 ms** -- before `/sbin/init` exists, so
+   no script in the rootfs can be involved. `bootlog` is innocent; reverting
+   it changes nothing. Both transcripts are in
+   `build/verification/2026-09-14-flash-read/`.
+   The Oops says what is going wrong, and it had not been read this closely
+   before. `check_lifetime+0x9` faulted on `l32i a5, a4, 0` right after
+   `l32r a4, 0x422c84d8` -- a load from the kernel's **literal pool**, which
+   sits in `.text`, which under `CONFIG_XIP_KERNEL` is **executed straight
+   out of the flash through the cache**. The literal should be `0x3d824000`
+   (`jiffies_64`). The register held `0x821503a0`: that is `worker_thread+0xd8`
+   with bit 31 set, which is exactly how Xtensa's windowed ABI encodes a
+   `call8` return address in `a0`. A flash read returned something that was
+   never at that address. The same day's round 15 has the same shape:
+   `rcu_process_callbacks` handed `memcpy` a NULL out of a callback record.
+   And every early fault in the list above fits it too -- `slab_caches`,
+   the DTB, `kmalloc` from `pinctrl` -- the kernel reading its own text or
+   rodata wrong, before any process exists.
+   So the PSRAM memtest was clean because the PSRAM is not where it happens.
+   The flash **contents** are fine: `Hash of data verified` on every write,
+   and the kernel's own `sha256sum` over its partition matches the build in
+   the good rounds. What is intermittently wrong is the **read path** --
+   the flash cache, or the flash itself under whatever conditions the board
+   is in. Two candidates fit everything and the evidence cannot yet tell
+   them apart: (a) thermal -- the board had been through more than fifty
+   3.8 MB jffs2 rewrites and a 16 MB erase in a few hours when it went bad,
+   and had been through far fewer the day it was clean; (b) a coherence
+   hole between core 0 and the cache when the firmware touches the flash
+   while Linux is executing from it, which would also explain why the fork
+   backend (more context switches, more windows) multiplies it. Next: the
+   same twenty rounds on the same image after the board has been off for
+   hours. If it returns to 0 of 20, the variable is the board's state, not
+   the software.
+   One thing fixed by reading these: nine of the day's ten panics printed
+   only `Kernel panic - not syncing: BUG!`. `BUG()` prints its
+   `BUG: failure at file:line` with a bare `printk()` -- `KERN_DEFAULT`,
+   level 4 -- and `quiet` sets the console to 4 and passes only what is
+   below it, so the line that says *where* went to the ring buffer, and
+   `panic=10` rebooted before anyone could read it. `quiet` costs every
+   panic its location. That has to change whatever the cause turns out to
+   be.
+
 16. **Fork backend, incident 16**: the bank swap was given a proper try and
    still loses. An external audit of the two models side by side found four
    real defects, all in `nommu_bank_switch()`, which runs inside
