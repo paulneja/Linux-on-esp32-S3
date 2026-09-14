@@ -108,6 +108,29 @@ NXDOMAIN for `example.com` specifically -- `rcode=3`, read off the wire --
 while resolving every other name. The board, the driver and the libc were
 doing exactly what they should. Pick real names for network tests.
 
+## From the host, the way a person uses it
+
+Nothing below touched the serial console; the board was driven over the
+network from the PC at `192.168.1.31`.
+
+- `ssh-server on` issued over telnet; a public key installed into
+  `/home/root/.ssh/authorized_keys` the same way; then SSH from the host
+  with that key, no password: `SSH_42`, `xtensa`, `ForkSwitchMax` live.
+- 200 KB of random data up by `scp -O`, hashed on the board (identical), and
+  back down (`cmp` identical) -- through jffs2, the path incident 15
+  corrupted. Plain `scp` fails: dropbear has no `sftp-server`, and OpenSSH
+  9 defaults to SFTP. `-O` is the way, and it belongs in the README.
+- The bash and make suites run over SSH: both PASS.
+- 20 page requests in a row, 20 `200`s; four status-CGI requests at once,
+  four `200`s; three SSH sessions at once, each forking, all three back.
+- After all of it: `tainted` 0, no fault lines in `dmesg`, `ForkShadow` 0,
+  MemAvailable 3008 kB, load 0.91.
+
+Opening the serial console resets the board (DTR/RTS), and a reset is a
+fresh association: for a few seconds after any console session the board
+is off the network. That is the adapter, not a fault, and it caught this
+record's author out once.
+
 ## Not covered
 
 The BLE provisioning dialog. The `wifi` fix is in the repository and on the

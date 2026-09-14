@@ -187,7 +187,9 @@ More commands, measurements and examples are in the
 - **Hardware RSA acceleration.** The `rsa-esp32s3` Linux Crypto API driver
   has boot-time 512-bit and 2048-bit self-tests.
 - **Optional SSH and HTTP services.** Dropbear is controlled with
-  `ssh-server on|off|status`; HTTP with `web-server on|off|status`.
+  `ssh-server on|off|status`; HTTP with `web-server on|off|status`. Copy
+  files with `scp -O`: dropbear has no SFTP server, and OpenSSH 9 uses SFTP
+  unless told otherwise.
   Both are off by default. SSH is slow on this hardware; the RSA driver does
   not accelerate its Curve25519 operations.
 - **NTP and curl.** Plain HTTP works. HTTPS uses certificate verification
