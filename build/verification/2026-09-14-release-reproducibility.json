@@ -1,0 +1,196 @@
+{
+  "left_directory": "/home/runner/work/Linux-on-esp32-S3-Preview/Linux-on-esp32-S3-Preview/left",
+  "right_directory": "/home/runner/work/Linux-on-esp32-S3-Preview/Linux-on-esp32-S3-Preview/right",
+  "source_commits": [
+    "e91c2bea78ed00c9444c84db1d90917a9f93083b",
+    "e91c2bea78ed00c9444c84db1d90917a9f93083b"
+  ],
+  "same_source_commit": true,
+  "container_image_ids": [
+    "sha256:ba5fc55afba9deb24d5b395073434bd22f6e8686c5ceea09937d7be5c6aa20e8",
+    "sha256:bd03652aba62b9775ec2ee40036b18562556f1a3616883cec2688cdbbfacea36"
+  ],
+  "all_artifacts_identical": false,
+  "artifacts": {
+    "bootloader.bin": {
+      "identical": true,
+      "left": {
+        "sha256": "56eaabc9881d0128376ecb230d2aaf56cbb8acc186763cc2888657502b95523f",
+        "bytes": 17792
+      },
+      "right": {
+        "sha256": "56eaabc9881d0128376ecb230d2aaf56cbb8acc186763cc2888657502b95523f",
+        "bytes": 17792
+      }
+    },
+    "partition-table.bin": {
+      "identical": true,
+      "left": {
+        "sha256": "179d3538915f707bb54d184293706c5e173b7c28963aeb4842511188369c1d5c",
+        "bytes": 3072
+      },
+      "right": {
+        "sha256": "179d3538915f707bb54d184293706c5e173b7c28963aeb4842511188369c1d5c",
+        "bytes": 3072
+      }
+    },
+    "network_adapter.bin": {
+      "identical": true,
+      "left": {
+        "sha256": "a2894a7938617af8f8c330e3c0209d0c859d4dbfcaa25d1aca8208513e6ce321",
+        "bytes": 685296
+      },
+      "right": {
+        "sha256": "a2894a7938617af8f8c330e3c0209d0c859d4dbfcaa25d1aca8208513e6ce321",
+        "bytes": 685296
+      }
+    },
+    "etc.jffs2": {
+      "identical": false,
+      "left": {
+        "sha256": "b08ad8a878f06dcf41a2685d0815488fe536faefec5bfaae52be10eebba8b80f",
+        "bytes": 458752
+      },
+      "right": {
+        "sha256": "1ab0df7b27aa59769be20ed5cd6ba10bc766f4517a9bed8f44ff205a1e429563",
+        "bytes": 458752
+      }
+    },
+    "xipImage": {
+      "identical": true,
+      "left": {
+        "sha256": "b520696543c29ef8b82e6500e727e54685dc5ea28576300dbb3a3df3c58e0ab8",
+        "bytes": 2982440
+      },
+      "right": {
+        "sha256": "b520696543c29ef8b82e6500e727e54685dc5ea28576300dbb3a3df3c58e0ab8",
+        "bytes": 2982440
+      }
+    },
+    "rootfs.cramfs": {
+      "identical": false,
+      "left": {
+        "sha256": "8aa01490e89789347caca9933bf9d8dee59ad2d102256739ccb97eaa7a78355c",
+        "bytes": 6230016
+      },
+      "right": {
+        "sha256": "c1fdba0bda9ac94a92353500c42010802a14fdc605ab524c11ceec4935750981",
+        "bytes": 6230016
+      }
+    },
+    "home.jffs2": {
+      "identical": true,
+      "left": {
+        "sha256": "7eace189baab9a39f235b8036ace6d03e0d250dfdb343c390228571b14b3559d",
+        "bytes": 3407872
+      },
+      "right": {
+        "sha256": "7eace189baab9a39f235b8036ace6d03e0d250dfdb343c390228571b14b3559d",
+        "bytes": 3407872
+      }
+    },
+    "linux-esp32s3-native-full.bin": {
+      "identical": false,
+      "left": {
+        "sha256": "05bc4cadd3231c0203f7a9b351670c459da7e42b014c3d2df61d2d83f7f0661e",
+        "bytes": 16777216
+      },
+      "right": {
+        "sha256": "5a9d488f1b04de00b6a44b8c56a566da795903170774d5b088927e867d660e25",
+        "bytes": 16777216
+      }
+    }
+  },
+  "configurations": {
+    "toolchain.config": {
+      "identical": true,
+      "sha256": [
+        "1a9f74b51dc2b69c170e20a2b45b36547001e9d8b49bf027915ecc23df234557",
+        "1a9f74b51dc2b69c170e20a2b45b36547001e9d8b49bf027915ecc23df234557"
+      ]
+    },
+    "kernel.config": {
+      "identical": true,
+      "sha256": [
+        "0d6c77add2fe7b2052868f14d708dcc257e117f5bdff0c1ba056ed3a3459bcbb",
+        "0d6c77add2fe7b2052868f14d708dcc257e117f5bdff0c1ba056ed3a3459bcbb"
+      ]
+    },
+    "buildroot.config": {
+      "identical": true,
+      "sha256": [
+        "a03ff63ee1a6ecf15d76fe4ca00cf909f8d974710c76088563bbf7faae131c7f",
+        "a03ff63ee1a6ecf15d76fe4ca00cf909f8d974710c76088563bbf7faae131c7f"
+      ]
+    },
+    "firmware.config": {
+      "identical": true,
+      "sha256": [
+        "d51a8d1177cb284aef6365501dfbedfabae19f722f52f9a2944a5f3419a66af6",
+        "d51a8d1177cb284aef6365501dfbedfabae19f722f52f9a2944a5f3419a66af6"
+      ]
+    },
+    "busybox.config": {
+      "identical": true,
+      "sha256": [
+        "aa73a15c64b3183520b3f82a333f70a0ebee1c3be10f0380bd58e1f3de1dbd6f",
+        "aa73a15c64b3183520b3f82a333f70a0ebee1c3be10f0380bd58e1f3de1dbd6f"
+      ]
+    }
+  },
+  "rootfs_entry_counts": [
+    613,
+    613
+  ],
+  "rootfs_differences": {
+    "/etc/shadow": {
+      "left": {
+        "mode": "0o100600",
+        "uid": 0,
+        "gid": 0,
+        "size": 190,
+        "sha256": "8d30c419c34bb909f3e91528e73430cf971bee5ad309a3823a3d0b11990a936f"
+      },
+      "right": {
+        "mode": "0o100600",
+        "uid": 0,
+        "gid": 0,
+        "size": 195,
+        "sha256": "381cc689926a37bb7f4d7d8a9597b48fee165f1d420df59f0b273542d7b3ff5a"
+      }
+    }
+  },
+  "shadow_differences_redacted": {
+    "root": {
+      "present_in_both": true,
+      "non_password_fields_equal": true,
+      "hash_algorithm_ids": [
+        "5",
+        "5"
+      ]
+    }
+  },
+  "etc_jffs2_node_counts": [
+    129,
+    129
+  ],
+  "etc_jffs2_node_differences": [
+    {
+      "key": [
+        "inode",
+        24,
+        1
+      ],
+      "left": {
+        "sha256": "b55caef456937b327ce629fcefc3bcc5ba0f965469c0f2e3240eda66100682f8",
+        "bytes": 202,
+        "path": "/shadow"
+      },
+      "right": {
+        "sha256": "8ceac270a863031a0a6666a4d975a1ccd7ae0a0772b7e32bbf25905fda67df03",
+        "bytes": 207,
+        "path": "/shadow"
+      }
+    }
+  ]
+}

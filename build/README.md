@@ -67,7 +67,7 @@ user files. Back up a used board privately before any full-image test.
 Never publish raw board backups: they may contain credentials and user data.
 
 Point `flash.sh` at this directory with `--images`; without it the script
-reads `images/`, which holds the 0.7 release. Its default combined-image
+reads `images/`, which holds the 0.8 release. Its default combined-image
 write replaces `/etc` and `/home` even without `--erase`. `--parts` preserves
 `/home` but still replaces `/etc`, including accounts, password hashes and
 network configuration. `--parts --erase` resets both, writing `home.jffs2`
@@ -205,7 +205,9 @@ The exact 16 MiB image SHA256 is
 See the [verification record](verification/2026-09-06.md) and its archived
 machine-readable results for scope and limitations. This result applies to
 that artifact, not automatically to future code changes or other profiles.
-The committed `images/` are the 0.7 release: its `xipImage` is byte-identical
-to the fork kernel built here, and its rootfs carries bash, dash, micropython,
-jobq and mmu-run. Its combined image does not match any of the hashes recorded
-under `verification/`, so it is a 0.7 build that predates those runs.
+The committed `images/` are the 0.8 release: the artifacts of the Image
+workflow run on `e91c2be`, two container builds of that commit that differ
+only in `/etc/shadow` ([record](verification/2026-09-14-release.md)). The
+board suite, the extra tests and the soaks under `verification/2026-09-14-*`
+ran on the clean build of the commit before the documentation and comment
+pass, `8ea9011`, whose build inputs differ from `e91c2be` only in comments.
