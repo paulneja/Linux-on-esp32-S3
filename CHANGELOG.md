@@ -294,6 +294,14 @@ caller after writing global state.
   relaunching it without `-f`, which left the pidfile naming a dead process,
   so stopping inetd stopped working and a later start bound a second one.
   `ssh-server` also had no root check and reported success after failing.
+- **`wifi connect` wrote nothing.** Its two configuration heredocs sat inside
+  a `( subshell )`, and the busybox ash in the image cannot finish a heredoc
+  whose body ends inside parentheses -- `sh: syntax error: unexpected EOF in
+  here document`, and no `wpa_supplicant.conf`. `sh -n` accepts the shape and
+  the host's busybox runs it, so nothing caught it; every network test in the
+  suite is loopback. Found the first time the board was put on a real network
+  with the runner watching. The umask that the subshell scoped is saved and
+  restored by hand now, and `build/test-wifi-script.py` refuses the shape.
 - `wifi --help` printed the script's own source.
 - The board keeps a clock across reboots and sends a hostname with its DHCP
   request. Without the first, every boot started in 1970 and TLS failed until

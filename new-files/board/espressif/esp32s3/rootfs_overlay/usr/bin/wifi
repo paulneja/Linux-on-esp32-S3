@@ -46,23 +46,35 @@ reject_unsafe() {
 	return 0
 }
 
+# The file must never exist world readable, not even for the instant between
+# the redirect and a later chmod, so the umask is 077 across the redirect.
+# It used to be set in a ( subshell ) around the heredoc; busybox ash on this
+# image cannot finish a heredoc whose body ends inside parentheses -- it
+# reports "unexpected EOF in here document" and writes nothing -- so `wifi
+# connect` never wrote a configuration. umask is a builtin and a function
+# does not scope it, so it is put back by hand.
+write_conf() {
+	local old
+	old=$(umask)
+	umask 077
+	cat > "$CONF"
+	umask "$old"
+}
+
 write_conf_open() {
 	reject_unsafe "$1" "the SSID" || return 1
-	# umask in a subshell: the file must never exist world readable, not even
-	# for the instant between the redirect and a later chmod.
-	( umask 077; cat > "$CONF" <<EOF
+	write_conf <<EOF
 network={
 	ssid="$1"
 	key_mgmt=NONE
 }
 EOF
-	)
 }
 
 write_conf_psk() {
 	reject_unsafe "$1" "the SSID" || return 1
 	reject_unsafe "$2" "the password" || return 1
-	( umask 077; cat > "$CONF" <<EOF
+	write_conf <<EOF
 network={
 	ssid="$1"
 	psk="$2"
@@ -72,7 +84,6 @@ network={
 	group=CCMP
 }
 EOF
-	)
 }
 
 apply_conf() {
@@ -187,6 +198,9 @@ The chosen network is stored in /etc/wpa_supplicant.conf (mode 600) and is
 rejoined on every boot. Progress is logged to /var/log/network.log.
 EOF
 }
+
+# Sourced with __define_only__ by build/test-wifi-script.py: functions, no dispatch.
+[ "${1:-}" = __define_only__ ] && return 0 2>/dev/null
 
 case "${1:-}" in
 "")             interactive ;;

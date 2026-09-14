@@ -81,8 +81,34 @@ With the 25 of the cache-fix record and the 20 of the swap record, that is
 55 consecutive clean factory boots today on firmware that invalidates the
 cache, against 10 faults in 17 this afternoon on firmware that did not.
 
+## On a real network
+
+With credentials for a real access point, the first time this board was
+put on a network with the runner watching. `wifi connect` failed at once --
+`sh: syntax error: unexpected EOF in here document` -- and that turned out
+to have been true in every version: the script's heredocs sat inside a
+`( subshell )`, which the image's busybox ash cannot finish. The host's
+busybox runs the same file, which is why no host check saw it. Fixed, with
+`build/test-wifi-script.py` refusing the shape. With the fixed script
+uploaded to the running board:
+
+- Association and DHCP: `192.168.1.86/24`, gateway 14-29 ms, `1.1.1.1`
+  30-70 ms.
+- DNS through the router's own resolver, NTP setting the clock, and then
+  HTTPS **with certificate verification**: `https://www.cloudflare.com`
+  `200`, `tls_verify=0`, and a verified download.
+- From the host across the LAN: telnet login and a command; the web page
+  (`200`, 3559 bytes) and its status CGI answering with the board's real
+  figures.
+- A reboot: the credentials survive (`S03keepconfig`), the board is back on
+  the network in 5 s with the same address, and `web-server on` persists.
+
+One false trail, recorded because it cost an hour: the router answers
+NXDOMAIN for `example.com` specifically -- `rcode=3`, read off the wire --
+while resolving every other name. The board, the driver and the libc were
+doing exactly what they should. Pick real names for network tests.
+
 ## Not covered
 
-WiFi association, telnet and the web page over the network: no credentials
-are stored on this board or in any backup, and none were invented. The BLE
-provisioning dialog.
+The BLE provisioning dialog. The `wifi` fix is in the repository and on the
+running board, not yet in a clean-built image.
