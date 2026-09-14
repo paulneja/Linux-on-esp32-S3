@@ -7,10 +7,12 @@ notes and the binaries are on the
 ## Unreleased — the memory the board was reserving and never using
 
 Measured on the shipping image, built from a clean clone and read back off
-the board: **MemAvailable 1340 kB to 3712 kB** at the same point of the same
-suite, largest free contiguous block 2048 kB, **33 board tests, 0 failed**,
-`tainted` 0. `build/verification/2026-09-13-full-image.md` has the hashes and
-the per-program figures.
+the board: **MemAvailable 1340 kB to 3744 kB** at the same point of the same
+suite, largest free contiguous block 2048 kB, **36 board tests, 0 failed**,
+ten more beyond the suite, **10 factory boots, 10 clean**, `tainted` 0.
+`build/verification/2026-09-14-final-image.md` has the hashes and the
+per-program figures; the peak fork shadow of bash is 528 kB, half of what
+the copy model needed.
 
 Twenty factory boots of that image, every one rewriting `/etc` and `/home`
 first so the run repeats the load that provokes it: **no Oops, no panic, no
