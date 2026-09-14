@@ -14,19 +14,13 @@ ten more beyond the suite, **10 factory boots, 10 clean**, `tainted` 0.
 per-program figures; the peak fork shadow of bash is 528 kB, half of what
 the copy model needed.
 
-Twenty factory boots of that image, every one rewriting `/etc` and `/home`
-first so the run repeats the load that provokes it: **no Oops, no panic, no
-`BUG:` and no user-space crash in any of the twenty**. Two independent builds
-of the commit differ in one file, `/etc/shadow`, whose hash is salted per
-build.
-
-> DEVELOPMENT.md incident 15 stays **open**, and those twenty rounds are not
-> the 0 that answers its 2. The image ships with `quiet`; every incident-15
-> measurement used a diagnostic command line without it, and three of the
-> runner's signatures -- a user-space illegal instruction, a `WARNING:`, list
-> corruption -- are below what `quiet` lets through. `soak-boot.py` now reads
-> `dmesg` and the taint flags back after login so the two are comparable, but
-> that change came after this run.
+Fifty-five factory boots on the fixed firmware, every one rewriting `/etc`
+and `/home` first so the run repeats the load that provoked the corruption:
+**55 clean**, each one logging in and reading `dmesg` and the taint flags
+back, against ten faults in seventeen on the firmware before the fix. Two
+independent builds of the commit differ in one file, `/etc/shadow`, whose
+hash is salted per build. DEVELOPMENT.md incident 15 is closed with the
+cause named; incident 16 closes in the exchange's favour.
 
 ### Stability
 

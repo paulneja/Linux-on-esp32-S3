@@ -432,7 +432,7 @@ that one directory match `new-files/` exactly.
    restoring an old password over a new one. All are fixed and tested on the
    host; the board-side effect is measured with the soak runner.
 
-15. **Fork backend, incident 15 -- OPEN**: with a byte-exact rebuild of the
+15. **Fork backend, incident 15 -- closed in 15b below; kept as the trail**: with a byte-exact rebuild of the
    0.7 kernel config (recovered by an external review), the same firmware and
    the same rootfs, ten factory boots each, measured with the corrected soak
    runner: fork backend on, 3 FAIL + 5 INCONCLUSIVE of 10; fork backend off,
@@ -476,7 +476,7 @@ that one directory match `new-files/` exactly.
    `/proc/sys/kernel/tainted` back after every login and runs the fault list
    over them, so the next run measures the same on either command line. Open.
 
-15b. **Incident 15, root cause: the flash cache is never invalidated after
+15b. **Incident 15, CLOSED. Root cause: the flash cache is never invalidated after
    a write, and the soak resets the board mid-write.** Found the day after
    twenty clean factory boots, when the same kernel byte for byte
    (`xipImage` `48713c61…`) took faults in 10 of 17. The only change to the

@@ -89,12 +89,32 @@ tests are still a local step.
 The older `build-linux.yml` builds the base system only and is kept for
 rebuilding that path; it is not the pipeline that produces the released image.
 
-Run the host-only regression tests with `python3 build/test-flash.py` and
-`python3 build/test-shell-fallback.py`. They use temporary images, a simulated
-esptool and a stub shell, never a serial device. The second one drives the
-low-memory shell hook with an artificial threshold, so it exercises the switch,
-the message and the retried command without needing a board that is actually
-out of memory.
+Run the host-only regression tests with `python3 build/test-*.py` -- flash,
+shell fallback, keepconfig, kernel config, bash's vfork patch, `bootlog`, the
+`wifi` script, and the soak runner's classifier. They use temporary images, a
+simulated esptool and stub shells, never a serial device. `test-wifi-script.py`
+also refuses one shell shape outright: a heredoc inside a `( subshell )`, which
+the image's busybox ash cannot finish although every host shell can.
+
+Three tools drive the board itself, all through the serial console:
+
+- `build/test-board.py PORT ARTIFACTS --output DIR` is the suite `run.sh --all`
+  runs: 36 checks tied to the exact image by reading the kernel and rootfs
+  partitions back and hashing them.
+- `build/extra-board-tests.py PORT [DIR]` is what a person does with the
+  board and the suite does not: a detached session, cron firing, `passwd` and
+  a fresh login, a reboot that keeps `/home`, jffs2 written and read back,
+  the shell under fork load, `bootlog` across reboots.
+- `build/soak-boot.py PORT ARTIFACTS --output DIR --rounds N` measures the
+  factory-boot fault rate: each round rewrites `/etc` and `/home`, holds the
+  board in reset until the port is listening, watches the boot, then logs in
+  and reads `dmesg` and the taint flags back -- a `quiet` console shows
+  KERN_ERR and worse only, so the console alone cannot decide. A round is
+  PASS only on positive evidence, and the summary carries a one-sided 95%
+  bound on the rate; twenty rounds are the least that bound means anything.
+
+The fork backend is built by `experiments/mmu-poc/fork/build-kernel-reclaim.sh`
+with the page-set exchange on; `FORK_SWAP_BANKS=0` builds the copying model.
 
 The packager checks partition limits, the firmware/kernel vector address,
 the fork kernel setting, root's shell, BusyBox SUID mode, excluded programs,

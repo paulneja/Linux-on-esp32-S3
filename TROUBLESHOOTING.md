@@ -27,7 +27,14 @@ esptool --chip esp32s3 --port YOUR_COM_ADAPTER \
 
 That erases whatever was in `/home`. Treat the partition as scratch space.
 
-### First boot stops after `Running sysctl: OK`
+### First boot stops after `Running sysctl: OK`, or panics there
+
+On an image before 2026-09-14 this was the flash cache: the firmware never
+invalidated it after a write Linux made, so `home-init`'s burst of jffs2
+writes in exactly this window left the kernel reading stale pages -- a
+`Kernel panic - not syncing: BUG!` with nothing before it, a silent hang, or a
+script in `/etc` that suddenly has a syntax error. DEVELOPMENT.md incident 15
+has the trail and the fix; reflash the firmware. On a current image, read on.
 
 The next line of a healthy boot is `Starting network (background): OK`. If it
 stops at `sysctl`, an init script is blocked writing to `/home`. Add `set -x`
@@ -134,6 +141,38 @@ first:
 
 Verified: present after an interrupted flash, gone after a full erase and
 rewrite of the same image.
+
+### The boot prints almost nothing
+
+That is `quiet` on the kernel command line, since 2026-09-12: the console
+carries KERN_ERR and worse, which saves about 0.7 s of a 13.7 s boot on a
+115200 line. Everything is still in the ring buffer -- `dmesg` shows it. To
+see it on the console at every boot, `bootlog verbose`; `bootlog quiet` puts
+it back. That cannot cover a fault before init runs, about 1.4 s in; for
+those, `panic_print=0x20` dumps the buffer when the kernel panics, and a
+development image can drop `quiet` from
+`board/espressif/esp32s3/patches/linux/03-kernel-cmdline-no-debug.patch`.
+
+### Opening the serial console resets the board
+
+On the CH34x adapter DTR and RTS are wired to EN and IO0, so most terminal
+programs reset the board when they open the port. That is a fresh boot and a
+fresh WiFi association: for a few seconds after any console session the
+board answers no ping and no telnet. It is not a fault. The project's
+`serial-probe.py` lowers both lines before opening to avoid it.
+
+### `scp: Connection closed` right after connecting
+
+OpenSSH 9 copies over SFTP by default and dropbear ships no `sftp-server`.
+`scp -O file root@board:` uses the old protocol and works.
+
+### A name will not resolve but others do
+
+Ask the router directly and read the answer code before blaming the board:
+`nslookup name ROUTER`. Some routers and ISP resolvers answer NXDOMAIN for
+particular names -- `example.com` is one such on at least one home router --
+while resolving everything else. The board, its driver and its libc do what
+the reply says.
 
 ## After boot
 
