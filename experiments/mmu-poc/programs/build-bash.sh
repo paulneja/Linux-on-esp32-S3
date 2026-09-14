@@ -10,6 +10,10 @@ apply_program_patch "$source_dir" bash-fork.patch
 apply_program_patch "$source_dir" bash-help-cross.patch
 apply_program_patch "$source_dir" bash-pid-cache.patch
 apply_program_patch "$source_dir" bash-vfork.patch
+# bash-pid-cache.patch rewrites bgp_resize() in jobs.c. Its test compiles that
+# function out of the patched source into a host fixture; nothing ran it, so
+# the patch went unverified from here on. It costs a second.
+python3 "$programs_dir/test-bash-pid-cache.py" "$source_dir" "$programs_out/bash-pid-cache-test"
 staging="$build_dir/build-buildroot-esp32s3_devkit_c1_16m/staging"
 export CPPFLAGS="-I$staging/usr/include"
 export CFLAGS="$CFLAGS -Oz -flto --sysroot=$staging"
