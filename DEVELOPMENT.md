@@ -476,51 +476,90 @@ that one directory match `new-files/` exactly.
    `/proc/sys/kernel/tainted` back after every login and runs the fault list
    over them, so the next run measures the same on either command line. Open.
 
-15b. **Incident 15, the mechanism -- OPEN, and it is not RAM**: the day
-   after twenty clean factory boots, the same kernel byte for byte
+15b. **Incident 15, root cause: the flash cache is never invalidated after
+   a write, and the soak resets the board mid-write.** Found the day after
+   twenty clean factory boots, when the same kernel byte for byte
    (`xipImage` `48713c61…`) took faults in 10 of 17. The only change to the
-   image was `bootlog`, two overlay scripts, and a controlled run with the
-   previous rootfs (`24f0faf`, from the CI artifacts of that commit) on the
-   same kernel took an Oops at **478 ms** -- before `/sbin/init` exists, so
-   no script in the rootfs can be involved. `bootlog` is innocent; reverting
-   it changes nothing. Both transcripts are in
-   `build/verification/2026-09-14-flash-read/`.
-   The Oops says what is going wrong, and it had not been read this closely
-   before. `check_lifetime+0x9` faulted on `l32i a5, a4, 0` right after
-   `l32r a4, 0x422c84d8` -- a load from the kernel's **literal pool**, which
-   sits in `.text`, which under `CONFIG_XIP_KERNEL` is **executed straight
-   out of the flash through the cache**. The literal should be `0x3d824000`
-   (`jiffies_64`). The register held `0x821503a0`: that is `worker_thread+0xd8`
-   with bit 31 set, which is exactly how Xtensa's windowed ABI encodes a
-   `call8` return address in `a0`. A flash read returned something that was
-   never at that address. The same day's round 15 has the same shape:
-   `rcu_process_callbacks` handed `memcpy` a NULL out of a callback record.
-   And every early fault in the list above fits it too -- `slab_caches`,
-   the DTB, `kmalloc` from `pinctrl` -- the kernel reading its own text or
-   rodata wrong, before any process exists.
-   So the PSRAM memtest was clean because the PSRAM is not where it happens.
-   The flash **contents** are fine: `Hash of data verified` on every write,
-   and the kernel's own `sha256sum` over its partition matches the build in
-   the good rounds. What is intermittently wrong is the **read path** --
-   the flash cache, or the flash itself under whatever conditions the board
-   is in. Two candidates fit everything and the evidence cannot yet tell
-   them apart: (a) thermal -- the board had been through more than fifty
-   3.8 MB jffs2 rewrites and a 16 MB erase in a few hours when it went bad,
-   and had been through far fewer the day it was clean; (b) a coherence
-   hole between core 0 and the cache when the firmware touches the flash
-   while Linux is executing from it, which would also explain why the fork
-   backend (more context switches, more windows) multiplies it. Next: the
-   same twenty rounds on the same image after the board has been off for
-   hours. If it returns to 0 of 20, the variable is the board's state, not
-   the software.
-   One thing fixed by reading these: nine of the day's ten panics printed
-   only `Kernel panic - not syncing: BUG!`. `BUG()` prints its
-   `BUG: failure at file:line` with a bare `printk()` -- `KERN_DEFAULT`,
-   level 4 -- and `quiet` sets the console to 4 and passes only what is
-   below it, so the line that says *where* went to the ring buffer, and
-   `panic=10` rebooted before anyone could read it. `quiet` costs every
-   panic its location. That has to change whatever the cause turns out to
-   be.
+   image was `bootlog`, two overlay scripts; a controlled run with the
+   previous rootfs on the same kernel took an Oops at **478 ms**, before
+   `/sbin/init` exists, so no script is involved and reverting `bootlog`
+   changes nothing. Transcripts in `build/verification/2026-09-14-flash-read/`.
+
+   **What the Oops says.** `check_lifetime+0x9` faulted on `l32i a5, a4, 0`
+   right after `l32r a4, 0x422c84d8`: a load from the kernel's literal pool,
+   which lives in `.text`, which under `CONFIG_XIP_KERNEL` is executed
+   straight out of the flash through the cache. The literal should be
+   `0x3d824000` (`jiffies_64`); the register held `0x821503a0`, which is
+   `worker_thread+0xd8` with bit 31 set -- a windowed-ABI `call8` return
+   address. A cache read returned data that was never at that address. The
+   same day's round 15 is the same shape (`rcu_process_callbacks` handing
+   `memcpy` a NULL out of a callback record), and so is every early fault
+   in the list above. The PSRAM memtest was clean because the PSRAM is not
+   where this happens.
+
+   **The cause, in the firmware.** The ESP32-S3 has one flash cache shared
+   by both cores (`SOC_IDCACHE_PER_CORE` is not defined for it). Linux reads
+   jffs2 straight through that cache -- `map_esp32_read()` is
+   `map_copy_from()` on the `0x42xxxxxx` mapping, and `_point` hands jffs2
+   pointers into it -- and writes by IPC to core 0, which is the only side
+   that can program the flash. After a write, ESP-IDF's
+   `flash_end_flush_cache` → `spi_flash_check_and_flush_cache()`
+   (`components/spi_flash/flash_mmap.c:355`) invalidates the cache for the
+   written page **only if `esp_mmu_paddr_find_caps()` knows that physical
+   address**. It knows what ESP-IDF mapped. It does not know `linux`,
+   `rootfs`, `etc` or `home`: the boot banner says so --
+   `MMU: first_free_mmu=10 (firmware uses entries 0..9)` -- Linux programs
+   entries 14 and 0x54 upward behind ESP-IDF's back. So for every write
+   Linux ever makes the invalidation is skipped, and on the S3 there is a
+   second, upstream bug on top: `is_page_mapped_in_cache()` computes
+   `vaddr` into a local and never stores it through `out_ptr`, so
+   `cache_hal_invalidate_addr()` is not reached even for pages it does
+   know. **Nothing invalidates the flash cache after a jffs2 write.**
+
+   Two things follow. jffs2 writes a node, then reads the page back -- to
+   verify, to rescan, to serve the file -- and gets the version from
+   *before* the write out of the cache: that is the `gzip: crc error`, the
+   `Bad page state`, the `sh: syntax error: unexpected )` from a script in
+   `/etc`, and the `bash: [: : integer expression expected` at a login the
+   runner had been about to count as clean. And the cache is 16 KB of
+   instructions and 32 KB of data, 8-way, shared: a stale jffs2 line
+   sitting in the same set as a kernel literal is a kernel that reads its
+   own text wrong. Every fault lands in the window where `home-init` is
+   doing hundreds of jffs2 writes, and the fork backend multiplies the rate
+   because every context switch is a burst of cache traffic.
+
+   **Why the "early" faults, before any write.** The soak restores `/etc`
+   and `/home` with `--after hard_reset`, so the board boots and starts
+   `home-init` -- and then the runner opens the port, which resets the
+   board through DTR/RTS in the middle of that. The boot it observes is the
+   second one, over a `/home` that was being written when the power went.
+   `slab_caches` at 147 ms, the DTB at 393 ms, `add_nommu_region` on a
+   duplicate `vm_start`: the kernel building structures out of half-written
+   jffs2. Both faces are the one cause. (An earlier draft of this entry
+   said a software reset leaves the cache dirty; it does not --
+   `bootloader_esp32s3.c:182` calls `cache_hal_init()` on every boot. That
+   sentence was wrong and is withdrawn.)
+
+   **Why the numbers moved without a fix.** `SLUB_TINY`, `PREEMPT_NONE`,
+   the firmware memtest and the rest all change how much cache traffic the
+   boot generates and therefore how often a stale line gets hit. None of
+   them touches the cause, which is why none of them cleared it. And why
+   0 of 20 one day and 10 of 17 the next on the same bytes: the hit is
+   probabilistic over cache state, and a run of twenty is not that large.
+
+   **Not thermal.** The board had been through fifty-odd flash rewrites
+   when it went bad and that looked like heat; it is not, because the fault
+   is reproducible from cold with the same writes, and because the
+   mechanism is in the code.
+
+   **The fix** is a few lines in the firmware's `linux_flash.c`, in
+   `esp_flash_rx()` between the write or erase and `local_state = DONE`:
+   invalidate the cache over `[cmd->addr, cmd->addr + cmd->size)` with
+   `cache_hal_invalidate_addr()` unconditionally, without asking ESP-IDF's
+   MMU accounting whether it knows the range -- it has the exact address
+   and size in hand. The soak runner also has to stop resetting a board
+   that is mid-write: `--after no_reset` and one deliberate reset once the
+   port is open, so the observed boot is the first one.
 
 16. **Fork backend, incident 16**: the bank swap was given a proper try and
    still loses. An external audit of the two models side by side found four
