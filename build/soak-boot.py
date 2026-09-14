@@ -7,10 +7,14 @@ writes, and hardly ever on a plain reset of an initialised board. So each
 round rewrites /etc and /home from the artifacts -- a two-partition write,
 about a minute -- and then watches the console.
 
-Opening the port is what resets the board: on a CH340 adapter DTR and RTS are
-wired to EN and IO0, so the boot observed is the one that open() triggers. No
-extra RTS pulse -- one after esptool's own hard reset left the 0.7 release
-hanging silently in pinctrl, which looked like a kernel fault and was not.
+The restore leaves the board in reset (--after no_reset) and the round
+releases it only once the port is open and listening, so the boot observed is
+the first boot after the write. It used to be the second: esptool's
+--after hard_reset started the board, home-init began filling /home, and then
+opening the port pulsed DTR/RTS and reset it in the middle of those writes.
+The boot the runner then watched came up over a half-written jffs2, which is
+where the "faults before any process exists" of DEVELOPMENT.md incident 15
+came from.
 
 Every round ends in exactly one of three states, and a round is only a PASS
 on positive evidence:
@@ -109,7 +113,7 @@ args.output.mkdir(parents=True, exist_ok=False)
 def esptool(*words):
     # The underscore spellings work with both esptool 4.8.1 and 5.x.
     command = [args.esptool, '--chip', 'esp32s3', '--port', args.port, '--baud', str(args.baud),
-               '--before', 'default_reset', '--after', 'hard_reset', *words]
+               '--before', 'default_reset', '--after', 'no_reset', *words]
     subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
 
@@ -143,8 +147,17 @@ def run_probes(console):
     return out
 
 
+def release_reset(port):
+    # EN low, IO0 high: a plain reset into the flash boot, from a known state.
+    port.dtr = False
+    port.rts = True
+    time.sleep(0.1)
+    port.rts = False
+
+
 def boot_and_watch(transcript):
     console = probe.Console(args.port)
+    release_reset(console.port)
     started = time.monotonic()
     data = b''
     login_at = marker_at = None

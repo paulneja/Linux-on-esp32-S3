@@ -28,21 +28,34 @@ build.
 
 ### Stability
 
-- **A memory corruption that predates this release has a fix under test.**
-  The 0.7 release faults in roughly one factory boot in ten, and this
-  batch had pushed that towards one in two; a kernel `Oops`, an `Illegal
-  instruction` in the kernel or in a user process, or a `gzip: crc error`
-  from `home-init`, always in the first seconds after `/home` is formatted.
-  The flash driver shared one command object with core 0 with nothing
-  serialising its users, and its XIP reads took no lock at all while core 0
-  disables the flash cache to write. One mutex now covers erase, write and
-  read (`07-kernel-flash-ipc-lock.patch`). The cross-core transmit completion
-  pass also ran only after a successful receive in the same batch, so
-  buffers went unfreed exactly under memory pressure
-  (`08-kernel-ipc-tx-completion.patch`).
-- `build/soak-boot.py` reproduces a factory boot in two minutes and classifies
-  it as PASS, FAIL or INCONCLUSIVE on evidence, with a 95% bound on the fault
-  rate. Its first version called silence a pass; DEVELOPMENT.md incident 12.
+- **The memory corruption is found and fixed, and it was never memory.** The
+  0.7 release faulted in about one factory boot in ten; this branch, before
+  the fix, in about two; a kernel `Oops`, an `Illegal instruction`, a
+  `gzip: crc error` from `home-init`, a script in `/etc` that suddenly had a
+  syntax error, always in the seconds after `/home` is formatted. The
+  ESP32-S3 has one flash cache for both cores. Linux reads jffs2 straight
+  through it and writes by IPC to core 0, and core 0's post-write cache
+  invalidation asks ESP-IDF's MMU accounting whether it knows the page --
+  which it never does for a partition Linux mapped for itself. **Nothing
+  invalidated the flash cache after any jffs2 write.** jffs2 read stale pages
+  back; stale lines shared cache sets with kernel literals; the kernel read
+  its own text wrong. The firmware now invalidates the exact range after every
+  write and erase Linux asks for (`patches/02-firmware-network-adapter.patch`,
+  `linux_flash.c`). DEVELOPMENT.md incident 15 has the whole trail, including
+  the day it looked thermal and was not.
+- The soak runner was making it worse: esptool's `--after hard_reset` started
+  the board, `home-init` began writing, and opening the port reset it in the
+  middle of that. The "faults before any process exists" were the second boot
+  over a half-written `/home`. It now leaves the board in reset until the
+  port is listening.
+- `build/soak-boot.py` reproduces a factory boot in about a minute and
+  classifies it as PASS, FAIL or INCONCLUSIVE on evidence, reading `dmesg`
+  and the taint flags back rather than trusting a `quiet` console, with a
+  95% bound on the fault rate.
+- The flash driver's shared command object is under a mutex
+  (`07-kernel-flash-ipc-lock.patch`) and the cross-core transmit completion
+  runs whenever the write queue moved (`08-kernel-ipc-tx-completion.patch`).
+  Both were real, neither was the corruption.
 
 ### Security
 

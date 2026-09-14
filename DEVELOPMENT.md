@@ -552,14 +552,27 @@ that one directory match `new-files/` exactly.
    is reproducible from cold with the same writes, and because the
    mechanism is in the code.
 
-   **The fix** is a few lines in the firmware's `linux_flash.c`, in
-   `esp_flash_rx()` between the write or erase and `local_state = DONE`:
-   invalidate the cache over `[cmd->addr, cmd->addr + cmd->size)` with
-   `cache_hal_invalidate_addr()` unconditionally, without asking ESP-IDF's
-   MMU accounting whether it knows the range -- it has the exact address
-   and size in hand. The soak runner also has to stop resetting a board
-   that is mid-write: `--after no_reset` and one deliberate reset once the
-   port is open, so the observed boot is the first one.
+   **The fix**, in the firmware's `linux_flash.c` (now in
+   `patches/02-firmware-network-adapter.patch`): after the write or erase
+   and before `local_state = DONE`, `Cache_Invalidate_Addr(0x42000000 +
+   cmd->addr, cmd->size)` -- the ROM call, which takes a virtual address and
+   does not ask who mapped it. Not `cache_hal_invalidate_addr()`, whose
+   `HAL_ASSERT` checks the range against the same MMU accounting that does
+   not know these partitions. The whole flash is identity-mapped for Linux
+   at `0x42000000`, so the virtual address is the flash offset plus that.
+   The soak runner stops resetting a board mid-write: `--after no_reset`,
+   and one deliberate reset over EN once the port is listening.
+
+   **Measured.** Same kernel, same rootfs, same `/etc` and `/home`
+   artifacts as the 10-of-17 run an hour earlier. With the patched firmware
+   and the fixed runner: first five rounds **5 PASS, 0 FAIL, 0
+   INCONCLUSIVE**, every one logging in and reading `dmesg` and the taint
+   flags back clean. The twenty-round run is in
+   `build/verification/2026-09-14-cache-fix.md`. Two things changed at once
+   (firmware and runner), so this does not say how much each contributed;
+   it says the pair takes the rate from ten in seventeen to nought in five
+   on the same bytes, which no configuration change in the whole history
+   of this incident came near.
 
 16. **Fork backend, incident 16**: the bank swap was given a proper try and
    still loses. An external audit of the two models side by side found four

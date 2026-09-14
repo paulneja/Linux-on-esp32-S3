@@ -518,3 +518,51 @@ index 57f5958..97a07bd 100644
  CONFIG_MBEDTLS_MPI_USE_INTERRUPT=y
  CONFIG_MBEDTLS_HARDWARE_SHA=y
  CONFIG_MBEDTLS_ROM_MD5=y
+diff --git a/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_flash.c b/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_flash.c
+--- a/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_flash.c
++++ b/esp_hosted_ng/esp/esp_driver/network_adapter/main/linux_flash.c
+@@ -4,6 +4,7 @@
+ #include <string.h>
+ #include "esp.h"
+ #include "esp_flash.h"
++#include "esp32s3/rom/cache.h"
+ #include "interface.h"
+ #include "endian.h"
+ #include "soc/periph_defs.h"
+@@ -38,6 +39,26 @@
+ 
+ extern int g_spi_flash_skip_ipc;
+ 
++/* The whole flash is identity-mapped for Linux at this base (linux_boot.c
++ * hands it 0x42000000 + partition address), and Linux reads jffs2 straight
++ * through the cache from there. The S3 has one flash cache for both cores. */
++#define LINUX_FLASH_VADDR_BASE	0x42000000
++
++/* After a write or an erase the cache still holds whatever was at those
++ * addresses before. ESP-IDF's own post-write invalidation asks its MMU
++ * accounting whether it knows the page and skips it otherwise; it does not
++ * know any partition Linux mapped for itself (the boot banner says so:
++ * "firmware uses entries 0..9", Linux takes 14 and 0x54 up), so for every
++ * write Linux makes it invalidates nothing. Linux then reads the old page
++ * back out of the cache, and a stale line that shares a set with a kernel
++ * literal is a kernel reading its own text wrong. Invalidate the exact
++ * range unconditionally; the ROM call takes a virtual address and does not
++ * ask who mapped it. */
++static void linux_flash_invalidate(uint32_t addr, uint32_t size)
++{
++	Cache_Invalidate_Addr(LINUX_FLASH_VADDR_BASE + addr, size);
++}
++
+ static void esp_flash_rx(void *p, void *data)
+ {
+ 	if (!data) {
+@@ -70,6 +91,9 @@
+ 			break;
+ 		}
+ 		g_spi_flash_skip_ipc = 0;
++		if (cmd->code == ESP_IPC_FLASH_CMD_ERASE ||
++		    cmd->code == ESP_IPC_FLASH_CMD_WRITE)
++			linux_flash_invalidate(cmd->addr, cmd->size);
+ 		cmd->result = (ret == ESP_OK) ? 0 : 1;
+ 		cmd->local_state = ESP32_IPC_FLASH_STATE_DONE;
+ 	}
