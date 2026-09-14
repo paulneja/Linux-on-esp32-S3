@@ -218,9 +218,9 @@ context switch held interrupts off. A switch over the full 512 KiB ceiling
 takes 21.5 ms, longer than the 10 ms timer tick, at about 10 cycles per
 memory operation through PSRAM. Lowering the ceiling was tried and reverted:
 the login bash needs 368 KiB, so every value that keeps the system working
-costs more than a tick. Exchanging pages instead of copying them was the way
-out of that and it was tried and rejected -- see Fork above -- so the number
-stands as the cost of the backend, not as the start of a fix.
+costs more than a tick. Exchanging pages instead of copying them (Fork,
+above) halves the memory, not the time: a switch still moves every page, so
+the number stands as the cost of the backend.
 
 ### The console
 
