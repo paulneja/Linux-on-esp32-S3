@@ -416,8 +416,8 @@ that one directory match `new-files/` exactly.
    damaged, but two edits were silently lost and a patch was regenerated
    from a half-applied tree. Keep scratch trees under `build-output/`, which
    is on disk and ignored by git.
-14. **Flash protocol, incident 14** (found by an external review of the
-   handoff): `drivers/mtd/chips/map_esp32.c` shares one command object with
+14. **Flash protocol, incident 14** (found in a review of the
+   flash path): `drivers/mtd/chips/map_esp32.c` shares one command object with
    core 0 and nothing serialised its users -- MTD provides no exclusion and
    `/etc` and `/home` are two jffs2 superblocks. XIP reads had no lock at all,
    while core 0 disables the flash cache to write, so a read from another task
@@ -433,7 +433,7 @@ that one directory match `new-files/` exactly.
    host; the board-side effect is measured with the soak runner.
 
 15. **Fork backend, incident 15 -- closed in 15b below; kept as the trail**: with a byte-exact rebuild of the
-   0.7 kernel config (recovered by an external review), the same firmware and
+   0.7 kernel config (recovered from a kept build tree), the same firmware and
    the same rootfs, ten factory boots each, measured with the corrected soak
    runner: fork backend on, 3 FAIL + 5 INCONCLUSIVE of 10; fork backend off,
    1 FAIL + 7 PASS of 10; the 0.7 release itself, 1 FAIL of 10 (a user-space

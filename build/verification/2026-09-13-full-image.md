@@ -98,7 +98,7 @@ predate that change; the next run on this image will be comparable.
 
 Two complete builds of `24f0faf` from pinned sources, in parallel on separate
 runners, compared artifact by artifact
-([run 34780294252](https://github.com/paulneja/Linux-on-esp32-S3-Preview/actions/runs/34780294252)):
+(run 34780294252 of the Image workflow):
 
 **Five of eight artifacts are byte-identical** -- `bootloader.bin`,
 `partition-table.bin`, `network_adapter.bin`, `home.jffs2` and the kernel

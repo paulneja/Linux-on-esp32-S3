@@ -206,8 +206,8 @@ See the [verification record](verification/2026-09-06.md) and its archived
 machine-readable results for scope and limitations. This result applies to
 that artifact, not automatically to future code changes or other profiles.
 The committed `images/` are the 0.8 release: the artifacts of the Image
-workflow run on `e91c2be`, two container builds of that commit that differ
+workflow run on `13c85d6`, two container builds of that commit that differ
 only in `/etc/shadow` ([record](verification/2026-09-14-release.md)). The
 board suite, the extra tests and the soaks under `verification/2026-09-14-*`
 ran on the clean build of the commit before the documentation and comment
-pass, `8ea9011`, whose build inputs differ from `e91c2be` only in comments.
+pass, `8ea9011`, whose build inputs differ from `13c85d6` only in comments.
