@@ -15,7 +15,9 @@ has one flash cache for both cores, and after every write Linux made to jffs2
 nothing invalidated it, so the kernel went on reading stale pages, sometimes
 of its own code. Four lines in the firmware fix it. Fifty-five factory boots in
 a row came up clean on the fixed firmware, measured by a runner that reads
-`dmesg` back instead of trusting a quiet console.
+`dmesg` back instead of trusting a quiet console. That does not prove the
+board never crashes; it shows the early-boot corruption that used to appear
+in one boot of ten is no longer reproducible.
 
 With that gone, the fork backend's page-set exchange, which had been written
 off for corrupting memory, turns out never to have: it ships now, and every
@@ -229,26 +231,31 @@ checksums, partition checks and a board suite tied to one exact image.
 
 ## Build and test status
 
-The build and hardware evidence are recorded separately:
+What was tested, and on which bytes, is written down rather than implied:
 
-- A clean build and a later **local-clone build** passed **26/26 hardware
-  checks**, covering fork, programs, users, cron and session persistence.
-  See the [clean-image record](build/verification/2026-09-06.md) and
-  [clone-build record](build/verification/2026-09-07-clone-build.md).
-- Two independent builds of **the same commit, `9226140`**, produced five
-  byte-identical artifacts out of eight. Of 772 rootfs entries, only
-  `/etc/shadow` differed because of the random password salt. See the
-  [comparison](build/verification/2026-09-06-reproducibility.json).
-- The separate clone comparison also found an embedded Git-version metadata
-  difference in the firmware. **These results do not establish bit-for-bit
-  reproducibility of the complete BIN.**
-- The corrected source at **`7b8a4d0`** completed the full clean pipeline and
-  host tests. Its new combined image still requires its own hardware run;
-  earlier 26/26 results must not be attributed to it.
+- **The 0.8 board suite ran on a clean build of `8ea9011`** (`7b4c94e` in
+  this history): a fresh clone, `run.sh --all`, **36 tests, 0 failed**; then
+  ten checks beyond the suite (10/10), ten factory boots with `dmesg` and the
+  taint flags read back (10 clean), and the board driven from another machine
+  over WiFi (SSH, scp, the web page).
+  [`2026-09-14-final-image.md`](build/verification/2026-09-14-final-image.md).
+- **The published image was built by the Image workflow from `13c85d6`**,
+  the tagged sources. Between `8ea9011` and that commit the build inputs
+  changed only in comments, plus the `wifi connect` fix, and the rootfs in
+  `images/` carries that fix (the script in it is byte-identical to the one
+  in the tree). Two independent container builds of the commit differ in one
+  file, `/etc/shadow`, from the random password salt.
+  [`2026-09-14-release.md`](build/verification/2026-09-14-release.md).
+- **Not done yet:** the exact bytes in `images/` have not been through the
+  board suite themselves. That run is the next record.
+- **The corruption fix, measured:** 55 factory boots in a row on the fixed
+  firmware, all clean, against 10 faults in 17 before it.
+  [`2026-09-14-cache-fix.md`](build/verification/2026-09-14-cache-fix.md).
 
-A build succeeding is not the same as a board test passing. Consult the
-image's `build-manifest.json` and matching `results.json`. The board suite
-does not test an external WiFi connection or sustained flash reclaim.
+A build succeeding is not the same as a board test passing. Every image
+carries a `build-manifest.json`, and every board run a `results.json` that
+names the image hash it ran on. The board suite does not test sustained
+flash reclaim.
 
 ## Limits
 
@@ -256,6 +263,13 @@ does not test an external WiFi connection or sustained flash reclaim.
   it is not copy-on-write. The backend is UP-only, rejects multithreaded fork
   and limits private memory per fork to 512 KiB. Several Bash sessions or
   large pipelines can run out of memory; detached sessions default to Dash.
+- **A context switch can hold interrupts off for about 21 ms.** The backend
+  moves a process's private memory on every switch, up to the 512 KiB
+  ceiling, with interrupts disabled; over the full ceiling that is 21.5 ms,
+  longer than the 10 ms tick. Copy-on-write would avoid it and is not possible
+  on this chip: an unpermitted write fails and raises an asynchronous
+  interrupt, so there is no restartable fault to copy a page and retry the
+  store from. `/proc/meminfo` reports `ForkSwitchMax` and `ForkSwitchLast`.
 - **Native binaries must target Xtensa/FDPIC.** Arbitrary x86, ARM or desktop
   Linux binaries do not run. CPython, Neovim, SQLite, sudo and doas are not
   included.
@@ -303,6 +317,11 @@ base-system build path, not the complete fork-enabled pipeline.
   fork implementation and measured limits.
 - [Troubleshooting](TROUBLESHOOTING.md), [security](SECURITY.md),
   [Bluetooth setup](BLE.md) and [changelog](CHANGELOG.md).
+- The long version of 0.8: the flash-cache corruption is
+  [incident 15 in DEVELOPMENT.md](DEVELOPMENT.md), the page-set exchange
+  incident 16, the numbers are in the [changelog](CHANGELOG.md), and the raw
+  evidence -- hashes, `dmesg`, per-test results -- is under
+  [`build/verification/`](build/verification/).
 
 ## History, credits and license
 
