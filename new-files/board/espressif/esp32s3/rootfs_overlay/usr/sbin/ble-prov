@@ -1,12 +1,8 @@
 #!/bin/sh
 #
-# Whether the BLE provisioning dialog runs.
-#
-# It exists so a board with no network and no cable can be told which wifi to
-# join, from a phone. It is also a link anyone in radio range can open and
-# write to, with no authentication, feeding a root process -- so by default it
-# stops once wifi is configured. These switches override that both ways, and
-# persist across reboots in /etc.
+# Whether the BLE provisioning dialog runs. By default it stops once wifi is
+# configured, since it is an unauthenticated link into a root process. These
+# switches override that either way and persist in /etc.
 
 set -e
 DIR=/etc/ble-prov

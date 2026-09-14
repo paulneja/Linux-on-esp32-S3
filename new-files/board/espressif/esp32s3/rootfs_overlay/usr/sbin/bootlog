@@ -1,22 +1,8 @@
 #!/bin/sh
 #
-# How much of the kernel's log reaches the console.
-#
-# The image boots with `quiet`, which is compiled into the device tree and so
-# cannot be changed from here: the console carries KERN_ERR and worse, which
-# is a panic, an Oops or a BUG: and very little else. That is worth about
-# 0.73 s of every boot, because printk to a 115200 console is synchronous and
-# the log is 8.4 KB against a 13.7 s boot.
-#
-# Nothing is lost either way -- the ring buffer holds all of it and dmesg
-# prints it -- so this switch does not touch the command line. It raises the
-# console level, and at boot S00bootlog also replays what was buffered before
-# it could run. The setting lives in /etc and survives a reboot.
-#
-# What it cannot do: show a fault that happens before that script runs, about
-# 1.4 s in. DEVELOPMENT.md incident 15 faults as early as 147 ms, and reading
-# those needs an image built without `quiet` -- see
-# board/espressif/esp32s3/patches/linux/03-kernel-cmdline-no-debug.patch.
+# How much of the kernel's log reaches the console. `quiet` is compiled into
+# the device tree, so this cannot change the command line: it sets the console
+# level, and S00bootlog replays the buffered log at boot. Persists in /etc.
 
 set -e
 DIR=${BOOTLOG_DIR:-/etc/bootlog}
@@ -29,8 +15,7 @@ if [ "$(id -u)" != 0 ]; then
 	exit 1
 fi
 
-# The file is four tab-separated numbers; the first is the console level.
-# Writing a single number sets that one and leaves the other three alone.
+# Four tab-separated numbers; writing one sets just the console level.
 now() { cut -f1 "$LEVEL" 2>/dev/null || echo '?'; }
 set_level() { echo "$1" > "$LEVEL" 2>/dev/null || echo "bootlog: could not write $LEVEL" >&2; }
 

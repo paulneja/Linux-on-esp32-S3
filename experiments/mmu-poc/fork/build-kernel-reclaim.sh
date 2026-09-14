@@ -26,19 +26,9 @@ if ! patch -d "$kernel_dir" --force --dry-run -R -p1 < "$task_dir/reclaim.patch"
 fi
 patch -d "$kernel_dir" --forward --batch --dry-run -p1 < "$task_dir/quiet-trace.patch"
 patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/quiet-trace.patch"
-# swap-banks is ON by default. It was off for a week because it corrupted
-# memory on the board -- an "Illegal instruction in kernel", an Oops in
-# __rb_erase_color, a bash that turned itself restricted -- and it turned out
-# it never had: the firmware was not invalidating the flash cache after any
-# write Linux made (DEVELOPMENT.md incident 15), so every model read stale
-# pages, and this one, keeping each process's memory in one place rather than
-# two, had nothing to survive that with. With the firmware fixed, twenty
-# factory boots with the swap on: 20 clean, the inconsistency latch never
-# fired. Set FORK_SWAP_BANKS=0 to build the copy model instead.
-#
-# It goes last: it rewrites the page handling the three patches above build up,
-# so it has to see them already applied. switch-latency.patch edits the swap
-# version of nommu_bank_switch(), so it rides along.
+# The page-set exchange is the default; FORK_SWAP_BANKS=0 builds the copying
+# model. It goes last because it rewrites what the patches above build up;
+# switch-latency edits the exchange's nommu_bank_switch(), so it rides along.
 if [ "${FORK_SWAP_BANKS:-1}" = 1 ]; then
     patch -d "$kernel_dir" --forward --batch --dry-run -p1 < "$task_dir/swap-banks.patch"
     patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/swap-banks.patch"

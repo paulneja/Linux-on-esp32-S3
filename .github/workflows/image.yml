@@ -74,10 +74,8 @@ jobs:
 
       - name: Check the kernel patches apply to the pinned kernel, in order
         run: |
-          # A patch that stopped applying is otherwise only discovered an
-          # hour into a build. Fetch just the pinned kernel commit without
-          # blobs, check out only the paths the patches touch, and apply
-          # them in the order buildroot does. Seconds, not minutes.
+          # Fetch just the pinned kernel commit without blobs, check out only
+          # the paths the patches touch, and apply them in buildroot's order.
           set -e
           . build/sources.lock
           git clone --no-checkout --depth 1 --filter=blob:none \
@@ -89,19 +87,15 @@ jobs:
               ../experiments/mmu-poc/fork/kernel.patch \
               ../experiments/mmu-poc/fork/reclaim.patch \
               ../experiments/mmu-poc/fork/quiet-trace.patch | sort -u > ../touched
-          # Only files that exist at the pinned commit; the fork patches
-          # create a few. Check them out one by one, so a typo in a patch
-          # header fails here rather than producing an empty tree that
-          # every patch then "applies" to by creating the file.
+          # One by one, so a bad path in a patch header fails here instead of
+          # yielding an empty tree that every patch "applies" to.
           while read -r f; do
             if git cat-file -e "$LINUX_KERNEL_REV:$f" 2>/dev/null; then
               git checkout -q "$LINUX_KERNEL_REV" -- "$f"
             fi
           done < ../touched
           test "$(git ls-files | wc -l)" -ge 15 || { echo "checkout produced too few files"; exit 1; }
-          # An offset is fine (an earlier patch inserted lines above); fuzz
-          # or a failed hunk is not, and "No file to patch" means a header
-          # names a path that is not at the pinned commit.
+          # An offset is fine; fuzz, a failed hunk or "No file to patch" is not.
           apply() {
             out=$(patch -p1 -f --no-backup-if-mismatch < "$1" 2>&1) || { echo "$out"; return 1; }
             echo "$out" | grep -qE 'FAILED|fuzz|No file to patch' && { echo "$out"; return 1; }
@@ -152,8 +146,7 @@ jobs:
   build:
     name: Full image ${{ matrix.run }}
     needs: host-tests
-    # The comment at the top promises this stays manual; without this line
-    # it ran twice on every push.
+    # Manual only, as the comment at the top says.
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 360

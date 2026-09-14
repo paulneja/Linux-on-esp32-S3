@@ -12,9 +12,8 @@ if [ ! -e /home/root/README.txt ] && [ ! -L /home/root/README.txt ]; then
     cp /usr/share/esp32-home/README.txt /home/root/README.txt
     chmod 600 /home/root/README.txt
 fi
-# gzip's exit status is lost behind a pipe: with a bad trailing CRC it emits
-# the whole archive, then fails, tar succeeds, and the pipeline reports 0. So
-# decompress to a file first and only unpack what gzip finished cleanly.
+# gzip's status is lost behind a pipe (a bad trailing CRC still emits the
+# whole archive), so decompress to a file first.
 unpack_www() {
     tar=$(mktemp /run/www.tar.XXXXXX) || return 1
     if ! gzip -dc /usr/share/esp32-home/www.tar.gz > "$tar"; then

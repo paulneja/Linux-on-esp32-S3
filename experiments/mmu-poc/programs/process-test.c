@@ -60,10 +60,8 @@ int main(int argc,char **argv) {
          * and everything is released once it is gone. */
         CHECK(before==0 && after==0);
         CHECK(during_all>before_all && after_all==before_all);
-        /* Where that copy lives is what the two models disagree about. With
-         * swapping this process stays resident and owns no set of its own,
-         * which is what makes a fork cost P rather than 2P; without it, every
-         * process keeps a private backup, this one included. */
+        /* With swapping the resident process owns no set of its own (a fork
+         * costs P, not 2P); with copying every process keeps a backup. */
         if(swapping()) CHECK(during==0); else CHECK(during>0);
     }
     printf("RECLAIM parent_kib before=%ld live=%ld after=%ld global live=%ld\n",

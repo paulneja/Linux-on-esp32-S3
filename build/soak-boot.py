@@ -1,42 +1,21 @@
 #!/usr/bin/env python3
 """Boot the board from the factory state N times and classify every boot.
 
-The corruption this hunts shows up on the first boot after a flash, when
-home-init fills a freshly formatted /home with hundreds of forks and jffs2
-writes, and hardly ever on a plain reset of an initialised board. So each
-round rewrites /etc and /home from the artifacts -- a two-partition write,
-about a minute -- and then watches the console.
+Each round rewrites /etc and /home from the artifacts, holds the board in
+reset until the port is listening, watches the console, then logs in and
+reads dmesg and the taint flags back (a quiet console shows KERN_ERR and
+worse only). A round ends in exactly one of three states:
 
-The restore leaves the board in reset (--after no_reset) and the round
-releases it only once the port is open and listening, so the boot observed is
-the first boot after the write. It used to be the second: esptool's
---after hard_reset started the board, home-init began filling /home, and then
-opening the port pulsed DTR/RTS and reset it in the middle of those writes.
-The boot the runner then watched came up over a half-written jffs2, which is
-where the "faults before any process exists" of DEVELOPMENT.md incident 15
-came from.
-
-Every round ends in exactly one of three states, and a round is only a PASS
-on positive evidence:
-
-  PASS          the login prompt appeared, the last init script ran (the
-                system reached the run level that does the work under test),
-                the kernel's own log and taint flags were read back clean,
-                and nothing in the fault list was printed
+  PASS          login prompt, last init script ran, kernel log and taint
+                flags read back clean, nothing in the fault list printed
   FAIL          something in the fault list was printed
-  INCONCLUSIVE  no fault, but no login prompt or no marker within the budget:
-                the board hung, reset, or was simply not observed long enough
+  INCONCLUSIVE  no fault, but no login, no marker, or no log read back
 
-INCONCLUSIVE never counts as a pass. Five PASS rounds with a true fault rate
-of 20% still happen a third of the time, so the summary prints a one-sided
-95% upper bound on the rate alongside the count; ask for --rounds 20 before
-reading anything into a zero.
-
-With --identity a run records the SHA-256 of the kernel and firmware
-partitions as read back from the board, so a transcript can be tied to the
-exact image it came from; it costs about seven minutes, so it is off by
-default and meant for the run that goes into a verification record. Never flashes the kernel or the rootfs: those are the image under
-test.
+INCONCLUSIVE never counts as a pass. The summary carries a one-sided 95%
+upper bound on the fault rate; twenty rounds are the least that means much.
+--identity records the SHA-256 of the kernel and firmware partitions read
+back from the board (about seven minutes). Never flashes the kernel or the
+rootfs: those are the image under test.
 """
 import argparse
 import hashlib
@@ -49,9 +28,8 @@ import subprocess
 import sys
 import time
 
-# Kernel-side faults, plus the user-space signatures of the same corruption:
-# a process taking an illegal instruction, and busybox's unhandled-exception
-# line. "slab_debug" is deliberately absent -- it appears in the bootargs.
+# Kernel faults plus the user-space signatures of the same corruption.
+# "slab_debug" is deliberately absent: it appears in the bootargs.
 FAULT = re.compile(rb'Oops:|BUG:|Kernel panic|Illegal [Ii]nstruction'
                    rb'|kernel taint|Tainted:|crc error'
                    rb'|scheduling while atomic|Caught unhandled exception'
@@ -59,18 +37,12 @@ FAULT = re.compile(rb'Oops:|BUG:|Kernel panic|Illegal [Ii]nstruction'
                    rb'|list_add corruption|list_del corruption'
                    rb'|corrupted stack end|Bad page state|WARNING: CPU')
 LOGIN = re.compile(rb'buildroot login: ?')
-# The last init script; once it has run, home-init and everything before it
-# have finished, which is the work the boot has to have done to count.
+# The last init script: once it ran, home-init and everything before it did.
 MARKER = re.compile(rb'Starting cron: OK')
 RESET_BANNER = re.compile(rb'ESP-ROM:esp32s3')
-# The shipping image boots with `quiet`, so the console carries KERN_ERR and
-# worse and nothing else. A user-space illegal instruction is
-# pr_info_ratelimited and a WARN is KERN_WARNING: neither is ever typed, and
-# the first of those is the signature that caught the 0.7 release. The ring
-# buffer holds them regardless of the console level, so every round that
-# reaches a login reads it back, and the taint flags with it. Without this a
-# run on a quiet image measures less than a run on a diagnostic one and the
-# two are not comparable.
+# A quiet console types KERN_ERR and worse only; a user-space illegal
+# instruction (pr_info) and a WARN never reach it. The ring buffer has them,
+# so every round that logs in reads it back, with the taint flags.
 HEALTH = ('cat /proc/sys/kernel/tainted', 'dmesg')
 TAINTED = re.compile(rb'^\s*(\d+)\s*$', re.M)
 OFFSETS = {'etc.jffs2': '0xd0000', 'home.jffs2': '0xcc0000'}

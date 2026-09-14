@@ -1,14 +1,8 @@
 #!/usr/bin/env python3
-"""What test-board.py does not do: the things a person does with the board.
-
-test-board.py proves the image is the one that was built and that every
-program runs its test. This goes after what those leave out -- a session you
-detach from and come back to, a password you change and log in with, cron
-firing for real, /home surviving a reboot, a file written to jffs2 and read
-back byte for byte, the shell under the kind of load that made 0.7 say
-"fork: Cannot allocate memory", and the bank exchange under that same load
-with its inconsistency latch watched. Each check leaves the board as it found
-it. Nothing here needs WiFi; that is a separate matter and is said so.
+"""What test-board.py does not cover: a detached session, cron firing, passwd
+and a fresh login, a reboot that keeps /home, jffs2 written and read back,
+the shell under fork load, the bank exchange's latch under that load, and
+bootlog across reboots. Each check leaves the board as it found it. No WiFi.
 """
 import hashlib, importlib.util, json, os, re, sys, time
 from pathlib import Path
@@ -50,8 +44,7 @@ def boot(c, seconds=60):
 
 
 def logout(c):
-    # `exit` alone is not enough: getty takes a moment to put the prompt back,
-    # and a password typed before it is there jams it for sixty seconds.
+    # Wait for getty's prompt: a password typed before it jams getty for 60 s.
     c.port.write(b'exit\r')
     c.until(rb'login: ?', 30)
 
@@ -81,7 +74,7 @@ def jffs2_roundtrip():
     return '384 KiB written, copied, read back identical'
 record('jffs2-write-copy-readback', jffs2_roundtrip)
 
-# ---- 3. bash under the load that broke 0.7 ------------------------------------
+# ---- 3. bash under fork load --------------------------------------------------
 def shell_load():
     before = meminfo(c, 'ForkShadow')
     o = c.command('for i in $(seq 1 40); do (echo $i | tr 0-9 a-j | wc -c) >/dev/null; done; '

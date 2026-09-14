@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
-"""The soak runner's classifier must never call a boot a PASS on silence.
-
-It ran for a whole afternoon reporting "0/5 faulted" for rounds that never
-reached the login prompt, and missed busybox's "Caught unhandled exception"
-and a user-space illegal instruction. These tests drive classify() and the
-fault list with transcripts shaped like the real ones.
+"""The soak runner's classifier: a boot is a PASS on evidence, never on silence.
+Drives classify() and the fault list with transcripts shaped like real ones.
 """
 import importlib.util
 from pathlib import Path

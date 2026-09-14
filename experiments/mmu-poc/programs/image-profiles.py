@@ -84,10 +84,8 @@ def pack(selected, output):
         install(HERE / 'set-user-shell.sh', tree / 'usr/sbin/set-user-shell')
         board = REPO / 'new-files/board/espressif/esp32s3'
         overlay = board / 'rootfs_overlay'
-        # Everything in the overlay, rather than a list of nine paths that
-        # went stale every time one was added: the overlay is by definition
-        # what belongs on the target, and this image is assembled from a
-        # cramfs that may predate the current one. Modes come from the files.
+        # Everything in the overlay: it is by definition what belongs on the
+        # target, and this cramfs may predate it. Modes come from the files.
         for source in sorted(overlay.rglob('*')):
             if not source.is_file():
                 continue

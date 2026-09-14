@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
-"""Host tests for usr/sbin/bootlog and etc/init.d/S00bootlog.
-
-The image boots with `quiet` compiled into the device tree, so the console
-carries KERN_ERR and worse. This switch cannot change that; it raises the
-console level and replays the buffer at boot instead. What has to be right is
-that the default is quiet, that the setting survives into the init script, and
-that a board with the switch off pays nothing and prints nothing.
+"""Host tests for usr/sbin/bootlog and etc/init.d/S00bootlog: the default is
+quiet, the setting survives into the init script, and a board with the switch
+off pays nothing and prints nothing.
 """
 import os
 from pathlib import Path

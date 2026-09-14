@@ -1,13 +1,8 @@
 #!/bin/sh
 #
-# Unmute the kernel log at boot when `bootlog verbose` asked for it.
-#
-# `quiet` is compiled into the device tree, so by the time any script runs the
-# console has already missed everything below KERN_ERR. Raising the level only
-# changes what comes next, so the buffer is printed once to cover what came
-# before. S00 so that as little as possible falls in the gap.
-#
-# Off by default, and then this costs one test for a file that is not there.
+# Unmute the console at boot when `bootlog verbose` asked for it. Raising the
+# level only affects what comes next, so the buffer is replayed once for what
+# came before. S00 so the gap is as small as an init script can make it.
 
 FLAG=${BOOTLOG_DIR:-/etc/bootlog}/verbose
 LEVEL=${BOOTLOG_LEVEL:-/proc/sys/kernel/printk}

@@ -32,10 +32,8 @@ int main(int argc,char **argv) {
         argv[i]=NULL;jobs[count++].argv=argv+i+1;
     }
     signal(SIGINT,stop);signal(SIGTERM,stop);
-    /* No file actions: uClibc's spawn falls back to fork() the moment it is
-       given any, and on NOMMU there is nothing to fall back to -- it returns
-       ENOSYS. USEVFORK keeps setpgid and the signal defaults from vetoing the
-       vfork path, and vfork is what makes a job cost no fork shadow at all. */
+    /* No file actions: with any, uClibc's spawn tries fork() and returns ENOSYS
+       on NOMMU. USEVFORK keeps setpgid and the signal defaults on the vfork path. */
     posix_spawnattr_t attr;sigset_t dfl;
     sigemptyset(&dfl);sigaddset(&dfl,SIGINT);sigaddset(&dfl,SIGTERM);
     posix_spawnattr_init(&attr);
@@ -62,7 +60,6 @@ int main(int argc,char **argv) {
         if(cancelled && next<count) {finished+=count-next;next=count;failed=1;}
         if(next<count && active<(unsigned)parallel) {
             long avail=proc_field("/proc/meminfo","MemAvailable:");
-            /* No term for the queue's own RAM: spawning costs no copy of it. */
             long long required=(long long)reserve+need;
             for(unsigned i=0;i<next;i++)if(jobs[i].pid>0) {
                 long used=process_field(jobs[i].pid,"PrivateRAM:");
@@ -76,9 +73,7 @@ int main(int argc,char **argv) {
                     printf("START job=%u pid=%ld active=%u available_kib=%ld required_kib=%lld\n",next+1,(long)p,active,avail,required);
                     next++;waiting=0;blocked_since=now;
                 } else if(rc!=ENOMEM && rc!=EAGAIN) {
-                    /* glibc reports a failed exec from posix_spawn itself; the
-                       NOMMU path cannot and the child exits 127 instead. Both
-                       have to produce the same line. */
+                    /* glibc reports a failed exec here; uClibc's child exits 127. */
                     errno=rc;perror("posix_spawnp");
                     printf("EXIT job=%u pid=0 code=%d elapsed_ms=0\n",next+1,rc==ENOENT?127:126);
                     failed=1;finished++;next++;

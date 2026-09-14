@@ -3,16 +3,10 @@
 DAEMON=/usr/sbin/ble-wifi-setup
 PIDFILE=/var/run/ble-wifi-setup.pid
 
-# The provisioning dialog is how a board with no wifi and no cable gets on a
-# network. Once it is on one, the daemon is a resident process -- 124 KiB
-# private, the third largest on an idle board -- listening on a link that
-# anyone in radio range can open and write to, with no authentication. So it
-# runs when it is needed and not otherwise.
-#
-#   /etc/ble-prov/always    keep it running even with wifi configured
+# The dialog is an unauthenticated link into a root process, so it runs only
+# until wifi is configured unless told otherwise:
+#   /etc/ble-prov/always    keep it running with wifi configured
 #   /etc/ble-prov/never     never start it
-#
-# `ble-prov on` and `ble-prov off` write those.
 
 case "$1" in
 start)

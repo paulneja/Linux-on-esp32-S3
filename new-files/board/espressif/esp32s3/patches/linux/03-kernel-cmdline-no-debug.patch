@@ -15,12 +15,10 @@ log ("build-output/fixtest/board-check-run1/boot.log"):
  - "no_hash_pointers" is gone. It prints every %p in dmesg as a real kernel
    address, and with dmesg unrestricted that was readable by any user on a
    board that ships dropbear. Add it back on a development image if needed.
- - "panic_print=0x20" dumps the whole ring buffer to the console when the
-   kernel panics, before panic=10 reboots. Without it "quiet" costs every
-   panic its diagnosis: BUG() prints its "BUG: failure at file:line" with a
-   bare printk(), KERN_DEFAULT, level 4, and quiet passes only what is below
-   4 -- so nine of ten panics in one afternoon said nothing but "BUG!". This
-   costs nothing until a panic, when the boot is lost anyway.
+ - "panic_print=0x20" dumps the ring buffer to the console on a panic, before
+   panic=10 reboots. BUG() prints its "failure at file:line" with a bare
+   printk() at level 4, which "quiet" does not pass, so without this a panic
+   reports nothing but "BUG!".
 
 --- a/arch/xtensa/boot/dts/esp32s3.dtsi
 +++ b/arch/xtensa/boot/dts/esp32s3.dtsi

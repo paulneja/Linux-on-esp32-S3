@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 """usr/bin/wifi: the configuration it writes, and one shape it must not have.
-
-`wifi connect` never worked on the board. Its two heredocs sat inside a
-( subshell ), and the busybox ash in the image cannot finish a heredoc whose
-body ends inside parentheses -- "unexpected EOF in here document", and
-nothing written. `sh -n` accepts it, the host's busybox accepts it, only the
-board's does not, so no host check caught it. These tests run the script's
-functions under whatever sh is here, and separately refuse the shape itself.
+The image's busybox ash cannot finish a heredoc that ends inside a
+( subshell ); sh -n and the host's busybox accept it, so the shape is refused
+here by inspection.
 """
 import os, re, shutil, subprocess, tempfile, unittest
 from pathlib import Path

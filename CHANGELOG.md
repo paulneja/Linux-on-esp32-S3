@@ -4,7 +4,7 @@ Releases carry one flashable `.bin` for a 16 MB / 8 MB-PSRAM ESP32-S3. Full
 notes and the binaries are on the
 [releases page](https://github.com/paulneja/Linux-on-esp32-S3/releases).
 
-## Unreleased — the memory the board was reserving and never using
+## 0.8 — the board stops crashing (2026-09-14)
 
 Measured on the shipping image, built from a clean clone and read back off
 the board: **MemAvailable 1340 kB to 3744 kB** at the same point of the same

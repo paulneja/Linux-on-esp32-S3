@@ -1,4 +1,4 @@
-# Linux on an ESP32-S3 — native Linux, fork and a usable shell
+# Linux on an ESP32-S3 — native Linux that stays up
 
 Linux 6.11 running **natively on the ESP32-S3's Xtensa cores**, with WiFi,
 Bash, MicroPython and writable storage. Linux is not emulated: Espressif's
@@ -6,43 +6,27 @@ firmware runs alongside it on the same chip and handles WiFi and flash access.
 All of this runs on one N16R8 board, without extra RAM, an SD card or a second
 computer attached to keep it running.
 
-## What's new in 0.7
+## What's new in 0.8
 
-0.7 expands the earlier 0.6 system with **native `fork()` support and a larger
-userspace**. The fork backend is still experimental: it is software memory
-banks, not a hardware MMU.
+0.8 is the release where the board stops crashing. Since 0.7 about one factory
+boot in ten took a kernel fault in its first seconds, and nobody knew, because
+the test counted silence as a pass. The cause was in the firmware: the ESP32-S3
+has one flash cache for both cores, and after every write Linux made to jffs2
+nothing invalidated it, so the kernel went on reading stale pages, sometimes
+of its own code. Four lines in the firmware fix it. Fifty-five factory boots in
+a row came up clean on the fixed firmware, measured by a runner that reads
+`dmesg` back instead of trusting a quiet console.
 
-- **Native fork-enabled programs.** Software memory banks let parent and child
-  keep independent private state, with backup memory reclaimed when it is no
-  longer shared. This unlocks tested process workflows that the previous
-  NOMMU system could not run.
-- **Bash for the user, a lightweight shell for services.** Bash 5.2.37 is the
-  login shell; BusyBox remains `/bin/sh`. Dash 0.5.12 is also available.
-- **More real programs under their normal names.** GNU Make 4.4.1, MicroPython
-  1.26.0 with fork/IPC support, socat 1.8.1.3 and `nc`/`netcat`.
-  Make executes build recipes; it is not a C compiler.
-- **An editable web page and private user homes.** Web content lives in
-  `/home/www`; root gets a welcome README in `/home/root`. Users have their
-  own homes, Unix permissions and `su`/`passwd`.
-- **Scheduled jobs and detachable sessions.** Persistent per-user
-  `cron`/`crontab`, `@reboot` jobs, `session`/dtach consoles and
-  `nohup ... &` for background work.
-- **A console you can turn up.** The image boots quietly, which is worth
-  0.73 s of a 13.7 s boot on a 115200 console. `bootlog verbose` shows the
-  whole kernel log at every boot and `bootlog quiet` puts it back; `dmesg`
-  has all of it either way.
-- **Tools for working within 8 MiB of RAM.** `jobq` limits job concurrency
-  and checks available memory; `programbench` measures program costs.
-  Image profiles select programs, and checked ELF stripping saves flash.
-- **A complete clean-build pipeline.** Toolchain, kernel, firmware and
-  userspace are built from downloaded sources. Images have checksums and
-  partition checks; the board test suite ties results to one exact image.
-  Boot initialization avoids unnecessary writes and has a bounded wait for
-  slow home setup.
-- **It boots quickly and quietly.** About 14 seconds from reset to the login
-  prompt. Startup no longer blocks on `/home` and writes less to flash on the
-  way up, and the validated 27/27 run finished with nothing from the OOM killer
-  in `dmesg`, which the suite checks before and after every test.
+With that gone, the fork backend's page-set exchange, which had been written
+off for corrupting memory, turns out never to have: it ships now, and every
+program that forks needs half the memory it did. `make` and `jobq` need none,
+because they spawn instead. MemAvailable after boot went from 1.3 MB to 3.7 MB.
+
+Smaller things a person notices: `wifi connect` writes its configuration for
+the first time, `bootlog verbose` turns the console back up without a rebuild,
+an update no longer takes the WiFi password with it, the clock survives a
+reboot, and the four dropbear host keys that every board used to share are no
+longer in the image. The changelog has the rest, with the numbers.
 
 **Fork is not a full MMU.** This remains NOMMU Linux, with no hardware process
 memory protection. The switchable MMU-remap experiment is a separate runtime,
@@ -57,7 +41,7 @@ not a loader for arbitrary desktop binaries. See [limits](#limits) below.
 
 ## Get the current version
 
-`images/` holds the 0.7 release, so the quickest path is to flash what is
+`images/` holds the 0.8 release, so the quickest path is to flash what is
 already in the repository:
 
 ```sh
@@ -177,6 +161,15 @@ trusted LAN and read [SECURITY.md](SECURITY.md) before connecting.
 More commands, measurements and examples are in the
 [userspace guide](experiments/mmu-poc/programs/USERSPACE-UPGRADE.md).
 
+## Features carried forward from 0.7
+
+Native `fork()` through software memory banks; Bash 5.2 as the login shell,
+BusyBox as `/bin/sh`, Dash available; GNU Make, MicroPython with fork and IPC,
+socat and `nc`; an editable web page in `/home/www` and private homes with
+Unix permissions; per-user cron, `session`/dtach consoles and `nohup`; `jobq`
+and `programbench` for working within 8 MiB; a clean-build pipeline with
+checksums, partition checks and a board suite tied to one exact image.
+
 ## Features carried forward from 0.6
 
 - **STA WiFi and BLE provisioning.** Join an existing network over the
@@ -249,7 +242,7 @@ does not test an external WiFi connection or sustained flash reclaim.
 ```
 
 The script reads `images/` unless `--images` points elsewhere, and requires
-Python 3 and esptool. Everything in `images/` belongs to the 0.7 release and
+Python 3 and esptool. Everything in `images/` belongs to the 0.8 release and
 matches the combined image there byte for byte. Earlier releases and their
 binaries stay on the releases page.
 

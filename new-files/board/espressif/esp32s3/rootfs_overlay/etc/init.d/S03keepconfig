@@ -1,26 +1,11 @@
 #!/bin/sh
 #
-# Carry the network and the accounts across an update.
-#
-# /etc is its own jffs2 partition and every flash writes it, because the init
-# scripts live there -- so an update takes the wifi credentials and the root
-# password with it, and the board comes back unreachable. /home is preserved
-# by flash.sh --parts, so keep a copy there and restore it when /etc comes
-# back from the factory.
-#
-# What is copied: wpa_supplicant.conf, shadow, passwd, group and the dropbear
-# host keys. They hold credentials, so the directory is 0700 and every file
-# keeps the mode it had.
-#
-# Restoring is deliberately conservative, and the test for "this /etc just
-# came from the factory" is a generation stamp, not the absence of a file.
-# Every save writes a random id into /etc/.keepconfig-generation and records
-# the same id beside the backup. On start, a restore happens only when /etc
-# carries NO stamp at all -- which is what a freshly written etc.jffs2 looks
-# like. An /etc that still has its stamp is a live one, whatever the user
-# deleted from it since; deleting the wifi configuration on purpose must not
-# bring the old password back. Leave /home/.etc-backup/disabled to turn the
-# whole thing off.
+# Carry the network and the accounts across an update. Every flash rewrites
+# /etc; /home survives flash.sh --parts, so the credentials are copied there
+# and put back when /etc comes from the factory. That is decided by a
+# generation stamp, not by a missing file: a restore happens only when /etc
+# carries no stamp at all. An /etc with its stamp is live, whatever was
+# deleted from it. /home/.etc-backup/disabled turns this off.
 
 # Overridable so build/test-keepconfig.py can drive this on a host with a
 # fake /etc and /home rather than a board.

@@ -2,8 +2,7 @@
 set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/env.sh"
 for program in process-test programbench jobq; do
-    # jobq spawns through posix_spawn, which lands on vfork here, so it must
-    # not pull in the fork backend at all; the two test tools measure it and do.
+    # jobq spawns (vfork); it must not link the fork backend. The tools do.
     libs=$LIBS
     if [[ "$program" == jobq ]]; then libs=; fi
     cc -std=gnu17 -O2 -Wall -Wextra -Werror "$programs_dir/$program.c" -o "$programs_out/$program-host"
@@ -14,7 +13,7 @@ for program in process-test programbench jobq; do
     "$prefix-size" "$programs_out/$program"
 done
 
-# The saving is only real if it shows in the binary: no libfork, no fork import.
+# Refuse a jobq that links libfork or imports fork.
 if "$prefix-readelf" -d "$programs_out/jobq" | grep -q libfork; then
     echo "jobq links libfork; it must spawn, not fork" >&2; exit 1
 fi

@@ -1,6 +1,6 @@
 --- a/master.c
 +++ b/master.c
-@@ -57,6 +57,65 @@
+@@ -57,6 +57,61 @@
  pid_t forkpty(int *amaster, char *name, struct termios *termp,
  	      struct winsize *winp);
  #endif
@@ -9,14 +9,10 @@
 +	    struct winsize *winp);
 +#endif
 +
-+/* forkpty() has to return in the child, and a vfork()ed child may not return
-+** from the function that called vfork(): it would run off the stack frame it
-+** shares with the suspended parent. So the pty setup and the exec live in one
-+** frame here. The child only makes syscalls -- it never writes to dtach's own
-+** memory, and it writes its error with write() because the stdio buffers
-+** belong to the parent. On NOMMU this makes the session's second process cost
-+** no copy of dtach at all; the first one, the daemonized master, still forks
-+** because it never execs. */
++/* A vfork() child may not return from the function that called vfork(), and
++** forkpty() returns in the child, so the pty setup and the exec live in one
++** frame. The child makes syscalls only; its error goes out with write(),
++** since the stdio buffers belong to the suspended parent. */
 +static pid_t
 +spawnpty(int *amaster, struct termios *termp, char **argv, int statusfd)
 +{
@@ -66,7 +62,7 @@
  
  /* Unlink the socket */
  static void
-@@ -112,30 +171,14 @@
+@@ -112,30 +167,14 @@
  	the_pty.term = orig_term;
  	memset(&the_pty.ws, 0, sizeof(struct winsize));
  

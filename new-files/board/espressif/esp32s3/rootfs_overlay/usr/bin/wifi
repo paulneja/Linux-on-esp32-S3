@@ -46,13 +46,9 @@ reject_unsafe() {
 	return 0
 }
 
-# The file must never exist world readable, not even for the instant between
-# the redirect and a later chmod, so the umask is 077 across the redirect.
-# It used to be set in a ( subshell ) around the heredoc; busybox ash on this
-# image cannot finish a heredoc whose body ends inside parentheses -- it
-# reports "unexpected EOF in here document" and writes nothing -- so `wifi
-# connect` never wrote a configuration. umask is a builtin and a function
-# does not scope it, so it is put back by hand.
+# umask 077 across the redirect so the file is never world readable. Not a
+# ( subshell ): busybox ash cannot finish a heredoc that ends inside
+# parentheses. umask is a builtin, so it is put back by hand.
 write_conf() {
 	local old
 	old=$(umask)
