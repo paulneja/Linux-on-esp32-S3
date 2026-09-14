@@ -95,7 +95,7 @@ same image from source instead, read on.
 it opens a menu; each step is also a flag, so it works unattended:
 
 ```sh
-git clone --branch mmu-poc https://github.com/paulneja/Linux-on-esp32-S3.git
+git clone https://github.com/paulneja/Linux-on-esp32-S3.git
 cd Linux-on-esp32-S3
 ./run.sh                 # menu
 ./run.sh --all -y        # check, build, verify, flash and test, no prompts
@@ -118,7 +118,7 @@ The rest of this section is the same path by hand.
 On a Linux host with Git and Docker access, as a regular user:
 
 ```sh
-git clone --branch mmu-poc https://github.com/paulneja/Linux-on-esp32-S3.git
+git clone https://github.com/paulneja/Linux-on-esp32-S3.git
 cd Linux-on-esp32-S3
 JOBS=8 bash build/reproduce.sh
 ```
