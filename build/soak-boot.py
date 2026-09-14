@@ -83,6 +83,9 @@ parser.add_argument('--boot-seconds', type=int, default=120,
 parser.add_argument('--settle-seconds', type=int, default=25,
                     help='keep watching this long after login and marker: the network and BLE come up later')
 parser.add_argument('--esptool', default='esptool')
+parser.add_argument('--baud', type=int, default=460800,
+                    help='esptool transfer rate for the restore. At 115200 the 3.8 MB rewrite takes '
+                         'longer than the boot it sets up, and it is the flash traffic that heats the board')
 parser.add_argument('--no-flash', action='store_true', help='only reset; do not restore /etc and /home')
 parser.add_argument('--identity', action='store_true',
                     help='read the kernel and firmware partitions back and record their hashes; '
@@ -105,7 +108,7 @@ args.output.mkdir(parents=True, exist_ok=False)
 
 def esptool(*words):
     # The underscore spellings work with both esptool 4.8.1 and 5.x.
-    command = [args.esptool, '--chip', 'esp32s3', '--port', args.port,
+    command = [args.esptool, '--chip', 'esp32s3', '--port', args.port, '--baud', str(args.baud),
                '--before', 'default_reset', '--after', 'hard_reset', *words]
     subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 

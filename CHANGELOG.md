@@ -223,6 +223,13 @@ a panic reboots instead of hanging forever, and `no_hash_pointers` went, which
 had been printing every `%p` as a real kernel address to anyone who could read
 `dmesg` on a board that ships SSH.
 
+`panic_print=0x20` came later, after an afternoon in which nine of ten
+panics said nothing but `Kernel panic - not syncing: BUG!`. `BUG()` prints
+its `BUG: failure at file:line` with a bare `printk()` -- level 4 -- and
+`quiet` passes only what is below 4, so the line that says where went to the
+ring buffer and `panic=10` rebooted over it. Now a panic dumps the whole
+buffer first. It costs nothing until the boot is lost anyway.
+
 `bootlog verbose` turns the console back up and `bootlog quiet` restores the
 default; the setting lives in `/etc` and survives a reboot. The command line
 is compiled into the device tree and cannot be changed from a running system,
