@@ -30,13 +30,15 @@ largest free contiguous block 2048 kB, 256 KiB to jffs2 in 3 s.
 `programbench`, peak system-wide fork shadow during each run, against the
 same suite on the copy model a few hours earlier:
 
-| program | copy model | **swap** |
-|---|---:|---:|
-| bash | 1056 kB | **528 kB** |
-| dash | 560 kB | **280 kB** |
-| micropython | 616 kB | **308 kB** |
-| socat | 304 kB | **152 kB** |
-| make, jobq, nc, busybox | 0 | 0 |
+| program | copy model | **swap** | lowest MemAvailable, swap |
+|---|---:|---:|---:|
+| bash | 1056 kB | **528 kB** | 2984 kB |
+| dash | 560 kB | **280 kB** | 3364 kB |
+| micropython | 616 kB | **308 kB** | 2996 kB |
+| socat | 304 kB | **152 kB** | 3544 kB |
+| make | 0 | 0 | 3332 kB |
+| jobq | 0 | 0 | 3568 kB |
+| nc, busybox | 0 | 0 | 3784 kB |
 
 Exactly half for every program that forks: N-1 sets against N, which is
 what the exchange was written to do. `make` and `jobq` are at zero either

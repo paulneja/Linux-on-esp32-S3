@@ -32,6 +32,44 @@ longer in the image. The changelog has the rest, with the numbers.
 memory protection. The switchable MMU-remap experiment is a separate runtime,
 not a loader for arbitrary desktop binaries. See [limits](#limits) below.
 
+## RAM, before and after
+
+Both columns were read off the board through `/proc/meminfo` and
+`programbench`: the 0.7 kernel in
+[one record](build/verification/2026-09-12-full-image.md), the 0.8 image in
+[another](build/verification/2026-09-14-final-image.md).
+`build/plot-ram.py` draws the picture from them.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/ram-before-after-dark.svg">
+  <img alt="Free RAM after boot, 1340 kB on 0.7 against 3744 kB on 0.8; the peak fork shadow of each program halved, make and jobq at zero; the lowest MemAvailable during each benchmark up from a few hundred kB to about three megabytes" src="docs/ram-before-after.svg">
+</picture>
+
+The middle panel is what a program costs the fork backend beyond its own
+memory: the shadow pages that keep parent and child apart. The exchange
+halves it, and `make` and `jobq` spawn instead of forking, so they cost
+nothing. The right panel is the floor, the lowest MemAvailable sampled while
+each benchmark ran. On 0.7 bash got down to 248 kB, which is where
+`fork: Cannot allocate memory` used to come from.
+
+The middle panel again, drawn by GitHub from the numbers in this file, so
+they can be checked against the records without opening the picture:
+
+```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#9aa0a6, #1f6feb"
+---
+xychart-beta
+    title "Peak fork shadow per program, kB (0.7 behind, 0.8 in front)"
+    x-axis [bash, micropython, dash, make, socat, jobq]
+    y-axis "kB" 0 --> 1000
+    bar [892, 512, 560, 432, 296, 248]
+    bar [528, 308, 280, 0, 152, 0]
+```
+
 ## Hardware
 
 - **ESP32-S3 with 16 MB flash and 8 MB Octal PSRAM**: an N16R8 module such as
