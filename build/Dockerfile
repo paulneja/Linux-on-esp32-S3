@@ -11,7 +11,13 @@ RUN python3 -m venv /opt/flash-tools \
     && ln -s /opt/flash-tools/bin/esptool.py /usr/local/bin/esptool
 ARG BUILDER_UID=1000
 ARG BUILDER_GID=1000
-RUN groupadd -g "$BUILDER_GID" builder && useradd -m -u "$BUILDER_UID" -g "$BUILDER_GID" builder
+RUN if getent group "$BUILDER_GID" >/dev/null; then \
+        BUILDER_GROUP="$(getent group "$BUILDER_GID" | cut -d: -f1)"; \
+    else \
+        groupadd -g "$BUILDER_GID" builder; \
+        BUILDER_GROUP=builder; \
+    fi && \
+    useradd -m -u "$BUILDER_UID" -g "$BUILDER_GROUP" builder
 USER builder
 WORKDIR /work/Linux-on-esp32-S3
 ENTRYPOINT ["bash", "build/container-build.sh"]
