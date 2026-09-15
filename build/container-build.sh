@@ -7,6 +7,24 @@ set -a
 source "$repo/build/sources.lock"
 set +a
 export JOBS=${JOBS:-8}
+
+TARGET="${TARGET:-esp32s3_16m}"
+
+case "$TARGET" in
+    esp32s3_16m)
+        PROFILE="esp32s3_devkit_c1_16m"
+        PARTITION_CSV="partition_table.esp32s3.16m8r"
+        ;;
+    xiao_esp32s3_8m)
+        PROFILE="xiao_esp32s3_8m"
+        PARTITION_CSV="partition_table.xiao_esp32s3.8m8r"
+        ;;
+    *)
+        echo "error: unknown TARGET=$TARGET" >&2
+        echo "supported targets: esp32s3_16m xiao_esp32s3_8m" >&2
+        exit 1
+        ;;
+esac
 export KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=esp32-repro
 export KBUILD_BUILD_TIMESTAMP='Sat Sep 5 00:00:00 UTC 2026' KBUILD_BUILD_VERSION=1
 export SOURCE_DATE_EPOCH=1788566400
@@ -14,7 +32,7 @@ export GIT_AUTHOR_DATE='2026-09-05T00:00:00+00:00' GIT_COMMITTER_DATE='2026-09-0
 mkdir -p "$work/refs" "$work/logs" "$work/stages" "$work/artifacts"
 driver="$work/refs/esp32-linux-build"
 base="$driver/build"
-br="$base/build-buildroot-esp32s3_devkit_c1_16m"
+br="$base/build-buildroot-$PROFILE"
 exp="$repo/experiments/mmu-poc"
 
 clone_locked() {
@@ -69,7 +87,7 @@ rootfs_base() {
     test "$(readlink "$driver/local-changes")" = "$repo"
     cd "$driver"
     ./apply-local-changes.sh buildroot
-    make -C "$base/buildroot" O="$br" esp32s3_devkit_c1_16m_defconfig
+    make -C "$base/buildroot" O="$br" "${PROFILE}_defconfig"
     "$base/buildroot/utils/config" --file "$br/.config" --set-str TOOLCHAIN_EXTERNAL_PATH "$base/crosstool-NG/builds/xtensa-esp32s3-linux-uclibcfdpic"
     "$base/buildroot/utils/config" --file "$br/.config" --set-str TOOLCHAIN_EXTERNAL_CUSTOM_PREFIX '$(ARCH)-esp32s3-linux-uclibcfdpic'
     "$base/buildroot/utils/config" --file "$br/.config" --undefine PRIMARY_SITE --set-str PRIMARY_SITE 'https://sources.buildroot.net'
@@ -106,9 +124,11 @@ firmware() {
     cd ../network_adapter
     idf.py set-target esp32s3
     cp sdkconfig.defaults.esp32s3.16m8r sdkconfig
+    sed -i "s|^CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=.*|CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"$PARTITION_CSV\"|" sdkconfig
+    sed -i "s|^CONFIG_PARTITION_TABLE_FILENAME=.*|CONFIG_PARTITION_TABLE_FILENAME=\"$PARTITION_CSV\"|" sdkconfig
     idf.py build
     cd "$repo"
-    bash make-images.sh "$driver"
+    TARGET="$TARGET" bash make-images.sh "$driver"
     cp -a images "$work/base-images"
 }
 
@@ -142,7 +162,7 @@ userspace() {
 }
 
 package() {
-    python3 "$repo/build/package-final.py" "$work"
+    TARGET="$TARGET" python3 "$repo/build/package-final.py" "$work"
 }
 
 export XTENSA_GNU_CONFIG="$base/xtensa-dynconfig/esp32s3.so"
