@@ -136,7 +136,7 @@ userspace() {
     mkdir -p "$exp/out/programs" "$exp/out/real-bins"
     clone_locked https://github.com/micropython/micropython "$MICROPYTHON_REV" "$exp/out/micropython-src"
     git -C "$exp/out/micropython-src" submodule update --init --depth 1 lib/berkeley-db-1.xx lib/libffi lib/mbedtls
-    bash "$exp/make-test-images.sh" "$base"
+    TARGET="$TARGET" bash "$exp/make-test-images.sh" "$base"
     bash "$exp/fork/build-kernel-reclaim.sh"
     bash "$exp/fork/make-image.sh"
     bash "$exp/fork/real/fetch.sh"
