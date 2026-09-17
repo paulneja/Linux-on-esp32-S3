@@ -9,7 +9,6 @@ set +a
 export JOBS=${JOBS:-8}
 
 TARGET="${TARGET:-esp32s3_16m}"
-
 case "$TARGET" in
     esp32s3_16m)
         PROFILE="esp32s3_devkit_c1_16m"
@@ -25,6 +24,7 @@ case "$TARGET" in
         exit 1
         ;;
 esac
+export TARGET PROFILE
 export KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=esp32-repro
 export KBUILD_BUILD_TIMESTAMP='Sat Sep 5 00:00:00 UTC 2026' KBUILD_BUILD_VERSION=1
 export SOURCE_DATE_EPOCH=1788566400
