@@ -3,7 +3,8 @@ set -euo pipefail
 task_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "$task_dir/../../.." && pwd)
 build_dir="$repo_dir/../refs/esp32-linux-build/build"
-source_dir="$build_dir/build-buildroot-esp32s3_devkit_c1_16m/build/linux-xtensa-6.11-esp32-tag"
+PROFILE="${PROFILE:-esp32s3_devkit_c1_16m}"
+source_dir="$build_dir/build-buildroot-$PROFILE/build/linux-xtensa-6.11-esp32-tag"
 kernel_dir="$task_dir/../out/linux-fork"
 prefix="$build_dir/crosstool-NG/builds/xtensa-esp32s3-linux-uclibcfdpic/bin/xtensa-esp32s3-linux-uclibcfdpic-"
 export XTENSA_GNU_CONFIG="$build_dir/xtensa-dynconfig/esp32s3.so"
@@ -26,7 +27,7 @@ cd -- "$kernel_dir"
 # $kernel_dir/firmware; buildroot has already installed them into the target.
 mkdir -p firmware
 for blob in regulatory.db regulatory.db.p7s; do
-    src="$build_dir/build-buildroot-esp32s3_devkit_c1_16m/target/lib/firmware/$blob"
+    src="$build_dir/build-buildroot-$PROFILE/target/lib/firmware/$blob"
     if [[ -f "$src" ]]; then
         cp -f "$src" "firmware/$blob"
     else

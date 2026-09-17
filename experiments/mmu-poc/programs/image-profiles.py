@@ -15,8 +15,16 @@ OUT = EXP / 'out'
 PROGRAMS = OUT / 'programs'
 REPO = EXP.parent.parent
 BUILD = (REPO.parent / 'refs/esp32-linux-build/build').resolve()
-HOST = BUILD / 'build-buildroot-esp32s3_devkit_c1_16m/host'
-LIMIT = 0x780000
+PROFILE = os.environ.get('PROFILE', 'esp32s3_devkit_c1_16m')
+
+if PROFILE == 'esp32s3_devkit_c1_16m':
+    LIMIT = 0x780000
+elif PROFILE == 'xiao_esp32s3_8m':
+    LIMIT = 0x300000
+else:
+    raise SystemExit(f'error: unknown PROFILE={PROFILE}')
+
+HOST = BUILD / f'build-buildroot-{PROFILE}/host'
 PROFILES = {'all': ['bash', 'dash', 'make', 'micropython', 'socat'],
             'bash-red': ['bash', 'dash', 'make', 'socat'],
             'python-automatizacion': ['dash', 'make', 'micropython'], 'base': []}

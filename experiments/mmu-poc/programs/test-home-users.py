@@ -11,7 +11,11 @@ import tempfile
 here = Path(__file__).resolve().parent
 repo = here.parents[2]
 board = repo / 'new-files/board/espressif/esp32s3'
-host = repo.parent / 'refs/esp32-linux-build/build/build-buildroot-esp32s3_devkit_c1_16m/host'
+profile = os.environ.get('PROFILE', 'esp32s3_devkit_c1_16m')
+if profile not in ('esp32s3_devkit_c1_16m', 'xiao_esp32s3_8m'):
+    raise SystemExit(f'error: unknown PROFILE={profile}')
+
+host = repo.parent / f'refs/esp32-linux-build/build/build-buildroot-{profile}/host'
 image = Path(sys.argv[1]) if len(sys.argv) > 1 else here.parent / 'out/programs/rootfs-home-users-ready.cramfs'
 data = image.read_bytes()
 assert struct.unpack_from('<I', data)[0] == 0x28CD3D45
