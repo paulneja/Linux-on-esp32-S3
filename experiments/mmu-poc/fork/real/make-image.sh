@@ -10,7 +10,7 @@ case "$PROFILE" in
         ROOTFS_LIMIT=0x780000
         ;;
     xiao_esp32s3_8m)
-        ROOTFS_LIMIT=0x300000
+        ROOTFS_LIMIT=0x380000
         ;;
     *)
         echo "error: unknown PROFILE=$PROFILE" >&2

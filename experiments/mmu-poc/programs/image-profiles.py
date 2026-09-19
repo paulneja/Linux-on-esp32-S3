@@ -20,7 +20,7 @@ PROFILE = os.environ.get('PROFILE', 'esp32s3_devkit_c1_16m')
 if PROFILE == 'esp32s3_devkit_c1_16m':
     LIMIT = 0x780000
 elif PROFILE == 'xiao_esp32s3_8m':
-    LIMIT = 0x300000
+    LIMIT = 0x380000
 else:
     raise SystemExit(f'error: unknown PROFILE={PROFILE}')
 
