@@ -15,14 +15,20 @@ OUT = EXP / 'out'
 PROGRAMS = OUT / 'programs'
 REPO = EXP.parent.parent
 BUILD = (REPO.parent / 'refs/esp32-linux-build/build').resolve()
-PROFILE = os.environ.get('PROFILE', 'esp32s3_devkit_c1_16m')
+TARGET = os.environ.get('TARGET', 'esp32s3_16m')
 
-if PROFILE == 'esp32s3_devkit_c1_16m':
-    LIMIT = 0x780000
-elif PROFILE == 'xiao_esp32s3_8m':
-    LIMIT = 0x380000
-else:
-    raise SystemExit(f'error: unknown PROFILE={PROFILE}')
+with open(REPO / 'build/targets.json', encoding='utf-8') as f:
+    TARGETS = json.load(f)
+
+if TARGET not in TARGETS:
+    raise SystemExit(
+        f'error: unknown TARGET={TARGET}; supported targets: '
+        + ' '.join(TARGETS)
+    )
+
+TARGET_CONFIG = TARGETS[TARGET]
+PROFILE = TARGET_CONFIG['profile']
+LIMIT = TARGET_CONFIG['rootfs_limit']
 
 HOST = BUILD / f'build-buildroot-{PROFILE}/host'
 PROFILES = {'all': ['bash', 'dash', 'make', 'micropython', 'socat'],

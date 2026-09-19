@@ -4,26 +4,7 @@ set -euo pipefail
 REPO=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 OUT="$REPO/images"
 TARGET="${TARGET:-esp32s3_16m}"
-
-case "$TARGET" in
-    esp32s3_16m)
-        PROFILE="esp32s3_devkit_c1_16m"
-        PARTITION_CSV="partition_table.esp32s3.16m8r"
-        FLASH_SIZE="16MB"
-        HAS_HOME=1
-        ;;
-    xiao_esp32s3_8m)
-        PROFILE="xiao_esp32s3_8m"
-        PARTITION_CSV="partition_table.xiao_esp32s3.8m8r"
-        FLASH_SIZE="8MB"
-        HAS_HOME=0
-        ;;
-    *)
-        echo "error: unknown TARGET=$TARGET" >&2
-        echo "supported targets: esp32s3_16m xiao_esp32s3_8m" >&2
-        exit 1
-        ;;
-esac
+source "$REPO/build/load-target.sh"
 
 die() { echo "error: $*" >&2; exit 1; }
 

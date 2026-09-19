@@ -11,7 +11,8 @@ export CFLAGS='-Os -mfdpic -mauto-litpools -fPIC -ffunction-sections -fdata-sect
 export CXXFLAGS="$CFLAGS"
 export LDFLAGS="-Wl,--gc-sections,-z,stack-size=65536 -L$experiment_dir/out"
 export LIBS='-l:libfork.so.0'
-PROFILE="${PROFILE:-esp32s3_devkit_c1_16m}"
+TARGET="${TARGET:-esp32s3_16m}"
+source "$repo_dir/build/load-target.sh"
 host_dir="$build_dir/build-buildroot-$PROFILE/host"
 apply_program_patch() {
     local source_dir=$1 patch_name=$2

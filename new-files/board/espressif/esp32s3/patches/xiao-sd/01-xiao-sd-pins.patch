@@ -1,0 +1,17 @@
+--- a/arch/xtensa/boot/dts/esp32s3-devkit-c1.dts
++++ b/arch/xtensa/boot/dts/esp32s3-devkit-c1.dts
+@@ -62,10 +62,10 @@
+ 	};
+ 	spi2_pins: spi2_pins {
+ 		pinctrl-single,pins = <
+-			PIN(10) (FUN_SEL(4) | FUN_DRV_20MA)/* CS0 */
+-			PIN(11) (FUN_SEL(4) | FUN_DRV_40MA)/* MOSI */
+-			PIN(12) (FUN_SEL(4) | FUN_DRV_40MA)/* SCK */
+-			PIN(13) (FUN_SEL(4) | FUN0_20MA_IE_WPU)>;/* MISO */
++			PIN(21) (FUN_SEL(4) | FUN_DRV_20MA)/* CS0 */
++			PIN(9) (FUN_SEL(4) | FUN_DRV_40MA)/* MOSI */
++			PIN(7) (FUN_SEL(4) | FUN_DRV_40MA)/* SCK */
++			PIN(8) (FUN_SEL(4) | FUN0_20MA_IE_WPU)>;/* MISO */
+ 	};
+ 	uart0_pins: uart0_pins {
+ 		pinctrl-single,pins = <

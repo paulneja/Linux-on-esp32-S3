@@ -9,21 +9,8 @@ set +a
 export JOBS=${JOBS:-8}
 
 TARGET="${TARGET:-esp32s3_16m}"
-case "$TARGET" in
-    esp32s3_16m)
-        PROFILE="esp32s3_devkit_c1_16m"
-        PARTITION_CSV="partition_table.esp32s3.16m8r"
-        ;;
-    xiao_esp32s3_8m)
-        PROFILE="xiao_esp32s3_8m"
-        PARTITION_CSV="partition_table.xiao_esp32s3.8m8r"
-        ;;
-    *)
-        echo "error: unknown TARGET=$TARGET" >&2
-        echo "supported targets: esp32s3_16m xiao_esp32s3_8m" >&2
-        exit 1
-        ;;
-esac
+source "$repo/build/load-target.sh"
+
 export TARGET PROFILE
 export KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=esp32-repro
 export KBUILD_BUILD_TIMESTAMP='Sat Sep 5 00:00:00 UTC 2026' KBUILD_BUILD_VERSION=1

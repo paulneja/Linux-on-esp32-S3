@@ -4,20 +4,7 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "$script_dir/../.." && pwd)
 build_dir=${1:-"$repo_dir/../refs/esp32-linux-build/build"}
 TARGET="${TARGET:-esp32s3_16m}"
-
-case "$TARGET" in
-    esp32s3_16m)
-        PROFILE="esp32s3_devkit_c1_16m"
-        ;;
-    xiao_esp32s3_8m)
-        PROFILE="xiao_esp32s3_8m"
-        ;;
-    *)
-        echo "error: unknown TARGET=$TARGET" >&2
-        echo "supported targets: esp32s3_16m xiao_esp32s3_8m" >&2
-        exit 1
-        ;;
-esac
+source "$repo_dir/build/load-target.sh"
 
 host_dir="$build_dir/build-buildroot-$PROFILE/host"
 

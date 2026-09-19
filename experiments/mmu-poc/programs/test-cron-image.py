@@ -14,9 +14,19 @@ for option in ('CONFIG_CROND=y', 'CONFIG_CRONTAB=y',
                'CONFIG_FEATURE_PIDFILE=y', 'CONFIG_PID_FILE_PATH="/var/run"',
                'CONFIG_FEATURE_CROND_DIR="/etc/cron"'):
     assert option in config, f'Missing cron prerequisite: {option}'
-profile = os.environ.get('PROFILE', 'esp32s3_devkit_c1_16m')
-if profile not in ('esp32s3_devkit_c1_16m', 'xiao_esp32s3_8m'):
-    raise SystemExit(f'error: unknown PROFILE={profile}')
+target = os.environ.get('TARGET', 'esp32s3_16m')
+
+import json
+with (repo / 'build/targets.json').open(encoding='utf-8') as f:
+    targets = json.load(f)
+
+if target not in targets:
+    raise SystemExit(
+        f'error: unknown TARGET={target}; supported targets: '
+        + ' '.join(targets)
+    )
+
+profile = targets[target]['profile']
 
 host = repo.parent / f'refs/esp32-linux-build/build/build-buildroot-{profile}/host'
 subprocess.run([sys.executable, here / 'test-home-users.py', image], check=True)

@@ -3,20 +3,8 @@ set -euo pipefail
 task_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "$task_dir/../../../.." && pwd)
 out_dir="$task_dir/../../out"
-PROFILE="${PROFILE:-esp32s3_devkit_c1_16m}"
-
-case "$PROFILE" in
-    esp32s3_devkit_c1_16m)
-        ROOTFS_LIMIT=0x780000
-        ;;
-    xiao_esp32s3_8m)
-        ROOTFS_LIMIT=0x380000
-        ;;
-    *)
-        echo "error: unknown PROFILE=$PROFILE" >&2
-        exit 1
-        ;;
-esac
+TARGET="${TARGET:-esp32s3_16m}"
+source "$repo_dir/build/load-target.sh"
 
 host_dir="$repo_dir/../refs/esp32-linux-build/build/build-buildroot-$PROFILE/host"
 image_dir=$(mktemp -d "$out_dir/real-bins/image.XXXXXX")

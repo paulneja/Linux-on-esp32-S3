@@ -12,28 +12,16 @@ import tempfile
 
 target = os.environ.get('TARGET', 'esp32s3_16m')
 
-targets = {
-    'esp32s3_16m': {
-        'profile': 'esp32s3_devkit_c1_16m',
-        'partition_csv': 'partition_table.esp32s3.16m8r',
-        'flash_size': '16MB',
-        'flash_bytes': 16 * 1024 * 1024,
-        'has_home': True,
-    },
-    'xiao_esp32s3_8m': {
-        'profile': 'xiao_esp32s3_8m',
-        'partition_csv': 'partition_table.xiao_esp32s3.8m8r',
-        'flash_size': '8MB',
-        'flash_bytes': 8 * 1024 * 1024,
-        'has_home': False,
-    },
-}
+targets_file = Path(__file__).resolve().with_name('targets.json')
+with targets_file.open(encoding='utf-8') as f:
+    targets = json.load(f)
 
 if target not in targets:
     raise SystemExit('Unknown TARGET=%s (supported: %s)' %
                      (target, ' '.join(targets)))
 
 target_config = targets[target]
+
 profile = target_config['profile']
 
 work = Path(sys.argv[1]).resolve(strict=True)

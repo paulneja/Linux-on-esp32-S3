@@ -3,7 +3,8 @@ set -euo pipefail
 task_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "$task_dir/../../.." && pwd)
 build_dir="$repo_dir/../refs/esp32-linux-build/build"
-PROFILE="${PROFILE:-esp32s3_devkit_c1_16m}"
+TARGET="${TARGET:-esp32s3_16m}"
+source "$repo_dir/build/load-target.sh"
 source_dir="$build_dir/build-buildroot-$PROFILE/build/linux-xtensa-6.11-esp32-tag"
 kernel_dir="$task_dir/../out/linux-fork"
 prefix="$build_dir/crosstool-NG/builds/xtensa-esp32s3-linux-uclibcfdpic/bin/xtensa-esp32s3-linux-uclibcfdpic-"
@@ -12,7 +13,7 @@ if [[ ! -e "$kernel_dir" ]]; then
     # The copy inherits buildroot's config and patches: a stale buildroot
     # tree gives a stale copy, and deleting the copy does not fix that.
     if ! python3 "$task_dir/check-kernel-config.py" \
-            "$repo_dir/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config" \
+            "$repo_dir/new-files/$KERNEL_CONFIG" \
             "$source_dir/.config" >/dev/null 2>&1; then
         echo "build-kernel.sh: buildroot's kernel tree predates the board config:" >&2
         echo "  $source_dir" >&2
@@ -44,6 +45,6 @@ fi
 scripts/config --enable XTENSA_NOMMU_FORK --set-str LOCALVERSION '-forkbank'
 make ARCH=xtensa CROSS_COMPILE="$prefix" olddefconfig
 python3 "$task_dir/check-kernel-config.py" \
-    "$repo_dir/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config" .config
+    "$repo_dir/new-files/$KERNEL_CONFIG" .config
 make -j8 ARCH=xtensa CROSS_COMPILE="$prefix" xipImage 2>&1 | tee "$task_dir/../out/fork-kernel-build.log"
 echo "Built only. Original source tree, images and board unchanged."
