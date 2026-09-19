@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -9,12 +10,38 @@ import subprocess
 import sys
 import tempfile
 
+target = os.environ.get('TARGET', 'esp32s3_16m')
+
+targets = {
+    'esp32s3_16m': {
+        'profile': 'esp32s3_devkit_c1_16m',
+        'partition_csv': 'partition_table.esp32s3.16m8r',
+        'flash_size': '16MB',
+        'flash_bytes': 16 * 1024 * 1024,
+        'has_home': True,
+    },
+    'xiao_esp32s3_8m': {
+        'profile': 'xiao_esp32s3_8m',
+        'partition_csv': 'partition_table.xiao_esp32s3.8m8r',
+        'flash_size': '8MB',
+        'flash_bytes': 8 * 1024 * 1024,
+        'has_home': False,
+    },
+}
+
+if target not in targets:
+    raise SystemExit('Unknown TARGET=%s (supported: %s)' %
+                     (target, ' '.join(targets)))
+
+target_config = targets[target]
+profile = target_config['profile']
+
 work = Path(sys.argv[1]).resolve(strict=True)
 if work != Path('/work'):
     raise SystemExit('Run inside the isolated build container')
 repo = work / 'Linux-on-esp32-S3'
 build = work / 'refs/esp32-linux-build/build'
-host = build / 'build-buildroot-esp32s3_devkit_c1_16m/host'
+host = build / ('build-buildroot-' + profile) / 'host'
 out = work / 'artifacts'
 experiment = repo / 'experiments/mmu-poc/out'
 firmware = build / 'esp-hosted/esp_hosted_ng/esp/esp_driver/network_adapter/build'
@@ -44,7 +71,8 @@ def elf_stack_size(path):
     return 0
 
 parts = {}
-for line in (repo / 'new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r').read_text().splitlines():
+partition_csv = repo / 'new-files/esp-hosted/network_adapter' / target_config['partition_csv']
+for line in partition_csv.read_text().splitlines():
     if not line or line.startswith('#'): continue
     fields = [field.strip() for field in line.split(',')]
     parts[fields[0]] = {'offset': int(fields[3], 0), 'size': int(fields[4], 0)}
@@ -127,10 +155,13 @@ with tempfile.TemporaryDirectory(prefix='final-rootfs-', dir=work) as directory:
     assert not list((tree / 'etc/cron/crontabs').iterdir())
     run(host / 'sbin/mkfs.jffs2', '-l', '-e', '65536', '-U', '-f',
         '--pad=' + str(parts['etc']['size']), '-d', tree / 'etc', '-o', out / 'etc.jffs2')
-    factory_home = Path(directory) / 'home'
-    factory_home.mkdir(mode=0o755)
-    run(host / 'sbin/mkfs.jffs2', '-l', '-e', '65536', '-U', '-f',
-        '--pad=' + str(parts['home']['size']), '-d', factory_home, '-o', out / 'home.jffs2')
+    if target_config['has_home']:
+        factory_home = Path(directory) / 'home'
+        factory_home.mkdir(mode=0o755)
+        run(host / 'sbin/mkfs.jffs2', '-l', '-e', '65536', '-U', '-f',
+            '--pad=' + str(parts['home']['size']), '-d', factory_home, '-o', out / 'home.jffs2')
+    else:
+        (out / 'home.jffs2').unlink(missing_ok=True)
     run(host / 'bin/mkcramfs', '-X', '-q', tree, out / 'rootfs.cramfs')
     run(host / 'bin/cramfsck', out / 'rootfs.cramfs')
 
@@ -149,20 +180,25 @@ for pos in range(0, len(table) - 31, 32):
         break
     installed[label.split(b'\0', 1)[0].decode('ascii')] = {'offset': offset, 'size': size}
 assert installed == parts, (
-    'partition-table.bin does not match partition_table.esp32s3.16m8r:\n'
-    '  table: %s\n  csv:   %s' % (installed, parts))
+    'partition-table.bin does not match %s:\n'
+    '  table: %s\n  csv:   %s'
+    % (target_config['partition_csv'], installed, parts))
 shutil.copyfile(experiment / 'real-bins/xipImage-fork-quiet', out / 'xipImage')
 files = {'factory': 'network_adapter.bin', 'etc': 'etc.jffs2', 'linux': 'xipImage',
-         'rootfs': 'rootfs.cramfs', 'home': 'home.jffs2'}
+         'rootfs': 'rootfs.cramfs'}
+if target_config['has_home']:
+    files['home'] = 'home.jffs2'
 for partition, filename in files.items():
     assert (out / filename).stat().st_size <= parts[partition]['size'], (partition, filename)
 
 run('esptool', '--chip', 'esp32s3', 'merge_bin', '-o', out / 'linux-esp32s3-native-full.bin',
-    '--flash_mode', 'dio', '--flash_freq', '80m', '--flash_size', '16MB', '--fill-flash-size', '16MB',
+    '--flash_mode', 'dio', '--flash_freq', '80m',
+    '--flash_size', target_config['flash_size'],
+    '--fill-flash-size', target_config['flash_size'],
     '0x0', out / 'bootloader.bin', '0x8000', out / 'partition-table.bin',
     *[arg for partition, filename in files.items() for arg in (hex(parts[partition]['offset']), out / filename)])
 full = (out / 'linux-esp32s3-native-full.bin').read_bytes()
-assert len(full) == 16 * 1024 * 1024
+assert len(full) == target_config['flash_bytes']
 for offset, filename in ((0, 'bootloader.bin'), (0x8000, 'partition-table.bin')):
     payload = (out / filename).read_bytes()
     assert full[offset:offset + len(payload)] == payload, filename
@@ -170,13 +206,14 @@ for partition, filename in files.items():
     payload = (out / filename).read_bytes()
     start = parts[partition]['offset']
     assert full[start:start + len(payload)] == payload
-home = full[parts['home']['offset']:parts['home']['offset'] + parts['home']['size']]
-marker = home[:12]
-assert marker[:4] == b'\x85\x19\x03\x20', 'factory /home is not a formatted jffs2'
-assert len(home) % 65536 == 0
-for start in range(0, len(home), 65536):
-    assert home[start:start + 12] == marker, hex(start)
-    assert home[start + 12:start + 65536] == b'\xff' * (65536 - 12), hex(start)
+if target_config['has_home']:
+    home = full[parts['home']['offset']:parts['home']['offset'] + parts['home']['size']]
+    marker = home[:12]
+    assert marker[:4] == b'\x85\x19\x03\x20', 'factory /home is not a formatted jffs2'
+    assert len(home) % 65536 == 0
+    for start in range(0, len(home), 65536):
+        assert home[start:start + 12] == marker, hex(start)
+        assert home[start + 12:start + 65536] == b'\xff' * (65536 - 12), hex(start)
 manifest = json.loads((out / 'rootfs.json').read_text())
 manifest.update(image_bytes=(out / 'rootfs.cramfs').stat().st_size,
                 free_bytes=parts['rootfs']['size'] - (out / 'rootfs.cramfs').stat().st_size,
@@ -194,7 +231,7 @@ inventory = {
 }
 configurations = {
     'toolchain.config': build / 'crosstool-NG/.config',
-    'buildroot.config': build / 'build-buildroot-esp32s3_devkit_c1_16m/.config',
+    'buildroot.config': build / ('build-buildroot-' + profile) / '.config',
     'firmware.config': firmware.parent / 'sdkconfig',
     'kernel.config': experiment / 'linux-fork/.config',
     'busybox.config': experiment / 'programs/busybox-netcat/.config',

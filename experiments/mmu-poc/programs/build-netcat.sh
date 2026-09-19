@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/env.sh"
-original="$build_dir/build-buildroot-esp32s3_devkit_c1_16m/build/busybox-1.36.1"
+original="$build_dir/build-buildroot-$PROFILE/build/busybox-1.36.1"
 source_dir="$programs_out/busybox-netcat"
 variant=${OPT_VARIANT:-baseline}
 extra=()

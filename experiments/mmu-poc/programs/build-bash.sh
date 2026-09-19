@@ -12,7 +12,7 @@ apply_program_patch "$source_dir" bash-pid-cache.patch
 apply_program_patch "$source_dir" bash-vfork.patch
 # Compiles the patched bgp_resize() out of jobs.c into a host fixture.
 python3 "$programs_dir/test-bash-pid-cache.py" "$source_dir" "$programs_out/bash-pid-cache-test"
-staging="$build_dir/build-buildroot-esp32s3_devkit_c1_16m/staging"
+staging="$build_dir/build-buildroot-$PROFILE/staging"
 export CPPFLAGS="-I$staging/usr/include"
 export CFLAGS="$CFLAGS -Oz -flto --sysroot=$staging"
 export LDFLAGS="$LDFLAGS --sysroot=$staging -L$staging/usr/lib -Wl,-rpath-link,$staging/usr/lib"

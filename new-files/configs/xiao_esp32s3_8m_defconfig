@@ -1,0 +1,39 @@
+BR2_xtensa=y
+BR2_XTENSA_DYNCONFIG=y
+BR2_TOOLCHAIN_EXTERNAL=y
+BR2_TOOLCHAIN_EXTERNAL_PATH="/home/jcmvbkbc/ws/tensilica/crosstool/fdpic/builds/xtensa-esp32s3-linux-uclibcfdpic"
+BR2_TOOLCHAIN_EXTERNAL_CUSTOM_PREFIX="$(ARCH)-esp32s3-linux-uclibcfdpic"
+BR2_TOOLCHAIN_EXTERNAL_HEADERS_6_6=y
+BR2_TOOLCHAIN_EXTERNAL_WCHAR=y
+BR2_TOOLCHAIN_EXTERNAL_HAS_SSP=y
+BR2_OPTIMIZE_S=y
+# BR2_PIC_PIE is not set
+BR2_SSP_NONE=y
+BR2_RELRO_NONE=y
+BR2_ROOTFS_OVERLAY="board/espressif/esp32s3/rootfs_overlay"
+BR2_GLOBAL_PATCH_DIR="board/espressif/esp32s3/package-patches"
+BR2_ROOTFS_POST_BUILD_SCRIPT="board/espressif/esp32s3/trim-libs.sh board/espressif/esp32s3/setup-home.sh board/espressif/esp32s3/no-open-wifi.sh board/espressif/esp32s3/trim-target.sh board/espressif/esp32s3/prepare-home.sh"
+BR2_ROOTFS_POST_FAKEROOT_SCRIPT="board/espressif/esp32s3/mkfs-etc.sh"
+BR2_ROOTFS_POST_IMAGE_SCRIPT="board/espressif/esp32s3/post-build.sh"
+BR2_LINUX_KERNEL=y
+BR2_LINUX_KERNEL_CUSTOM_GIT=y
+BR2_LINUX_KERNEL_CUSTOM_REPO_URL="https://github.com/jcmvbkbc/linux-xtensa.git"
+BR2_LINUX_KERNEL_CUSTOM_REPO_VERSION="xtensa-6.11-esp32-tag"
+BR2_LINUX_KERNEL_PATCH="board/espressif/esp32s3/patches/linux"
+BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
+BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="board/espressif/esp32s3/devkit_c1_16m_linux.config"
+BR2_LINUX_KERNEL_IMAGE_TARGET_CUSTOM=y
+BR2_LINUX_KERNEL_IMAGE_TARGET_NAME="xipImage"
+BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL=y
+BR2_PACKAGE_BUSYBOX_CONFIG="board/espressif/esp32s3/busybox.config"
+BR2_PACKAGE_IW=y
+BR2_PACKAGE_WIRELESS_REGDB=y
+BR2_PACKAGE_WPA_SUPPLICANT=y
+BR2_PACKAGE_NANO=y
+# BR2_PACKAGE_URANDOM_SCRIPTS is not set
+BR2_TARGET_GENERIC_ROOT_PASSWD="changeme123"
+BR2_TARGET_ROOTFS_CRAMFS=y
+BR2_TARGET_ROOTFS_CRAMFS_XIP=y
+BR2_TARGET_ROOTFS_JFFS2=y
+BR2_TARGET_ROOTFS_JFFS2_FLASH_64=y
+# BR2_TARGET_ROOTFS_TAR is not set
