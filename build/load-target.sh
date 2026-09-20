@@ -14,6 +14,7 @@
 #   ROOTFS_LIMIT
 #   KERNEL_LIMIT
 #   KERNEL_CONFIG
+#   FINAL_IMAGE
 
 _target_config_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 _target_config_json="$_target_config_dir/targets.json"
@@ -50,6 +51,7 @@ values = {
     "ROOTFS_LIMIT": c["rootfs_limit"],
     "KERNEL_LIMIT": c["kernel_limit"],
     "KERNEL_CONFIG": c["kernel_config"],
+    "FINAL_IMAGE": c["final_image"],
 }
 
 for key, value in values.items():

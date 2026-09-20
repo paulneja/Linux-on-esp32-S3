@@ -132,7 +132,7 @@ fi
 echo "    clean"
 
 echo "==> checking Linux vector address against the firmware"
-KCONF="$REPO/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config"
+KCONF="$REPO/new-files/$KERNEL_CONFIG"
 FW_ELF="$NA/build/network_adapter.elf"
 
 elf_symbol_addr() {

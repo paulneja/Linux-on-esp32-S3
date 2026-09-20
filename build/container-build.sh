@@ -156,6 +156,18 @@ export XTENSA_GNU_CONFIG="$base/xtensa-dynconfig/esp32s3.so"
 stage toolchain toolchain
 stage base-rootfs rootfs_base
 stage firmware firmware
-stage userspace userspace
-stage package package
+case "$FINAL_IMAGE" in
+    experimental)
+        stage userspace userspace
+        stage package package
+        ;;
+    buildroot)
+        stage package-buildroot cp -a "$work/base-images/." "$work/artifacts/"
+        ;;
+    *)
+        echo "error: unknown FINAL_IMAGE=$FINAL_IMAGE" >&2
+        exit 1
+        ;;
+esac
+
 sha256sum "$work/artifacts/linux-esp32s3-native-full.bin"
