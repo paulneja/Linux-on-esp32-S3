@@ -1,6 +1,44 @@
 --- a/arch/xtensa/boot/dts/esp32s3-devkit-c1.dts
 +++ b/arch/xtensa/boot/dts/esp32s3-devkit-c1.dts
-@@ -62,10 +62,10 @@
+@@ -12,6 +12,7 @@
+ 	};
+ 
+ 	i2c0 {
++		status = "disabled";
+ 		#address-cells = <1>;
+ 		#size-cells = <0>;
+ 		compatible = "i2c-gpio";
+@@ -26,6 +27,11 @@
+ 
+ &gpio_in_mux {
+ 	status = "ok";
++
++	spi2_gpio_in: spi2_gpio_in {
++		pinctrl-single,pins = <
++			GPIO_FUNC_IN_SEL(102) 0x48>;	/* SPI2 MISO: signal 102 <- GPIO8 */
++	};
+ 	usb_device_in: usb_device_in {
+ 		pinctrl-single,pins = <
+ 			GPIO_FUNC_IN_SEL(58) 0x38		/* usb_otg_iddig_in: fixed '1' */
+@@ -43,6 +49,17 @@
+ 	};
+ };
+ 
++&gpio_out_mux {
++	status = "ok";
++
++	spi2_gpio_out: spi2_gpio_out {
++		pinctrl-single,pins = <
++			GPIO_FUNC_OUT_SEL(21) 110	/* SPI2 CS0: GPIO21 */
++			GPIO_FUNC_OUT_SEL(9) 103	/* SPI2 MOSI: GPIO9 */
++			GPIO_FUNC_OUT_SEL(7) 101>;	/* SPI2 SCK: GPIO7 */
++	};
++};
++
+ &rtc_iomux {
+ 	status = "ok";
+ 	usb_rtc_pins: usb_rtc_pins {
+@@ -62,10 +79,10 @@
  	};
  	spi2_pins: spi2_pins {
  		pinctrl-single,pins = <
@@ -8,10 +46,19 @@
 -			PIN(11) (FUN_SEL(4) | FUN_DRV_40MA)	/* MOSI */
 -			PIN(12) (FUN_SEL(4) | FUN_DRV_40MA)	/* SCK */
 -			PIN(13) (FUN_SEL(4) | FUN0_20MA_IE_WPU)>;/* MISO */
-+			PIN(21) (FUN_SEL(4) | FUN_DRV_20MA)	/* CS0 */
-+			PIN(9) (FUN_SEL(4) | FUN_DRV_40MA)	/* MOSI */
-+			PIN(7) (FUN_SEL(4) | FUN_DRV_40MA)	/* SCK */
-+			PIN(8) (FUN_SEL(4) | FUN0_20MA_IE_WPU)>;/* MISO */
++			PIN(21) (FUN_SEL(0) | FUN_DRV_20MA)	/* CS0 */
++			PIN(9) (FUN_SEL(0) | FUN_DRV_40MA)	/* MOSI */
++			PIN(7) (FUN_SEL(0) | FUN_DRV_40MA)	/* SCK */
++			PIN(8) FUN0_20MA_IE_WPU>;		/* MISO */
  	};
  	uart0_pins: uart0_pins {
  		pinctrl-single,pins = <
+@@ -90,7 +107,7 @@
+ };
+ 
+ &spi2 {
+-	pinctrl-0 = <&spi2_pins>;
++	pinctrl-0 = <&spi2_pins &spi2_gpio_out &spi2_gpio_in>;
+ 	pinctrl-names = "default";
+ 	status = "ok";
+ 
