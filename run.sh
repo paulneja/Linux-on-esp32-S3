@@ -27,6 +27,59 @@ read_reply() {
 		read -r "$1"
 	fi
 }
+select_target() {
+	local targets_json="$REPO/build/targets.json"
+	local -a target_ids=()
+	local -a target_names=()
+	local id name reply i
+
+	while IFS=$'\t' read -r id name; do
+		target_ids+=("$id")
+		target_names+=("$name")
+	done < <(
+		python3 -c '
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    targets = json.load(f)
+for target_id, config in targets.items():
+    print("{}\t{}".format(target_id, config.get("name", target_id)))
+' "$targets_json"
+	)
+
+	[ "${#target_ids[@]}" -gt 0 ] || die "no targets defined in $targets_json"
+
+	bold "Select target:"
+	echo
+	for ((i = 0; i < ${#target_ids[@]}; i++)); do
+		printf '  %d) %s\n' "$((i + 1))" "${target_names[$i]}"
+	done
+	echo
+
+	while true; do
+		printf 'Target [1-%d]: ' "${#target_ids[@]}"
+		read_reply reply || die "could not read target selection"
+		case "$reply" in
+			''|*[!0-9]*)
+				warn "enter a number from 1 to ${#target_ids[@]}"
+				;;
+			*)
+				if [ "$reply" -ge 1 ] && [ "$reply" -le "${#target_ids[@]}" ]; then
+					TARGET="${target_ids[$((reply - 1))]}"
+					export TARGET
+					info "target: ${target_names[$((reply - 1))]} ($TARGET)"
+					echo
+					return 0
+				fi
+				warn "enter a number from 1 to ${#target_ids[@]}"
+				;;
+		esac
+	done
+}
+
+ensure_target() {
+	[ -n "${TARGET:-}" ] && return 0
+	select_target
+}
 
 ask() {
 	[ "$ASSUME_YES" = 1 ] && return 0
@@ -272,10 +325,10 @@ do_build() {
 	local started rc elapsed
 	started=$(date +%s)
 	if [ "$QUIET" = 1 ]; then
-		JOBS="$JOBS" bash "$REPO/build/reproduce.sh" > "$log" 2>&1
+		TARGET="$TARGET" JOBS="$JOBS" bash "$REPO/build/reproduce.sh" > "$log" 2>&1
 		rc=$?
 	else
-		JOBS="$JOBS" bash "$REPO/build/reproduce.sh" 2>&1 | tee "$log"
+		TARGET="$TARGET" JOBS="$JOBS" bash "$REPO/build/reproduce.sh" 2>&1 | tee "$log"
 		rc=${PIPESTATUS[0]}
 	fi
 	elapsed=$(( $(date +%s) - started ))
@@ -427,12 +480,12 @@ EOF
 		read_reply choice || { echo; return 0; }
 		case "$choice" in
 			1) check_env ;;
-			2) do_build ;;
+			2) ensure_target && do_build ;;
 			3) do_verify ;;
 			4) do_flash ;;
 			5) do_test ;;
-			6) do_all ;;
-			7) do_repro ;;
+			6) ensure_target && do_all ;;
+			7) ensure_target && do_repro ;;
 			8) do_recover ;;
 			9) do_status ;;
 			0|q|Q) return 0 ;;
@@ -458,6 +511,12 @@ done
 if [ -n "$ARTIFACTS" ] && [ ! -d "$ARTIFACTS" ]; then
 	die "artifacts directory does not exist: $ARTIFACTS"
 fi
+
+case "$ACTION" in
+	build|all|repro)
+		ensure_target
+		;;
+esac
 
 case "$ACTION" in
 	check)   check_env ;;

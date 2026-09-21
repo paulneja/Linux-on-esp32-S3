@@ -1,5 +1,6 @@
 {
   "esp32s3_16m": {
+    "name": "ESP32-S3 N16R8 (16 MB)",
     "profile": "esp32s3_devkit_c1_16m",
     "partition_csv": "partition_table.esp32s3.16m8r",
     "flash_size": "16MB",
@@ -10,7 +11,20 @@
     "kernel_config": "board/espressif/esp32s3/devkit_c1_16m_linux.config",
     "final_image": "experimental"
   },
+  "esp32s3_8m": {
+    "name": "ESP32-S3 N8R8 (8 MB)",
+    "profile": "esp32s3_devkit_c1_8m",
+    "partition_csv": "partition_table.esp32s3.8m8r",
+    "flash_size": "8MB",
+    "flash_bytes": 8388608,
+    "has_home": false,
+    "rootfs_limit": 3670016,
+    "kernel_limit": 3407872,
+    "kernel_config": "board/espressif/esp32s3/devkit_c1_16m_linux.config",
+    "final_image": "buildroot"
+  },
   "xiao_esp32s3_8m": {
+    "name": "XIAO ESP32S3 N8R8",
     "profile": "xiao_esp32s3_8m",
     "partition_csv": "partition_table.xiao_esp32s3.8m8r",
     "flash_size": "8MB",
@@ -22,6 +36,7 @@
     "final_image": "buildroot"
   },
   "xiao_esp32s3_8m_sd": {
+    "name": "XIAO ESP32S3 N8R8 + SD",
     "profile": "xiao_esp32s3_8m_sd",
     "partition_csv": "partition_table.xiao_esp32s3.8m8r",
     "flash_size": "8MB",
