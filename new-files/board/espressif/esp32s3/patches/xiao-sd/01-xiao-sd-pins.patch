@@ -15,7 +15,7 @@
 +
 +	spi2_gpio_in: spi2_gpio_in {
 +		pinctrl-single,pins = <
-+			GPIO_FUNC_IN_SEL(102) 0x48>;	/* SPI2 MISO: signal 102 <- GPIO8 */
++			GPIO_FUNC_IN_SEL(102) 0x88>;	/* SPI2 MISO: signal 102 <- GPIO8 */
 +	};
  	usb_device_in: usb_device_in {
  		pinctrl-single,pins = <
