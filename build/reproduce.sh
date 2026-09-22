@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
+CACHE=${CACHE:-clean}
+case "$CACHE" in
+    dev|clean)
+        ;;
+    *)
+        echo "error: CACHE must be dev or clean (got: $CACHE)" >&2
+        exit 1
+        ;;
+esac
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo"
 dirty=$(git status --porcelain)
@@ -22,8 +31,30 @@ docker build --network host --build-arg BUILDER_UID="$(id -u)" --build-arg BUILD
     -f build/Dockerfile -t "$image" . 2>&1 | tee "$work/logs/container-image.log"
 docker inspect --format '{{.Id}}' "$image" > "$work/container-image-id.txt"
 printf 'Build directory: %s\n' "$work"
+
+cache_mounts=()
+
+if [ "$CACHE" = dev ]; then
+    cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/linux-on-esp32-s3"
+
+    mkdir -p \
+        "$cache_root/espressif" \
+        "$cache_root/buildroot-dl"
+
+    cache_mounts+=(
+        --mount "type=bind,source=$cache_root/espressif,target=/home/builder/.espressif"
+        --mount "type=bind,source=$cache_root/buildroot-dl,target=/cache/buildroot-dl"
+    )
+
+    printf 'Cache mode: dev\n'
+    printf 'Cache directory: %s\n' "$cache_root"
+else
+    printf 'Cache mode: clean\n'
+fi
+
 docker run --network host --name "esp32-reproduce-$(basename "$work")" --rm \
     --mount "type=bind,source=$work,target=/work" \
+    "${cache_mounts[@]}" \
     --env JOBS="${JOBS:-8}" \
     --env TARGET="${TARGET:-esp32s3_16m}" \
     --env GIT_AUTHOR_NAME="$(git config user.name)" \
@@ -31,4 +62,5 @@ docker run --network host --name "esp32-reproduce-$(basename "$work")" --rm \
     --env GIT_COMMITTER_NAME="$(git config user.name)" \
     --env GIT_COMMITTER_EMAIL="$(git config user.email)" \
     "$image" 2>&1 | tee "$work/logs/build.log"
+
 printf 'Complete local build: %s/artifacts\nNo board access or push was performed.\n' "$work"

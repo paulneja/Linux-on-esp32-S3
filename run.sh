@@ -4,7 +4,9 @@ set -uo pipefail
 REPO=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$REPO" || exit 1
 
-JOBS=${JOBS:-$( (nproc 2>/dev/null || echo 4) )}
+JOBS=${JOBS:-}
+DEFAULT_JOBS=4
+CACHE=${CACHE:-}
 PORT=${PORT:-}
 ARTIFACTS=${ARTIFACTS:-}
 ASSUME_YES=0
@@ -79,6 +81,97 @@ for target_id, config in targets.items():
 ensure_target() {
 	[ -n "${TARGET:-}" ] && return 0
 	select_target
+}
+
+select_cache() {
+	local reply
+
+	bold "Select cache mode:"
+	echo
+	printf '  1) dev   - reuse build caches\n'
+	printf '  2) clean - build without persistent caches\n'
+	echo
+
+	while true; do
+		printf 'Cache [1-2]: '
+		read_reply reply || die "could not read cache selection"
+
+		case "$reply" in
+			1)
+				CACHE=dev
+				export CACHE
+				info "cache: dev"
+				echo
+				return 0
+				;;
+			2)
+				CACHE=clean
+				export CACHE
+				info "cache: clean"
+				echo
+				return 0
+				;;
+			*)
+				warn "enter 1 or 2"
+				;;
+		esac
+	done
+}
+
+ensure_cache() {
+	case "${CACHE:-}" in
+		dev|clean)
+			return 0
+			;;
+		"")
+			select_cache
+			;;
+		*)
+			die "CACHE must be dev or clean (got: $CACHE)"
+			;;
+	esac
+}
+
+select_jobs() {
+	local reply
+
+	while true; do
+		printf 'Build jobs [%s]: ' "$DEFAULT_JOBS"
+		read_reply reply || die "could not read build jobs"
+
+		[ -n "$reply" ] || reply="$DEFAULT_JOBS"
+
+		case "$reply" in
+			*[!0-9]*|'')
+				warn "enter a positive integer"
+				;;
+			*)
+				if [ "$reply" -ge 1 ]; then
+					JOBS="$reply"
+					export JOBS
+					info "jobs: $JOBS"
+					echo
+					return 0
+				fi
+				warn "enter a positive integer"
+				;;
+		esac
+	done
+}
+
+ensure_jobs() {
+	if [ -z "${JOBS:-}" ]; then
+		select_jobs
+		return
+	fi
+
+	case "$JOBS" in
+		*[!0-9]*|'')
+			die "JOBS must be a positive integer (got: $JOBS)"
+			;;
+	esac
+
+	[ "$JOBS" -ge 1 ] || die "JOBS must be a positive integer (got: $JOBS)"
 }
 
 ask() {
@@ -301,7 +394,9 @@ PY
 }
 
 do_build() {
-	bold "== Build from clean sources =="
+	ensure_cache
+	ensure_jobs
+	bold "== Build =="
 	have docker || die "docker is missing"
 	docker info >/dev/null 2>&1 || die "docker does not respond"
 	local free; free=$(disk_free_gb)
@@ -311,8 +406,10 @@ do_build() {
 	fi
 	clean_tree_or_fix || return 1
 	local log="$LOGDIR/esp32-build-$(date +%Y%m%d-%H%M%S).log"
-	info "jobs:  $JOBS"
-	info "log:   $log"
+	info "target: $TARGET"
+	info "cache:  $CACHE"
+	info "jobs:   $JOBS"
+	info "log:    $log"
 	echo
 	bold "This downloads and compiles a cross toolchain, the kernel, the"
 	bold "firmware and the userspace from source. It takes a long time:"
@@ -325,10 +422,10 @@ do_build() {
 	local started rc elapsed
 	started=$(date +%s)
 	if [ "$QUIET" = 1 ]; then
-		TARGET="$TARGET" JOBS="$JOBS" bash "$REPO/build/reproduce.sh" > "$log" 2>&1
+		CACHE="$CACHE" TARGET="$TARGET" JOBS="$JOBS" bash "$REPO/build/reproduce.sh" > "$log" 2>&1
 		rc=$?
 	else
-		TARGET="$TARGET" JOBS="$JOBS" bash "$REPO/build/reproduce.sh" 2>&1 | tee "$log"
+		CACHE="$CACHE" TARGET="$TARGET" JOBS="$JOBS" bash "$REPO/build/reproduce.sh" 2>&1 | tee "$log"
 		rc=${PIPESTATUS[0]}
 	fi
 	elapsed=$(( $(date +%s) - started ))

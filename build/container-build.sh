@@ -20,6 +20,10 @@ mkdir -p "$work/refs" "$work/logs" "$work/stages" "$work/artifacts"
 driver="$work/refs/esp32-linux-build"
 base="$driver/build"
 br="$base/build-buildroot-$PROFILE"
+BR2_DL_ARGS=()
+if [ -d /cache/buildroot-dl ]; then
+    BR2_DL_ARGS=(BR2_DL_DIR=/cache/buildroot-dl)
+fi
 exp="$repo/experiments/mmu-poc"
 
 clone_locked() {
@@ -81,7 +85,7 @@ rootfs_base() {
     grep -qx 'BR2_PRIMARY_SITE="https://sources.buildroot.net"' "$br/.config"
     "$base/buildroot/utils/config" --file "$br/.config" --set-str WGET 'wget -nd -t 3 --timeout=20'
     test "$(git ls-remote https://github.com/jcmvbkbc/linux-xtensa.git "refs/tags/$LINUX_KERNEL_TAG^{}" | cut -f1)" = "$LINUX_KERNEL_REV"
-    make -C "$base/buildroot" O="$br" BR2_JLEVEL="$JOBS"
+    make -C "$base/buildroot" O="$br" BR2_JLEVEL="$JOBS" "${BR2_DL_ARGS[@]}"
     test -s "$br/images/rootfs.cramfs"
 }
 
