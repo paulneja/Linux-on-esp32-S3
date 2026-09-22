@@ -24,6 +24,12 @@ BR2_DL_ARGS=()
 if [ -d /cache/buildroot-dl ]; then
     BR2_DL_ARGS=(BR2_DL_DIR=/cache/buildroot-dl)
 fi
+BR2_CCACHE_ARGS=()
+if [ -d /cache/ccache ]; then
+    BR2_CCACHE_ARGS=(
+        BR2_CCACHE_DIR=/cache/ccache
+    )
+fi
 exp="$repo/experiments/mmu-poc"
 
 clone_locked() {
@@ -79,13 +85,18 @@ rootfs_base() {
     cd "$driver"
     ./apply-local-changes.sh buildroot
     make -C "$base/buildroot" O="$br" "${PROFILE}_defconfig"
+    if [ -d /cache/ccache ]; then
+        "$base/buildroot/utils/config" --file "$br/.config" --enable CCACHE
+    fi
     "$base/buildroot/utils/config" --file "$br/.config" --set-str TOOLCHAIN_EXTERNAL_PATH "$base/crosstool-NG/builds/xtensa-esp32s3-linux-uclibcfdpic"
     "$base/buildroot/utils/config" --file "$br/.config" --set-str TOOLCHAIN_EXTERNAL_CUSTOM_PREFIX '$(ARCH)-esp32s3-linux-uclibcfdpic'
     "$base/buildroot/utils/config" --file "$br/.config" --undefine PRIMARY_SITE --set-str PRIMARY_SITE 'https://sources.buildroot.net'
     grep -qx 'BR2_PRIMARY_SITE="https://sources.buildroot.net"' "$br/.config"
     "$base/buildroot/utils/config" --file "$br/.config" --set-str WGET 'wget -nd -t 3 --timeout=20'
     test "$(git ls-remote https://github.com/jcmvbkbc/linux-xtensa.git "refs/tags/$LINUX_KERNEL_TAG^{}" | cut -f1)" = "$LINUX_KERNEL_REV"
-    make -C "$base/buildroot" O="$br" BR2_JLEVEL="$JOBS" "${BR2_DL_ARGS[@]}"
+    make -C "$base/buildroot" O="$br" BR2_JLEVEL="$JOBS" \
+        "${BR2_DL_ARGS[@]}" \
+        "${BR2_CCACHE_ARGS[@]}"
     test -s "$br/images/rootfs.cramfs"
 }
 

@@ -39,11 +39,13 @@ if [ "$CACHE" = dev ]; then
 
     mkdir -p \
         "$cache_root/espressif" \
-        "$cache_root/buildroot-dl"
+        "$cache_root/buildroot-dl" \
+        "$cache_root/ccache"
 
     cache_mounts+=(
         --mount "type=bind,source=$cache_root/espressif,target=/home/builder/.espressif"
         --mount "type=bind,source=$cache_root/buildroot-dl,target=/cache/buildroot-dl"
+        --mount "type=bind,source=$cache_root/ccache,target=/cache/ccache"
     )
 
     printf 'Cache mode: dev\n'
