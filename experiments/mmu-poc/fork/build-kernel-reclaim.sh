@@ -10,6 +10,9 @@ applied() { patch -d "$kernel_dir" --force --dry-run -R -p1 < "$task_dir/$1" >/d
 # base patches' own checks below would fail on changed context before this
 # script ever reached the line that removes them. Strip them in reverse
 # order; the block near the end puts them back when FORK_SWAP_BANKS=1.
+if applied switch-irqs-on.patch; then
+    patch -d "$kernel_dir" --force --batch -R -p1 < "$task_dir/switch-irqs-on.patch"
+fi
 if applied switch-latency.patch; then
     patch -d "$kernel_dir" --force --batch -R -p1 < "$task_dir/switch-latency.patch"
 fi
@@ -29,12 +32,15 @@ patch -d "$kernel_dir" --forward --batch --dry-run -p1 < "$task_dir/quiet-trace.
 patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/quiet-trace.patch"
 # The page-set exchange is the default; FORK_SWAP_BANKS=0 builds the copying
 # model. It goes last because it rewrites what the patches above build up;
-# switch-latency edits the exchange's nommu_bank_switch(), so it rides along.
+# switch-latency and switch-irqs-on edit the exchange's nommu_bank_switch(),
+# so they ride along.
 if [ "${FORK_SWAP_BANKS:-1}" = 1 ]; then
     patch -d "$kernel_dir" --forward --batch --dry-run -p1 < "$task_dir/swap-banks.patch"
     patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/swap-banks.patch"
     patch -d "$kernel_dir" --forward --batch --dry-run -p1 < "$task_dir/switch-latency.patch"
     patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/switch-latency.patch"
+    patch -d "$kernel_dir" --forward --batch --dry-run -p1 < "$task_dir/switch-irqs-on.patch"
+    patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/switch-irqs-on.patch"
 fi
 python3 "$task_dir/check-kernel-config.py" \
     "$repo_dir/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config" \
