@@ -161,6 +161,12 @@ fresh WiFi association: for a few seconds after any console session the
 board answers no ping and no telnet. It is not a fault. The project's
 `serial-probe.py` lowers both lines before opening to avoid it.
 
+### The USB port shows the boot log, then no login
+
+That is the default. The kernel mirrors its console to the chip's own USB
+port, but the getty there is off to save RAM. Run `usb-console on` once
+from the UART console; it stays on across reboots.
+
 ### `scp: Connection closed` right after connecting
 
 OpenSSH 9 copies over SFTP by default and dropbear ships no `sftp-server`.

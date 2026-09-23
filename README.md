@@ -1,10 +1,29 @@
 # Linux on an ESP32-S3 — native Linux that stays up
 
+[![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ea4aaa?style=flat&logo=githubsponsors&logoColor=white)](https://donation.streamiverse.io/paulneja)
+[![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen?style=flat)](CONTRIBUTING.md)
+
 Linux 6.11 running **natively on the ESP32-S3's Xtensa cores**, with WiFi,
 Bash, MicroPython and writable storage. Linux is not emulated: Espressif's
 firmware runs alongside it on the same chip and handles WiFi and flash access.
 All of this runs on one N16R8 board, without extra RAM, an SD card or a second
 computer attached to keep it running.
+
+> [!TIP]
+> **Want to help?** Hunt bugs, try it on other boards, or send fixes and
+> ideas: see [CONTRIBUTING.md](CONTRIBUTING.md). And if it saved you a
+> weekend, you can [chip in ❤️](https://donation.streamiverse.io/paulneja).
+
+## What's new in 0.8.1
+
+Fixes, mostly from issues people opened. WiFi no longer panics the kernel or
+leaks a DHCP client when it is taken down and up quickly (#13), `ssh
+root@board` gets a terminal (#9), and `kitten ssh` from kitty works. The
+boot log also comes out of the chip's own USB port, so a board with no UART
+adapter can be watched; `usb-console on` adds a login there (#17). The
+clean build no longer fills the disk (#12) or misses the ESP-IDF Python
+environment (#16). The [changelog](CHANGELOG.md) has each cause and how it
+was checked.
 
 ## What's new in 0.8
 
@@ -166,6 +185,11 @@ For example:
 ```sh
 screen /dev/ttyUSB0 115200
 ```
+
+The chip's own USB port works as well: it shows up as `/dev/ttyACM0` (a COM
+port on Windows) and prints the boot log. The login there is off until you
+run `usb-console on` once from the UART, since its getty costs about 100 KiB
+of RAM.
 
 Log in as **`root` / `changeme123`**, then run `passwd` to change the
 password. A factory image has no WiFi configured:
@@ -338,5 +362,3 @@ firmware. See [NOTICE](NOTICE) for third-party components and licenses.
 
 This project is licensed under the **GPLv3** (see [LICENSE](LICENSE)). Kernel
 code contributed here (`drivers/crypto/esp32s3_rsa.c`) is GPL-2.0-or-later.
-
-P.S: Sorry for the wait 🥲
