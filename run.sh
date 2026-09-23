@@ -190,7 +190,7 @@ With no action it opens the interactive menu.
 
 Actions:
   --check        Check the environment and fix what can be fixed
-  --build        Build everything from clean sources
+  --build        Build the selected target
   --verify       Check the checksums of a build
   --flash        Write the image to the board (ERASES /etc and /home)
   --test         Run the board test suite
@@ -530,21 +530,26 @@ do_recover() {
 
 do_repro() {
 	bold "== Reproducibility: two builds of the same commit =="
+
 	local first second
-	first=$(builds | head -1)
-	if [ -z "$first" ]; then
-		info "no build yet; making the first one"
-		do_build || return 1
-		first=$(builds | head -1)
-	else
-		info "first: ${first#$REPO/}"
-	fi
-	info "now the second one, same commit"
+
+	info "making the first build"
 	do_build || return 1
-	second=$(builds | head -1)
-	if [ "$second" = "$first" ]; then red "a second build did not appear"; return 1; fi
+	first="$ARTIFACTS"
+
+	info "making the second build, same target and commit"
+	do_build || return 1
+	second="$ARTIFACTS"
+
+	if [ "$second" = "$first" ]; then
+		red "a second build did not appear"
+		return 1
+	fi
+
 	bold "== Comparison =="
-	python3 "$REPO/build/compare-builds.py" "${first%/artifacts}" "${second%/artifacts}"
+	python3 "$REPO/build/compare-builds.py" \
+		"${first%/artifacts}" \
+		"${second%/artifacts}"
 }
 
 do_all() {
@@ -562,7 +567,7 @@ menu() {
 		bold "=== Linux on ESP32-S3 ==="
 		cat <<'EOF'
   1) Check the environment
-  2) Build everything from clean sources
+  2) Build the selected target
   3) Check the checksums of a build
   4) Flash the board
   5) Run the board test suite
@@ -581,8 +586,8 @@ EOF
 			3) do_verify ;;
 			4) do_flash ;;
 			5) do_test ;;
-			6) ensure_target && do_all ;;
-			7) ensure_target && do_repro ;;
+			6) ensure_target && ensure_cache && ensure_jobs && do_all ;;
+			7) ensure_target && ensure_cache && ensure_jobs && do_repro ;;
 			8) do_recover ;;
 			9) do_status ;;
 			0|q|Q) return 0 ;;
