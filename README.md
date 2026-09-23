@@ -100,7 +100,7 @@ xychart-beta
 
 ## Get the current version
 
-`images/` holds the 0.8 release, so the quickest path is to flash what is
+`images/` holds the 0.8.1 release, so the quickest path is to flash what is
 already in the repository:
 
 ```sh
@@ -261,21 +261,19 @@ checksums, partition checks and a board suite tied to one exact image.
 
 What was tested, and on which bytes, is written down rather than implied:
 
-- **The 0.8 board suite ran on a clean build of `8ea9011`** (`7b4c94e` in
-  this history): a fresh clone, `run.sh --all`, **36 tests, 0 failed**; then
-  ten checks beyond the suite (10/10), ten factory boots with `dmesg` and the
-  taint flags read back (10 clean), and the board driven from another machine
-  over WiFi (SSH, scp, the web page).
-  [`2026-09-14-final-image.md`](build/verification/2026-09-14-final-image.md).
-- **The published image was built by the Image workflow from `13c85d6`**,
-  the tagged sources. Between `8ea9011` and that commit the build inputs
-  changed only in comments, plus the `wifi connect` fix, and the rootfs in
-  `images/` carries that fix (the script in it is byte-identical to the one
-  in the tree). Two independent container builds of the commit differ in one
-  file, `/etc/shadow`, from the random password salt.
+- **The 0.8.1 images were built by the Image workflow and tested as
+  they are.** Two container builds of the release commit differ in one file,
+  `/etc/shadow`, from the random password salt. The exact bytes in `images/`
+  were then flashed and run: **36 tests, 0 failed**, ten checks beyond the
+  suite (10/10), **20 factory boots, 20 clean** with `dmesg` and the taint
+  flags read back, SSH with a terminal from another machine over WiFi, the
+  `usb-console` switch across reboots, and the WiFi stress that used to
+  panic the kernel.
+  [`2026-09-23-release.md`](build/verification/2026-09-23-release.md).
+- **0.8 was tested on a clean build of `8ea9011`** (`7b4c94e` in this
+  history), not on the published bytes.
+  [`2026-09-14-final-image.md`](build/verification/2026-09-14-final-image.md),
   [`2026-09-14-release.md`](build/verification/2026-09-14-release.md).
-- **Not done yet:** the exact bytes in `images/` have not been through the
-  board suite themselves. That run is the next record.
 - **The corruption fix, measured:** 55 factory boots in a row on the fixed
   firmware, all clean, against 10 faults in 17 before it.
   [`2026-09-14-cache-fix.md`](build/verification/2026-09-14-cache-fix.md).
@@ -322,7 +320,7 @@ flash reclaim.
 ```
 
 The script reads `images/` unless `--images` points elsewhere, and requires
-Python 3 and esptool. Everything in `images/` belongs to the 0.8 release and
+Python 3 and esptool. Everything in `images/` belongs to the 0.8.1 release and
 matches the combined image there byte for byte. Earlier releases and their
 binaries stay on the releases page.
 

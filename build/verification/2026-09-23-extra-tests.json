@@ -1,0 +1,62 @@
+[
+ {
+  "name": "swap-model-is-live",
+  "status": "PASS",
+  "detail": "ForkSwitchMax=21831us",
+  "seconds": 0.2
+ },
+ {
+  "name": "jffs2-write-copy-readback",
+  "status": "PASS",
+  "detail": "384 KiB written, copied, read back identical",
+  "seconds": 10.5
+ },
+ {
+  "name": "shell-pipelines-and-subshells",
+  "status": "PASS",
+  "detail": "40 subshell pipelines, ForkShadow 0->0",
+  "seconds": 22.7
+ },
+ {
+  "name": "bank-latch-silent-after-load",
+  "status": "PASS",
+  "detail": "no latch report, tainted 0",
+  "seconds": 0.7
+ },
+ {
+  "name": "session-detach-attach",
+  "status": "PASS",
+  "detail": "started, wrote through the socket, stopped",
+  "seconds": 6.3
+ },
+ {
+  "name": "cron-runs-a-job",
+  "status": "PASS",
+  "detail": "fired after 0s",
+  "seconds": 1.0
+ },
+ {
+  "name": "passwd-and-relogin",
+  "status": "PASS",
+  "detail": "changed, logged out, logged in with it, restored",
+  "seconds": 3.9
+ },
+ {
+  "name": "reboot-home-persists",
+  "status": "PASS",
+  "detail": "file survived, no re-seed",
+  "seconds": 22.0
+ },
+ {
+  "name": "bootlog-across-reboots",
+  "status": "PASS",
+  "detail": "verbose 140 lines, quiet 30",
+  "seconds": 43.0
+ },
+ {
+  "name": "final-kernel-health",
+  "status": "PASS",
+  "detail": "tainted 0, MemAvailable 3676 kB",
+  "seconds": 1.0
+ }
+]
