@@ -348,6 +348,12 @@ static int esp_open(struct net_device *ndev)
 
 static int esp_stop(struct net_device *ndev)
 {
+	struct esp_wifi_device *priv = netdev_priv(ndev);
+
+	/* end the scan ourselves, cfg80211 frees it without asking */
+	if (priv && priv->request)
+		ESP_MARK_SCAN_DONE(priv, true);
+
 	return 0;
 }
 

@@ -114,7 +114,7 @@ jobs:
           set -e
           . build/sources.lock
           # this copy went stale twice already. not a third
-          esp32ng_patches="02-kernel-ble-prov 05-kernel-esp32ng-fixes 10-kernel-esp32ng-cmd-race"
+          esp32ng_patches="02-kernel-ble-prov 05-kernel-esp32ng-fixes 10-kernel-esp32ng-cmd-race 11-kernel-esp32ng-scan-stop"
           git clone --no-checkout --depth 1 --filter=blob:none \
               https://github.com/jcmvbkbc/linux-xtensa.git ref-check
           cd ref-check
