@@ -72,9 +72,46 @@ toolchain() {
     ./configure --enable-local
     make -j"$JOBS"
     ./ct-ng xtensa-esp32s3-linux-uclibcfdpic
+
     python3 "$repo/build/pin-toolchain.py" .config
-    CT_PREFIX="$PWD/builds" ./ct-ng build
-    test -x builds/xtensa-esp32s3-linux-uclibcfdpic/bin/xtensa-esp32s3-linux-uclibcfdpic-gcc
+
+    toolchain_name=xtensa-esp32s3-linux-uclibcfdpic
+    toolchain_path="$PWD/builds/$toolchain_name"
+
+    if [ -d /cache/toolchain ]; then
+        toolchain_key=$(
+            {
+                printf '%s\n' \
+                    "$BUILD_DRIVER_REV" \
+                    "$DYNCONFIG_REV" \
+                    "$ESP32_CONFIG_REV" \
+                    "$CTNG_REV"
+                cat .config
+                cat "$repo/build/pin-toolchain.py"
+            } | sha256sum | cut -d' ' -f1
+        )
+
+        toolchain_cache="/cache/toolchain/$toolchain_key/$toolchain_name"
+
+        if [ -x "$toolchain_cache/bin/$toolchain_name-gcc" ]; then
+            echo "Using cached Xtensa toolchain: $toolchain_key"
+            mkdir -p "$PWD/builds"
+            ln -s "$toolchain_cache" "$toolchain_path"
+        else
+            echo "Building Xtensa toolchain: $toolchain_key"
+            CT_PREFIX="$PWD/builds" ./ct-ng build
+
+            test -x "$toolchain_path/bin/$toolchain_name-gcc"
+
+            mkdir -p "$(dirname "$toolchain_cache")"
+            cp -a "$toolchain_path" "$toolchain_cache"
+        fi
+    else
+        echo "Toolchain cache disabled"
+        CT_PREFIX="$PWD/builds" ./ct-ng build
+    fi
+
+    test -x "$toolchain_path/bin/$toolchain_name-gcc"
 }
 
 rootfs_base() {
