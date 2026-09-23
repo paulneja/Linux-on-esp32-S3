@@ -259,15 +259,22 @@ static int esp_wifi_shmem_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
-	ret = esp32_ipc_register_rx(hw->ipc, hw->ipc_addr, hw,
-				  esp_wifi_shmem_rx_handler,
-				  esp_wifi_shmem_rx_batch);
-	if (ret < 0)
-		return ret;
-
+	/* Bring the adapter up before core 0 can deliver anything to it:
+	 * there is no way to unregister an IPC receiver, so registering first
+	 * and then failing esp_wifi_init() left core 0 a callback into a
+	 * half-initialised, devm-freed object.
+	 */
 	ret = esp_wifi_init(&hw->adapter, &if_ops);
 	if (ret < 0)
 		return ret;
+
+	ret = esp32_ipc_register_rx(hw->ipc, hw->ipc_addr, hw,
+				  esp_wifi_shmem_rx_handler,
+				  esp_wifi_shmem_rx_batch);
+	if (ret < 0) {
+		esp_wifi_deinit(&hw->adapter);
+		return ret;
+	}
 
 	esp32_ipc_tx(hw->ipc, hw->ipc_addr, NULL, NULL);
 
