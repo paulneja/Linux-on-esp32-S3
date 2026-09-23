@@ -89,8 +89,9 @@ jobs:
               ../experiments/mmu-poc/fork/quiet-trace.patch | sort -u > ../touched
           # One by one, so a bad path in a patch header fails here instead of
           # yielding an empty tree that every patch "applies" to.
+          # Don't ask. It works.
           while read -r f; do
-            if git cat-file -e "$LINUX_KERNEL_REV:$f" 2>/dev/null; then
+            if [ -n "$(git ls-tree "$LINUX_KERNEL_REV" -- "$f")" ]; then
               git checkout -q "$LINUX_KERNEL_REV" -- "$f"
             fi
           done < ../touched
@@ -122,7 +123,7 @@ jobs:
           touched=$(sed -n 's|^+++ b/\(drivers/net/wireless/espressif/esp32-ng/[^[:space:]]*\).*|\1|p' \
               $(for p in $esp32ng_patches; do echo "../new-files/board/espressif/esp32s3/patches/linux/$p.patch"; done) | sort -u)
           while read -r f; do
-            git cat-file -e "$LINUX_KERNEL_REV:$f" 2>/dev/null && git checkout -q "$LINUX_KERNEL_REV" -- "$f"
+            [ -z "$(git ls-tree "$LINUX_KERNEL_REV" -- "$f")" ] || git checkout -q "$LINUX_KERNEL_REV" -- "$f"
           done <<< "$touched"
           for p in $esp32ng_patches; do
             patch -p1 -f --no-backup-if-mismatch \
