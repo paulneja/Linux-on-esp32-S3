@@ -324,7 +324,7 @@ that one directory match `new-files/` exactly.
    nothing ever applied it) and a one-symbol ESP-IDF change were all in the
    working tree and in no patch here. Fix: regenerate the firmware patch
    straight from that tree, and verify the reconstruction byte for byte.
-   **The wait loop still has no timeout.**
+   **The wait loop had no timeout; `06-kernel-rsa-timeout.patch` gave it 100 ms.**
 7. **Config, incident 7**: two things the released image had only by accident of
    a hand-edited, incremental `target/`. `setup-home.sh` was missing from
    `BR2_ROOTFS_POST_BUILD_SCRIPT`, so root landed in `/root`, on the read-only

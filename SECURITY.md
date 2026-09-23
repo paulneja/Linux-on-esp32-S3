@@ -29,13 +29,13 @@ keep them private and separate from distributable build artifacts.
 | **SSH** | off by default (`ssh-server on` enables it); slow on this hardware |
 | **Bluetooth LE** | advertises as `Esp32-Linux`, **no pairing, no PIN** |
 | **HTTP status page** | off by default (`web-server on` enables it, and it stays on across reboots); no auth, plain HTTP |
-| **Firewall** | none. `/etc/iptables.conf` is empty and iptables does not run at boot |
+| **Firewall** | none. No firewall package ships in the image |
 | **Secure boot / flash encryption** | not used; flash can be read and rewritten over USB |
 
 Nothing filters inbound traffic: a port is closed only because no process is
-listening on it. `iptables` is installed and can be started by hand
-(`/etc/init.d/iptables start`), but it ships with an empty ruleset and an
-`ACCEPT` policy, so starting it changes nothing until you write rules.
+listening on it. `iptables` used to ship with an empty ruleset that changed
+nothing until you wrote rules; 0.8 removed it entirely to reclaim flash (see
+the changelog), and there is no other firewall tool on the image.
 
 The password is deliberately an obvious `changeme` rather than a plausible-looking
 one, so there is no chance of mistaking it for a real secret. Change it with

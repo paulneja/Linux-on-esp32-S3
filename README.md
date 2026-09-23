@@ -215,8 +215,9 @@ checksums, partition checks and a board suite tied to one exact image.
 - **STA WiFi and BLE provisioning.** Join an existing network over the
   console or through the `Esp32-Linux` BLE service. See [BLE.md](BLE.md).
   SoftAP was removed; the board does not host a WiFi access point.
-- **nano and Lua.** `vi` points to nano rather than the disabled BusyBox vi
-  applet.
+- **nano.** `vi` points to nano rather than the disabled BusyBox vi applet.
+  Lua was carried this far too, but 0.8 dropped it to reclaim flash once the
+  one CGI script that used it was rewritten in sh and awk.
 - **Hardware RSA acceleration.** The `rsa-esp32s3` Linux Crypto API driver
   has boot-time 512-bit and 2048-bit self-tests.
 - **Optional SSH and HTTP services.** Dropbear is controlled with

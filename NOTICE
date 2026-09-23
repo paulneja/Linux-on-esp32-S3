@@ -69,8 +69,6 @@ component below remains additionally available under its own original license.
      uClibc-ng      — LGPLv2.1       https://uclibc-ng.org
      Dropbear SSH   — MIT-style      https://matt.ucc.asn.au/dropbear/
      wpa_supplicant — BSD-3-Clause   https://w1.fi/wpa_supplicant/
-     iptables       — GPLv2          https://netfilter.org
-     Lua            — MIT            https://lua.org
      curl / libcurl — curl license   https://curl.se
      Mbed TLS       — Apache-2.0     https://github.com/Mbed-TLS/mbedtls
      GNU nano       — GPLv3-or-later https://nano-editor.org

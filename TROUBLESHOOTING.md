@@ -21,8 +21,8 @@ Recover by rewriting the factory `/home`:
 
 ```sh
 esptool --chip esp32s3 --port YOUR_COM_ADAPTER \
-    --before default-reset --after no-reset \
-    write-flash 0xcc0000 ARTIFACTS/home.jffs2
+    --before default_reset --after no_reset \
+    write_flash 0xcc0000 ARTIFACTS/home.jffs2
 ```
 
 That erases whatever was in `/home`. Treat the partition as scratch space.

@@ -83,7 +83,7 @@ then compares every artifact between them and publishes the result in the run
 summary. Each build uploads its images, checksums and logs.
 
 Expect a couple of hours; the job limit is six. The runner has no board, so
-`board_verification` stays `pending` in the manifest: flashing and the 27 board
+`board_verification` stays `pending` in the manifest: flashing and the 36 board
 tests are still a local step.
 
 The older `build-linux.yml` builds the base system only and is kept for
