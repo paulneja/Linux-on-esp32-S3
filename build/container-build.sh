@@ -12,6 +12,7 @@ export KBUILD_BUILD_TIMESTAMP='Sat Sep 5 00:00:00 UTC 2026' KBUILD_BUILD_VERSION
 export SOURCE_DATE_EPOCH=1788566400
 export GIT_AUTHOR_DATE='2026-09-05T00:00:00+00:00' GIT_COMMITTER_DATE='2026-09-05T00:00:00+00:00'
 mkdir -p "$work/refs" "$work/logs" "$work/stages" "$work/artifacts"
+LOG_CAP_BYTES=${LOG_CAP_BYTES:-50000000}
 driver="$work/refs/esp32-linux-build"
 base="$driver/build"
 br="$base/build-buildroot-esp32s3_devkit_c1_16m"
@@ -40,7 +41,7 @@ stage() {
         return
     fi
     echo "START: $name $(date -u +%FT%TZ)"
-    (set -euo pipefail; "$@") 2>&1 | tee "$work/logs/$name.log"
+    (set -euo pipefail; "$@") 2>&1 | tee >(head -c "$LOG_CAP_BYTES" > "$work/logs/$name.log")
     date -u +%FT%TZ > "$work/stages/$name.done"
     echo "PASS: $name"
 }
