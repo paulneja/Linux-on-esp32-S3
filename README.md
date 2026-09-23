@@ -226,6 +226,9 @@ checksums, partition checks and a board suite tied to one exact image.
   unless told otherwise.
   Both are off by default. SSH is slow on this hardware; the RSA driver does
   not accelerate its Curve25519 operations.
+- **USB console.** Kernel messages also go to the chip's own USB port
+  (`ttyGS3`). A login there is off by default, since its getty costs about
+  100 KiB of RAM: `usb-console on|off|status`, kept across reboots.
 - **NTP and curl.** Plain HTTP works. HTTPS uses certificate verification
   with a trimmed CA bundle and TLS 1.2, but remains experimental under the
   board's RAM constraints.

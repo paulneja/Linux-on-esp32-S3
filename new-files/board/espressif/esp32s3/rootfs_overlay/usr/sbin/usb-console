@@ -1,0 +1,53 @@
+#!/bin/sh
+set -e
+
+if [ "$(id -u)" != 0 ]; then
+	echo "usb-console: must be run as root" >&2
+	exit 1
+fi
+
+# the getty eats ~100k even with no cable in. so, off
+TAB=/etc/inittab
+LINE='ttyGS3::respawn:/sbin/getty -L ttyGS3 0 vt100'
+
+stop_getty() {
+	for p in $(pidof getty); do
+		grep -q ttyGS3 "/proc/$p/cmdline" 2>/dev/null && kill "$p" || true
+	done
+}
+
+case "$1" in
+on|enable)
+	if grep -q '^ttyGS3::' "$TAB"; then
+		echo "USB console login is already enabled."
+		exit 0
+	fi
+	if grep -q '^#ttyGS3::' "$TAB"; then
+		sed -i 's/^#ttyGS3::/ttyGS3::/' "$TAB"
+	else
+		printf '%s\n' "$LINE" >> "$TAB"
+	fi
+	kill -HUP 1
+	echo "USB console login enabled (starts on boot too). Disable with: usb-console off"
+	;;
+off|disable)
+	if grep -q '^ttyGS3::' "$TAB"; then
+		sed -i 's/^ttyGS3::/#ttyGS3::/' "$TAB"
+		kill -HUP 1
+		sleep 1
+		stop_getty
+	fi
+	echo "USB console login disabled. Kernel messages still go to the USB port."
+	;;
+status|"")
+	if grep -q '^ttyGS3::' "$TAB"; then
+		echo "USB console: login enabled"
+	else
+		echo "USB console: kernel messages only (usb-console on for a login)"
+	fi
+	;;
+*)
+	echo "usage: usb-console {on|off|status}" >&2
+	exit 1
+	;;
+esac
