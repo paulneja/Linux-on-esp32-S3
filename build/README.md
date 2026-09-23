@@ -113,6 +113,14 @@ Three tools drive the board itself, all through the serial console:
   PASS only on positive evidence, and the summary carries a one-sided 95%
   bound on the rate; twenty rounds are the least that bound means anything.
 
+A fourth drives the board over the network instead: `build/test-ssh-pty.py
+PORT` reads the board's own `wifi status` over the console to find its IP,
+skips cleanly if WiFi is not configured, then opens SSH from the host with
+`get_pty=True` -- the `ssh -tt` equivalent -- and checks a real `/dev/pts/N`
+came back, the regression for issue #9 (dropbear falling back to a `/dev/pty??`
+scan this kernel does not build). It needs `paramiko` on the host in addition
+to `pyserial` and `esptool`.
+
 The fork backend is built by `experiments/mmu-poc/fork/build-kernel-reclaim.sh`
 with the page-set exchange on; `FORK_SWAP_BANKS=0` builds the copying model.
 
