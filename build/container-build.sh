@@ -90,6 +90,7 @@ firmware() {
     test "$(git -C esp-idf rev-parse HEAD)" = "$ESP_IDF_REV"
     cmake .
     cd esp-idf
+    # github 504s every single time. PLS HELP ME :'(
     for attempt in 1 2 3 4 5 6; do
         if [ "$attempt" -ge 3 ]; then
             export IDF_GITHUB_ASSETS=dl.espressif.com/github_assets
@@ -101,6 +102,7 @@ firmware() {
         fi
         sleep $((attempt * 15))
     done
+    python3 tools/idf_tools.py --non-interactive install-python-env
     set +u
     source export.sh
     set -u
