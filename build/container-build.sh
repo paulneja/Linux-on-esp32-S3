@@ -100,11 +100,20 @@ toolchain() {
         else
             echo "Building Xtensa toolchain: $toolchain_key"
             CT_PREFIX="$PWD/builds" ./ct-ng build
-
             test -x "$toolchain_path/bin/$toolchain_name-gcc"
-
-            mkdir -p "$(dirname "$toolchain_cache")"
-            cp -a "$toolchain_path" "$toolchain_cache"
+            cache_parent=$(dirname "$toolchain_cache")
+            cache_tmp="$cache_parent/.${toolchain_name}.tmp.$$"
+            mkdir -p "$cache_parent"
+            rm -rf "$cache_tmp"
+            cp -a "$toolchain_path" "$cache_tmp"
+            test -x "$cache_tmp/bin/$toolchain_name-gcc"
+            if [ ! -e "$toolchain_cache" ]; then
+                mv "$cache_tmp" "$toolchain_cache"
+                echo "Cached Xtensa toolchain: $toolchain_key"
+            else
+                echo "Xtensa toolchain cache already exists: $toolchain_key"
+                rm -rf "$cache_tmp"
+            fi
         fi
     else
         echo "Toolchain cache disabled"
