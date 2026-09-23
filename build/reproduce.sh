@@ -36,9 +36,5 @@ printf 'Build directory: %s\n' "$work"
 docker run --network host --name "esp32-reproduce-$(basename "$work")" --rm \
     --mount "type=bind,source=$work,target=/work" \
     --env JOBS="${JOBS:-8}" \
-    --env GIT_AUTHOR_NAME="$(git config user.name)" \
-    --env GIT_AUTHOR_EMAIL="$(git config user.email)" \
-    --env GIT_COMMITTER_NAME="$(git config user.name)" \
-    --env GIT_COMMITTER_EMAIL="$(git config user.email)" \
     "$image" 2>&1 | tee >(head -c "$LOG_CAP_BYTES" > "$work/logs/build.log")
 printf 'Complete local build: %s/artifacts\nNo board access or push was performed.\n' "$work"

@@ -69,7 +69,9 @@ esp-hosted)
 			esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3 \
 			esp/esp_driver/network_adapter/partition_table.esp32s3.16m8r \
 			esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3.16m8r
-		git -c user.email="local@backup" -c user.name="local-backup" \
+		# the host git name ended up in the fw hash once. nope
+		env -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL -u GIT_COMMITTER_NAME -u GIT_COMMITTER_EMAIL \
+			git -c user.email="local@backup" -c user.name="local-backup" \
 			commit -m "network_adapter: this project's firmware (local-only, never push)"
 	fi
 
