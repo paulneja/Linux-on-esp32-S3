@@ -191,6 +191,7 @@ static int wait_and_decode_cmd_resp(struct esp_wifi_device *priv,
 {
 	struct esp_adapter *adapter = NULL;
 	int ret = 0;
+	bool more_pending;
 
 	if (!priv || !priv->adapter || !cmd_node) {
 		esp_info("Invalid params\n");
@@ -223,6 +224,12 @@ static int wait_and_decode_cmd_resp(struct esp_wifi_device *priv,
 	adapter->cur_cmd = NULL;
 	adapter->cmd_resp = 0;
 	spin_unlock_bh(&adapter->cmd_lock);
+
+	spin_lock_bh(&adapter->cmd_pending_queue_lock);
+	more_pending = !list_empty(&adapter->cmd_pending_queue);
+	spin_unlock_bh(&adapter->cmd_pending_queue_lock);
+	if (more_pending)
+		queue_work(adapter->cmd_wq, &adapter->cmd_work);
 
 	switch (cmd_node->cmd_code) {
 
@@ -271,6 +278,12 @@ static int wait_and_decode_cmd_resp(struct esp_wifi_device *priv,
 		ret = -EINVAL;
 		break;
 	}
+
+	/* still pending? cant go to the free list yet. no bigamy */
+	spin_lock_bh(&adapter->cmd_pending_queue_lock);
+	if (!list_empty(&cmd_node->list))
+		list_del_init(&cmd_node->list);
+	spin_unlock_bh(&adapter->cmd_pending_queue_lock);
 
 	recycle_cmd_node(adapter, cmd_node);
 	return ret;
@@ -360,7 +373,7 @@ static void esp_cmd_work(struct work_struct *work)
 	}
 	/*esp_dbg("Processing Command [0x%X]\n", cmd_node->cmd_code);*/
 
-	list_del(&cmd_node->list);
+	list_del_init(&cmd_node->list);
 
 	if (!cmd_node->cmd_skb) {
 		esp_dbg("cmd_node->cmd_skb NULL\n");
