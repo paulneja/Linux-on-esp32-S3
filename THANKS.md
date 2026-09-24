@@ -5,9 +5,9 @@ People who made this better, in no particular order.
 ## Code
 
 - **[@yuucha](https://github.com/yuucha)**: the Docker build on hosts where
-  the group ID is already taken (#11), the XIAO ESP32-S3 8 MB profile (#14),
-  and the reports behind the USB console (#17), the missing ESP-IDF Python
-  environment (#16) and the macOS build failure (#10).
+  the group ID is already taken (#11), the fix for the missing ESP-IDF Python
+  environment (#16), the XIAO ESP32-S3 8 MB profile (#14), and the reports
+  behind the USB console (#17) and the macOS build failure (#10).
 - **[@svermigo](https://github.com/svermigo)**: Paperboard e-paper support,
   on the `paperboard-experimental` branch (#7).
 
