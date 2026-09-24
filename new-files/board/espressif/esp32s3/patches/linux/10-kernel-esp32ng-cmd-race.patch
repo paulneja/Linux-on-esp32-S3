@@ -1,0 +1,50 @@
+esp32-ng: dont recycle a cmd node still in the pending queue
+
+issue #13. a timed out node landed in both lists, and nothing re-armed the
+work when the slot freed up.
+
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c
+@@ -191,6 +191,7 @@
+ {
+ 	struct esp_adapter *adapter = NULL;
+ 	int ret = 0;
++	bool more_pending;
+ 
+ 	if (!priv || !priv->adapter || !cmd_node) {
+ 		esp_info("Invalid params\n");
+@@ -224,6 +225,12 @@
+ 	adapter->cmd_resp = 0;
+ 	spin_unlock_bh(&adapter->cmd_lock);
+ 
++	spin_lock_bh(&adapter->cmd_pending_queue_lock);
++	more_pending = !list_empty(&adapter->cmd_pending_queue);
++	spin_unlock_bh(&adapter->cmd_pending_queue_lock);
++	if (more_pending)
++		queue_work(adapter->cmd_wq, &adapter->cmd_work);
++
+ 	switch (cmd_node->cmd_code) {
+ 
+ 	case CMD_SCAN_REQUEST:
+@@ -272,6 +279,12 @@
+ 		break;
+ 	}
+ 
++	/* still pending? cant go to the free list yet. no bigamy */
++	spin_lock_bh(&adapter->cmd_pending_queue_lock);
++	if (!list_empty(&cmd_node->list))
++		list_del_init(&cmd_node->list);
++	spin_unlock_bh(&adapter->cmd_pending_queue_lock);
++
+ 	recycle_cmd_node(adapter, cmd_node);
+ 	return ret;
+ }
+@@ -360,7 +373,7 @@
+ 	}
+ 	/*esp_dbg("Processing Command [0x%X]\n", cmd_node->cmd_code);*/
+ 
+-	list_del(&cmd_node->list);
++	list_del_init(&cmd_node->list);
+ 
+ 	if (!cmd_node->cmd_skb) {
+ 		esp_dbg("cmd_node->cmd_skb NULL\n");

@@ -1,4 +1,5 @@
 #! /bin/sh
+# Copyright (c) 2026 Paulneja. GPLv3, see LICENSE. https://github.com/paulneja/Linux-on-esp32-S3
 
 set -e
 
@@ -29,4 +30,7 @@ fi
 if [ -f "$1/etc/inittab" ]; then
 	sed -i '/^::sysinit:\/sbin\/swapon /d; /^::shutdown:\/sbin\/swapoff /d' \
 		"$1/etc/inittab"
+	grep -q '^#\?ttyGS3::' "$1/etc/inittab" ||
+		sed -i '/^console::respawn:/a #ttyGS3::respawn:/sbin/getty -L ttyGS3 0 vt100' \
+			"$1/etc/inittab"
 fi

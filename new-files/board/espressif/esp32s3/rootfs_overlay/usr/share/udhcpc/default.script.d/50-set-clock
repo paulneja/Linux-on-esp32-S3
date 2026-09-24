@@ -17,12 +17,17 @@ esac
 
 touch "$LOG" 2>/dev/null || LOG=/dev/null
 
+PIDFILE=/run/set-clock.ntpd.pid
+[ -f "$PIDFILE" ] && kill "$(cat "$PIDFILE")" 2>/dev/null
+
 {
 	echo "clock: was $(date), asking NTP"
-	if /usr/sbin/ntpd -n -q \
+	/usr/sbin/ntpd -n -q \
 		-p pool.ntp.org \
 		-p 162.159.200.1 \
-		-p 216.239.35.0
+		-p 216.239.35.0 &
+	echo $! >"$PIDFILE"
+	if wait $!
 	then
 		echo "clock: set to $(date)"
 	else

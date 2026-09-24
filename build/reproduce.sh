@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Paulneja. GPLv3, see LICENSE. https://github.com/paulneja/Linux-on-esp32-S3
 set -euo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo"
@@ -11,6 +12,17 @@ if [ -n "$dirty" ]; then
 	exit 1
 fi
 test "$(id -u)" != 0 || { echo 'Run as a regular user with Docker access.' >&2; exit 1; }
+
+# docker ate a whole disk once (#12)
+LOG_CAP_BYTES=${LOG_CAP_BYTES:-50000000}
+
+free_gb=$(df -PBG "$repo" 2>/dev/null | awk 'NR==2 {gsub("G","",$4); print $4}')
+if [ -z "$free_gb" ] || [ "$free_gb" -lt 25 ] 2>/dev/null; then
+	echo "error: ${free_gb:-an unknown amount of} GB free; one build takes about 21 GB." >&2
+	echo 'Free some space (build-output/ is the usual place) before building.' >&2
+	exit 1
+fi
+
 mkdir -p build-output
 work=$(mktemp -d "$repo/build-output/reproduce.XXXXXX")
 mkdir -p "$work/Linux-on-esp32-S3" "$work/logs"
@@ -19,15 +31,11 @@ git rev-parse HEAD > "$work/source-commit.txt"
 git ls-tree -r HEAD > "$work/source-tree.txt"
 image=linux-esp32s3-reproduce:local
 docker build --network host --build-arg BUILDER_UID="$(id -u)" --build-arg BUILDER_GID="$(id -g)" \
-    -f build/Dockerfile -t "$image" . 2>&1 | tee "$work/logs/container-image.log"
+    -f build/Dockerfile -t "$image" . 2>&1 | tee >(head -c "$LOG_CAP_BYTES" > "$work/logs/container-image.log")
 docker inspect --format '{{.Id}}' "$image" > "$work/container-image-id.txt"
 printf 'Build directory: %s\n' "$work"
 docker run --network host --name "esp32-reproduce-$(basename "$work")" --rm \
     --mount "type=bind,source=$work,target=/work" \
     --env JOBS="${JOBS:-8}" \
-    --env GIT_AUTHOR_NAME="$(git config user.name)" \
-    --env GIT_AUTHOR_EMAIL="$(git config user.email)" \
-    --env GIT_COMMITTER_NAME="$(git config user.name)" \
-    --env GIT_COMMITTER_EMAIL="$(git config user.email)" \
-    "$image" 2>&1 | tee "$work/logs/build.log"
+    "$image" 2>&1 | tee >(head -c "$LOG_CAP_BYTES" > "$work/logs/build.log")
 printf 'Complete local build: %s/artifacts\nNo board access or push was performed.\n' "$work"

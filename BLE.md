@@ -73,6 +73,12 @@ address.
   recovered on the next try. A 6-cycle run from a Linux host (BlueZ) produced 0
   complete dialogs, while the same board served the phone correctly throughout —
   that says more about the test host's Bluetooth than about the firmware.
+  On 0.8.1 a different Linux host (BlueZ, `bleak`) did complete the dialog,
+  from the network list to "Connected" and an address, once; a single run,
+  not a rate. One thing it showed: a dialog left waiting for a network
+  number takes the next character as the answer, so a client that
+  reconnects mid-dialog should expect "Not a number - cancelled" and send
+  another character.
 - Connecting does not show the menu by itself: the firmware never tells Linux
   that a phone attached, so you must send a character first. Wiring
   `BLE_GAP_EVENT_CONNECT` to greet automatically is an obvious improvement.

@@ -104,19 +104,23 @@ hostapd fits and works. SoftAP remains unsupported.
 
 ## Fork and memory banking
 
-Linux still runs in NOMMU mode. The fork patches keep a private page backup
-per process and save and restore it on scheduling transitions. The final owner
-releases unnecessary backups; `/proc/meminfo` and `/proc/PID/status` expose the
-associated accounting.
+Linux still runs in NOMMU mode. The fork patches keep a private page set per
+process and move it on scheduling transitions; `/proc/meminfo` and
+`/proc/PID/status` expose the associated accounting.
 
-`swap-banks.patch` replaces that with exchanging the resident contents, so the
-running process owns no backup and N processes sharing a region need N-1 page
-sets instead of N. **It is not built in.** On the board it corrupts memory:
-see `experiments/mmu-poc/fork/README.md`. Build it with `FORK_SWAP_BANKS=1`
-only to work on that. The backend requires UP Linux, rejects
-multithreaded fork and limits private memory per fork to 512 KiB by default
-(`fork_bank_max_bytes`). `libfork.so.0` exposes the compatible userspace entry
-points; it does not replace the whole C library.
+Since 0.8, `swap-banks.patch` is the default (`FORK_SWAP_BANKS=1`, the build
+default): a context switch exchanges the resident contents with the incoming
+process's set instead of saving and restoring a separate backup, so the
+running process owns no backup of its own and N processes sharing a region
+need N-1 page sets instead of N. It was suspected of corrupting memory and
+built out for a week; that turned out to be incident 15 (the flash cache, not
+this), and with that fixed, twenty factory boots ran clean and it shipped --
+see `experiments/mmu-poc/fork/README.md` and incident 16 in DEVELOPMENT.md.
+`FORK_SWAP_BANKS=0` builds the older save-and-restore copy model instead. The
+backend requires UP Linux, rejects multithreaded fork and limits private
+memory per fork to 512 KiB by default (`fork_bank_max_bytes`). `libfork.so.0`
+exposes the compatible userspace entry points; it does not replace the whole
+C library.
 
 There is no copy-on-write, and there cannot be one on this chip: the TRM
 (section 15.6) specifies that an unpermitted write is dropped and raises an

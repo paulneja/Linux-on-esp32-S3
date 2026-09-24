@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD */
+/*
+ * Espressif Systems Wireless LAN device driver
+ *
+ * SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD
+ *
+ */
 #include "utils.h"
 #include "esp_cmd.h"
 #include "esp_api.h"
@@ -186,6 +191,7 @@ static int wait_and_decode_cmd_resp(struct esp_wifi_device *priv,
 {
 	struct esp_adapter *adapter = NULL;
 	int ret = 0;
+	bool more_pending;
 
 	if (!priv || !priv->adapter || !cmd_node) {
 		esp_info("Invalid params\n");
@@ -203,10 +209,8 @@ static int wait_and_decode_cmd_resp(struct esp_wifi_device *priv,
 	ret = wait_event_interruptible_timeout(adapter->wait_for_cmd_resp,
 			adapter->cmd_resp == cmd_node->cmd_code, COMMAND_RESPONSE_TIMEOUT);
 
-	if (!test_bit(ESP_DRIVER_ACTIVE, &adapter->state_flags)) {
-		recycle_cmd_node(adapter, cmd_node);
+	if (!test_bit(ESP_DRIVER_ACTIVE, &adapter->state_flags))
 		return 0;
-	}
 
 	if (ret == 0) {
 		esp_err("Command[%u] timed out\n", cmd_node->cmd_code);
@@ -220,6 +224,12 @@ static int wait_and_decode_cmd_resp(struct esp_wifi_device *priv,
 	adapter->cur_cmd = NULL;
 	adapter->cmd_resp = 0;
 	spin_unlock_bh(&adapter->cmd_lock);
+
+	spin_lock_bh(&adapter->cmd_pending_queue_lock);
+	more_pending = !list_empty(&adapter->cmd_pending_queue);
+	spin_unlock_bh(&adapter->cmd_pending_queue_lock);
+	if (more_pending)
+		queue_work(adapter->cmd_wq, &adapter->cmd_work);
 
 	switch (cmd_node->cmd_code) {
 
@@ -268,6 +278,12 @@ static int wait_and_decode_cmd_resp(struct esp_wifi_device *priv,
 		ret = -EINVAL;
 		break;
 	}
+
+	/* still pending? cant go to the free list yet. no bigamy */
+	spin_lock_bh(&adapter->cmd_pending_queue_lock);
+	if (!list_empty(&cmd_node->list))
+		list_del_init(&cmd_node->list);
+	spin_unlock_bh(&adapter->cmd_pending_queue_lock);
 
 	recycle_cmd_node(adapter, cmd_node);
 	return ret;
@@ -357,7 +373,7 @@ static void esp_cmd_work(struct work_struct *work)
 	}
 	/*esp_dbg("Processing Command [0x%X]\n", cmd_node->cmd_code);*/
 
-	list_del(&cmd_node->list);
+	list_del_init(&cmd_node->list);
 
 	if (!cmd_node->cmd_skb) {
 		esp_dbg("cmd_node->cmd_skb NULL\n");
@@ -416,7 +432,7 @@ static void destroy_cmd_wq(struct esp_adapter *adapter)
 	}
 }
 
-struct command_node *prepare_command_request(struct esp_adapter *adapter, u8 cmd_code, u16 len)
+struct command_node *prepare_command_request(struct esp_adapter *adapter, u8 cmd_code, size_t len)
 {
 	struct command_header *cmd;
 	struct esp_payload_header *payload_header;
@@ -436,14 +452,16 @@ struct command_node *prepare_command_request(struct esp_adapter *adapter, u8 cmd
 		return NULL;
 	}
 
-	if (len > ESP_SIZE_OF_CMD_NODE - sizeof(struct esp_payload_header)) {
-		/* skb_put() past the tail is skb_over_panic(). The association
-		 * command carries information elements whose length the peer
-		 * influences, so refuse rather than panic.
-		 */
-		esp_err("command 0x%X payload %u exceeds the %u byte node\n",
-			cmd_code, len,
-			(unsigned int)(ESP_SIZE_OF_CMD_NODE - sizeof(struct esp_payload_header)));
+	/* skb_put() past the tail is skb_over_panic(), and the association
+	 * command carries information elements whose length the peer
+	 * influences, so refuse rather than panic. The bound is what the
+	 * transport will actually send: write_packet() drops anything over
+	 * SHMEM_BUF_SIZE minus the header, so a node that fits but exceeds
+	 * that would be built, queued and then silently discarded.
+	 */
+	if (len > ESP_MAX_CMD_PAYLOAD) {
+		esp_err("command 0x%X payload %zu exceeds the %u byte limit\n",
+			cmd_code, len, (unsigned int)ESP_MAX_CMD_PAYLOAD);
 		return NULL;
 	}
 
@@ -803,7 +821,7 @@ int cmd_disconnect_request(struct esp_wifi_device *priv, u16 reason_code)
 int cmd_connect_request(struct esp_wifi_device *priv,
 		struct cfg80211_connect_params *params)
 {
-	u16 cmd_len;
+	size_t cmd_len;
 	struct command_node *cmd_node = NULL;
 	struct cmd_sta_connect *cmd;
 	struct ieee80211_channel *chan;
@@ -896,7 +914,7 @@ int cmd_assoc_request(struct esp_wifi_device *priv,
 	struct cmd_sta_assoc *cmd;
 	struct cfg80211_bss *bss;
 	struct esp_adapter *adapter = NULL;
-	u16 cmd_len;
+	size_t cmd_len;
 
 	if (!priv || !req || !req->bss || !priv->adapter) {
 		esp_err("Invalid argument\n");
@@ -960,7 +978,7 @@ int cmd_auth_request(struct esp_wifi_device *priv,
 	struct cfg80211_bss *bss;
 	/*struct cfg80211_bss *bss1;*/
 	struct esp_adapter *adapter = NULL;
-	u16 cmd_len;
+	size_t cmd_len;
 	/* u8 retry = 2; */
 
 	if (!priv || !req || !req->bss || !priv->adapter) {
@@ -1027,7 +1045,7 @@ int cmd_auth_request(struct esp_wifi_device *priv,
 
 int cmd_set_default_key(struct esp_wifi_device *priv, u8 key_index)
 {
-	u16 cmd_len;
+	size_t cmd_len;
 	struct command_node *cmd_node = NULL;
 	struct cmd_key_operation *cmd;
 	struct wifi_sec_key *key = NULL;
@@ -1077,7 +1095,7 @@ int cmd_set_default_key(struct esp_wifi_device *priv, u8 key_index)
 int cmd_del_key(struct esp_wifi_device *priv, u8 key_index, bool pairwise,
 		const u8 *mac_addr)
 {
-	u16 cmd_len;
+	size_t cmd_len;
 	struct command_node *cmd_node = NULL;
 	struct cmd_key_operation *cmd;
 	struct wifi_sec_key *key = NULL;
@@ -1133,7 +1151,7 @@ int cmd_del_key(struct esp_wifi_device *priv, u8 key_index, bool pairwise,
 int cmd_add_key(struct esp_wifi_device *priv, u8 key_index, bool pairwise,
 		const u8 *mac_addr, struct key_params *params)
 {
-	u16 cmd_len;
+	size_t cmd_len;
 	struct command_node *cmd_node = NULL;
 	struct cmd_key_operation *cmd;
 	struct wifi_sec_key *key = NULL;
@@ -1242,7 +1260,7 @@ int cmd_add_key(struct esp_wifi_device *priv, u8 key_index, bool pairwise,
 
 int cmd_init_interface(struct esp_wifi_device *priv)
 {
-	u16 cmd_len;
+	size_t cmd_len;
 	struct command_node *cmd_node = NULL;
 
 	if (!priv || !priv->adapter) {
@@ -1269,7 +1287,7 @@ int cmd_init_interface(struct esp_wifi_device *priv)
 
 int cmd_deinit_interface(struct esp_wifi_device *priv)
 {
-	u16 cmd_len;
+	size_t cmd_len;
 	struct command_node *cmd_node = NULL;
 
 	if (!priv || !priv->adapter)
@@ -1301,7 +1319,7 @@ int internal_scan_request(struct esp_wifi_device *priv, char *ssid,
 		uint8_t channel, uint8_t is_blocking)
 {
 	int ret = 0;
-	u16 cmd_len;
+	size_t cmd_len;
 	struct command_node *cmd_node = NULL;
 	struct scan_request *scan_req;
 
@@ -1360,7 +1378,7 @@ int internal_scan_request(struct esp_wifi_device *priv, char *ssid,
 
 int cmd_scan_request(struct esp_wifi_device *priv, struct cfg80211_scan_request *request)
 {
-	u16 cmd_len;
+	size_t cmd_len;
 	struct command_node *cmd_node = NULL;
 	struct scan_request *scan_req;
 
@@ -1423,7 +1441,7 @@ int cmd_scan_request(struct esp_wifi_device *priv, struct cfg80211_scan_request 
 
 int cmd_init_raw_tp_task_timer(struct esp_wifi_device *priv)
 {
-	u16 cmd_len;
+	size_t cmd_len;
 	struct command_node *cmd_node = NULL;
 
 	if (!priv || !priv->adapter) {
@@ -1454,7 +1472,7 @@ int cmd_init_raw_tp_task_timer(struct esp_wifi_device *priv)
 
 int cmd_get_mac(struct esp_wifi_device *priv)
 {
-	u16 cmd_len;
+	size_t cmd_len;
 	struct command_node *cmd_node = NULL;
 
 	if (!priv || !priv->adapter) {
@@ -1481,7 +1499,7 @@ int cmd_get_mac(struct esp_wifi_device *priv)
 
 int cmd_set_mac(struct esp_wifi_device *priv, uint8_t *mac_addr)
 {
-	u16 cmd_len;
+	size_t cmd_len;
 	struct command_node *cmd_node = NULL;
 	struct cmd_config_mac_address *cmd;;
 
@@ -1552,7 +1570,7 @@ int esp_commands_setup(struct esp_adapter *adapter)
 
 int cmd_set_tx_power(struct esp_wifi_device *priv, int power)
 {
-	u16 cmd_len;
+	size_t cmd_len;
 	struct command_node *cmd_node = NULL;
 	struct cmd_set_get_val *val;;
 
@@ -1585,7 +1603,7 @@ int cmd_set_tx_power(struct esp_wifi_device *priv, int power)
 
 int cmd_get_tx_power(struct esp_wifi_device *priv)
 {
-	u16 cmd_len;
+	size_t cmd_len;
 	struct command_node *cmd_node = NULL;
 
 	if (!priv || !priv->adapter) {
@@ -1612,7 +1630,7 @@ int cmd_get_tx_power(struct esp_wifi_device *priv)
 
 int cmd_get_reg_domain(struct esp_wifi_device *priv)
 {
-	u16 cmd_len;
+	size_t cmd_len;
 	struct command_node *cmd_node = NULL;
 
 	if (!priv || !priv->adapter) {
@@ -1639,7 +1657,7 @@ int cmd_get_reg_domain(struct esp_wifi_device *priv)
 
 int cmd_set_reg_domain(struct esp_wifi_device *priv)
 {
-	u16 cmd_len;
+	size_t cmd_len;
 	struct command_node *cmd_node = NULL;
 	struct cmd_reg_domain *cmd;
 

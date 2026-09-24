@@ -324,7 +324,7 @@ that one directory match `new-files/` exactly.
    nothing ever applied it) and a one-symbol ESP-IDF change were all in the
    working tree and in no patch here. Fix: regenerate the firmware patch
    straight from that tree, and verify the reconstruction byte for byte.
-   **The wait loop still has no timeout.**
+   **The wait loop had no timeout; `06-kernel-rsa-timeout.patch` gave it 100 ms.**
 7. **Config, incident 7**: two things the released image had only by accident of
    a hand-edited, incremental `target/`. `setup-home.sh` was missing from
    `BR2_ROOTFS_POST_BUILD_SCRIPT`, so root landed in `/root`, on the read-only
@@ -614,18 +614,21 @@ that one directory match `new-files/` exactly.
   workarounds, and hostapd disabled. Verified to apply with `patch -p1` to a
   fresh clone of `jcmvbkbc/esp32-linux-build`, both on a host and inside the
   Docker image.
-- `patches/04-kernel-esp32s3-rsa-crypto.patch` — adds the hardware RSA
-  accelerator driver (`drivers/crypto/esp32s3_rsa.c`, 549 lines) plus its
-  `obj-y` line. Applied automatically: the kernel patches live in
-  `new-files/board/espressif/esp32s3/patches/linux/` (as `01-` RSA, `02-` BLE
-  and `03-` cmdline, the order they are applied in), which is what
-  `BR2_LINUX_KERNEL_PATCH` points at. Verified to apply cleanly with `patch -p1`
-  and to reproduce the exact driver that the shipped `xipImage` was built from.
-  There used to be a fourth, `01-kernel-esp32ng-ap-support.patch`, carrying the
-  SoftAP; it is gone, and with it the only reason the esp32-ng driver diverged
-  from upstream beyond the BLE pipe. Note the top-level numbering here has gaps
-  (`00`, `02`, `03`, `04`) where the SoftAP and ESP-IDF patches used to sit —
-  the remaining files keep their names so existing references stay valid.
+- The kernel patches live in
+  `new-files/board/espressif/esp32s3/patches/linux/` (`01-` RSA, `02-` BLE,
+  `03-` cmdline and on), which is what `BR2_LINUX_KERNEL_PATCH` points at and
+  what is applied automatically. `01-kernel-esp32s3-rsa-crypto.patch` adds the
+  hardware RSA accelerator driver (`drivers/crypto/esp32s3_rsa.c`, 549 lines)
+  plus its `obj-y` line. Verified to apply cleanly with `patch -p1` and to
+  reproduce the exact driver that the shipped `xipImage` was built from. A
+  second, byte-identical copy of this one patch used to sit under top-level
+  `patches/`, tracked separately with nothing to keep the two in sync; that
+  copy is gone. There also used to be a fourth patch here,
+  `01-kernel-esp32ng-ap-support.patch`, carrying the SoftAP; it is gone, and
+  with it the only reason the esp32-ng driver diverged from upstream beyond
+  the BLE pipe. The remaining files keep their names so existing references
+  stay valid. Top-level `patches/` has its own gaps for the same reason: only
+  `00`, `02` and `03` remain.
 - `flash.sh` — flashes a bare board from `images/` with nothing but `esptool`
   (see "Flash directly" above).
 - `patches/02-firmware-network-adapter.patch` — every change to the ESP32

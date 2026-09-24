@@ -27,7 +27,7 @@ log ("build-output/fixtest/board-check-run1/boot.log"):
  
  	chosen {
 -		bootargs = "earlycon=esp32s3uart,mmio32,0x60000000,115200n8,40000000 console=ttyS0,115200n8 debug rw root=mtd:rootfs no_hash_pointers ";
-+		bootargs = "earlycon=esp32s3uart,mmio32,0x60000000,115200n8,40000000 console=ttyS0,115200n8 quiet rw root=mtd:rootfs rootfstype=cramfs panic=10 panic_print=0x20 ";
++		bootargs = "earlycon=esp32s3uart,mmio32,0x60000000,115200n8,40000000 console=ttyGS3 console=ttyS0,115200n8 quiet rw root=mtd:rootfs rootfstype=cramfs panic=10 panic_print=0x20 ";
  	};
  
  	aliases {
