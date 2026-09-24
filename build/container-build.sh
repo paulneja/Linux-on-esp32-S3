@@ -104,10 +104,9 @@ toolchain() {
             CT_PREFIX="$PWD/builds" ./ct-ng build
             test -x "$toolchain_path/bin/$toolchain_name-gcc"
             cache_parent=$(dirname "$toolchain_cache")
-            cache_tmp="$cache_parent/.${toolchain_name}.tmp.$$"
             mkdir -p "$cache_parent"
-            rm -rf "$cache_tmp"
-            cp -a "$toolchain_path" "$cache_tmp"
+            cache_tmp=$(mktemp -d "$cache_parent/.${toolchain_name}.tmp.XXXXXX")
+            cp -a "$toolchain_path/." "$cache_tmp/"
             test -x "$cache_tmp/bin/$toolchain_name-gcc"
             if [ ! -e "$toolchain_cache" ]; then
                 mv "$cache_tmp" "$toolchain_cache"
