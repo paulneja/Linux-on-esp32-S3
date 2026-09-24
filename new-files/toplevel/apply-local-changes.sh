@@ -1,4 +1,5 @@
 #!/bin/bash
+# Copyright (c) 2026 Paulneja. GPLv3, see LICENSE. https://github.com/paulneja/Linux-on-esp32-S3
 set -euo pipefail
 cd "$(dirname "$0")"
 
