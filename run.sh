@@ -522,24 +522,39 @@ PY
 
 do_recover() {
 	bold "== Restore /etc and /home to factory =="
-	local a port
+	local a port offs parts f
+	ensure_target || return 1
+	# shellcheck source=build/load-target.sh
+	source "$REPO/build/load-target.sh" || return 1
 	a=$(latest_artifacts) || { red "no artifacts to take the partitions from"; return 1; }
 	port=$(detect_port) || { red "no board detected"; return 1; }
-	for f in etc.jffs2 home.jffs2; do
-		[ -f "$a/$f" ] || { red "$a/$f is missing"; return 1; }
-	done
+	offs=$(python3 - "$REPO/new-files/esp-hosted/network_adapter/$PARTITION_CSV" <<'PY'
+import csv, sys
+for row in csv.reader(open(sys.argv[1])):
+    if row and row[0].strip() in ('etc', 'home'):
+        print(row[0].strip(), row[3].strip())
+PY
+) || { red "could not read $PARTITION_CSV"; return 1; }
+	parts=()
+	while read -r name off; do
+		[ "$name" = home ] && [ "$HAS_HOME" != 1 ] && continue
+		f="$a/$name.jffs2"
+		[ -f "$f" ] || { red "$f is missing"; return 1; }
+		parts+=("$off" "$f")
+	done <<< "$offs"
+	[ "${#parts[@]}" -gt 0 ] || { red "no etc partition in $PARTITION_CSV"; return 1; }
 	red "this erases the current /etc and /home on the board"
 	ask "  Continue?" || return 1
 	free_port "$port" || return 1
 	# The hyphenated spellings are esptool 5 only, and build/Dockerfile pins
 	# 4.8.1, which rejects them -- so this failed against the very version the
 	# project builds with. The underscore forms work in both: esptool 5 takes
-	# them with a deprecation warning. The offsets are the etc and home
-	# partitions; flash.sh reads those from the CSV instead of hardcoding them.
+	# them with a deprecation warning. The offsets come from the target's CSV,
+	# the 8 MB ones have no home partition.
 	local tool; tool=$(have esptool && echo esptool || echo esptool.py)
 	"$tool" --chip esp32s3 --port "$port" --baud 460800 \
 		--before default_reset --after hard_reset \
-		write_flash 0xd0000 "$a/etc.jffs2" 0xcc0000 "$a/home.jffs2"
+		write_flash "${parts[@]}"
 	local rc=$?
 	[ "$rc" -eq 0 ] && green "partitions restored; the board was reset" || red "the restore failed"
 	return "$rc"
