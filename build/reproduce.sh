@@ -34,6 +34,7 @@ fi
 
 mkdir -p build-output
 work=$(mktemp -d "$repo/build-output/reproduce.XXXXXX")
+printf '%s\n' "${TARGET:-esp32s3_16m}" > "$work/target"
 mkdir -p "$work/Linux-on-esp32-S3" "$work/logs"
 git archive HEAD | tar -x --exclude=images -C "$work/Linux-on-esp32-S3"
 git rev-parse HEAD > "$work/source-commit.txt"

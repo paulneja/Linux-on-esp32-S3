@@ -293,11 +293,25 @@ free_port() {
 
 builds() { ls -dt "$REPO"/build-output/reproduce.*/artifacts 2>/dev/null; }
 
+# newest build of the current target. old builds have no target file, so
+# those go by the size of the full image
 latest_artifacts() {
 	if [ -n "$ARTIFACTS" ]; then printf '%s\n' "$ARTIFACTS"; return 0; fi
-	local first
-	first=$(builds | head -1)
-	[ -n "$first" ] && { printf '%s\n' "$first"; return 0; }
+	ensure_target || return 1
+	local bytes d t
+	bytes=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]]["flash_bytes"])' \
+		"$REPO/build/targets.json" "$TARGET") || return 1
+	while read -r d; do
+		if [ -f "$d/../target" ]; then
+			t=$(head -n1 "$d/../target")
+			[ "$t" = "$TARGET" ] || continue
+		elif [ "$(wc -c < "$d/linux-esp32s3-native-full.bin" 2>/dev/null)" != "$bytes" ]; then
+			continue
+		fi
+		printf '%s\n' "$d"
+		return 0
+	done < <(builds)
+	warn "no build for $TARGET yet"
 	return 1
 }
 
