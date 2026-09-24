@@ -14,6 +14,7 @@ ASSUME_YES=0
 QUIET=0
 ACTION=""
 LOGDIR=${LOGDIR:-$(dirname "$REPO")}
+TARGET_FILE="$REPO/.target"
 BOARD_ID_HINT="usb-1a86"
 
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
@@ -45,7 +46,10 @@ import json, sys
 with open(sys.argv[1], encoding="utf-8") as f:
     targets = json.load(f)
 for target_id, config in targets.items():
-    print("{}\t{}".format(target_id, config.get("name", target_id)))
+    name = config.get("name", target_id)
+    if config.get("experimental"):
+        name += " EXPERIMENTAL (not tested on a board)"
+    print("{}\t{}".format(target_id, name))
 ' "$targets_json"
 	)
 
@@ -69,6 +73,7 @@ for target_id, config in targets.items():
 				if [ "$reply" -ge 1 ] && [ "$reply" -le "${#target_ids[@]}" ]; then
 					TARGET="${target_ids[$((reply - 1))]}"
 					export TARGET
+					printf '%s\n' "$TARGET" > "$TARGET_FILE"
 					info "target: ${target_names[$((reply - 1))]} ($TARGET)"
 					echo
 					return 0
@@ -79,8 +84,19 @@ for target_id, config in targets.items():
 	done
 }
 
+# first run asks, then .target remembers it. TARGET=... still wins
 ensure_target() {
 	[ -n "${TARGET:-}" ] && return 0
+	if [ -f "$TARGET_FILE" ]; then
+		TARGET=$(head -n1 "$TARGET_FILE")
+		if python3 -c 'import json,sys; sys.exit(sys.argv[2] not in json.load(open(sys.argv[1])))' \
+			"$REPO/build/targets.json" "$TARGET" 2>/dev/null; then
+			export TARGET
+			return 0
+		fi
+		warn "saved target '$TARGET' no longer exists, pick again"
+		TARGET=""
+	fi
 	select_target
 }
 
@@ -563,19 +579,22 @@ do_all() {
 }
 
 menu() {
+	ensure_target
 	while true; do
 		echo
 		bold "=== Linux on ESP32-S3 ==="
+		info "target: $TARGET"
 		cat <<'EOF'
   1) Check the environment
-  2) Build the selected target
-  3) Check the checksums of a build
-  4) Flash the board
-  5) Run the board test suite
-  6) EVERYTHING: build, check, flash and test
-  7) Reproducibility: two builds and a comparison
-  8) Recover the board (restore /etc and /home)
-  9) Status
+  2) Change the target
+  3) Build the selected target
+  4) Check the checksums of a build
+  5) Flash the board
+  6) Run the board test suite
+  7) EVERYTHING: build, check, flash and test
+  8) Reproducibility: two builds and a comparison
+  9) Recover the board (restore /etc and /home)
+ 10) Status
   0) Quit
 EOF
 		printf 'Choice: '
@@ -583,14 +602,15 @@ EOF
 		read_reply choice || { echo; return 0; }
 		case "$choice" in
 			1) check_env ;;
-			2) ensure_target && do_build ;;
-			3) do_verify ;;
-			4) do_flash ;;
-			5) do_test ;;
-			6) ensure_target && ensure_cache && ensure_jobs && do_all ;;
-			7) ensure_target && ensure_cache && ensure_jobs && do_repro ;;
-			8) do_recover ;;
-			9) do_status ;;
+			2) select_target ;;
+			3) ensure_target && do_build ;;
+			4) do_verify ;;
+			5) do_flash ;;
+			6) do_test ;;
+			7) ensure_target && ensure_cache && ensure_jobs && do_all ;;
+			8) ensure_target && ensure_cache && ensure_jobs && do_repro ;;
+			9) do_recover ;;
+			10) do_status ;;
 			0|q|Q) return 0 ;;
 			*) warn "invalid choice" ;;
 		esac
