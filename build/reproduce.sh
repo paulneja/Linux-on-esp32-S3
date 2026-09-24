@@ -25,7 +25,7 @@ test "$(id -u)" != 0 || { echo 'Run as a regular user with Docker access.' >&2; 
 # docker ate a whole disk once (#12)
 LOG_CAP_BYTES=${LOG_CAP_BYTES:-50000000}
 
-free_gb=$(df -PBG "$repo" 2>/dev/null | awk 'NR==2 {gsub("G","",$4); print $4}')
+free_gb=$(df -Pk "$repo" 2>/dev/null | awk 'NR==2 {print int($4 / 1024 / 1024)}')
 if [ -z "$free_gb" ] || [ "$free_gb" -lt 25 ] 2>/dev/null; then
 	echo "error: ${free_gb:-an unknown amount of} GB free; one build takes about 21 GB." >&2
 	echo 'Free some space (build-output/ is the usual place) before building.' >&2
