@@ -93,27 +93,30 @@ toolchain() {
             } | sha256sum | cut -d' ' -f1
         )
 
-        toolchain_cache="/cache/toolchain/$toolchain_key/$toolchain_name"
+        toolchain_cache_dir="/cache/toolchain/$toolchain_key"
+        toolchain_cache="$toolchain_cache_dir/toolchain.tar"
 
-        if [ -x "$toolchain_cache/bin/$toolchain_name-gcc" ]; then
+        if [ -f "$toolchain_cache" ]; then
             echo "Using cached Xtensa toolchain: $toolchain_key"
             mkdir -p "$PWD/builds"
-            ln -s "$toolchain_cache" "$toolchain_path"
+            tar -xf "$toolchain_cache" -C "$PWD/builds"
+            test -x "$toolchain_path/bin/$toolchain_name-gcc"
         else
             echo "Building Xtensa toolchain: $toolchain_key"
             CT_PREFIX="$PWD/builds" ./ct-ng build
             test -x "$toolchain_path/bin/$toolchain_name-gcc"
-            cache_parent=$(dirname "$toolchain_cache")
-            mkdir -p "$cache_parent"
-            cache_tmp=$(mktemp -d "$cache_parent/.${toolchain_name}.tmp.XXXXXX")
-            cp -a "$toolchain_path/." "$cache_tmp/"
-            test -x "$cache_tmp/bin/$toolchain_name-gcc"
+
+            mkdir -p "$toolchain_cache_dir"
+            cache_tmp=$(mktemp "$toolchain_cache_dir/.toolchain.tar.tmp.XXXXXX")
+
+            tar -cf "$cache_tmp" -C "$PWD/builds" "$toolchain_name"
+
             if [ ! -e "$toolchain_cache" ]; then
                 mv "$cache_tmp" "$toolchain_cache"
                 echo "Cached Xtensa toolchain: $toolchain_key"
             else
                 echo "Xtensa toolchain cache already exists: $toolchain_key"
-                rm -rf "$cache_tmp"
+                rm -f "$cache_tmp"
             fi
         fi
     else
