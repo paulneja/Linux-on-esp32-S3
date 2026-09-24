@@ -88,7 +88,7 @@ toolchain() {
                     "$DYNCONFIG_REV" \
                     "$ESP32_CONFIG_REV" \
                     "$CTNG_REV"
-                cat .config
+                grep -v '^CT_PARALLEL_JOBS=' .config
                 cat "$repo/build/pin-toolchain.py"
             } | sha256sum | cut -d' ' -f1
         )
