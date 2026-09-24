@@ -75,8 +75,8 @@ boots, 20 clean** with `dmesg` and the taint flags read back, MemAvailable
 - **The ESP-IDF Python environment was missing on a clean build (#16).**
   `container-build.sh` installs it explicitly.
 - The container no longer receives the host's git identity, a GID that
-  already exists in the image is handled, and `flash.sh` checks the image
-  checksums before it erases anything.
+  already exists in the image is handled (thanks @yuucha, #11), and
+  `flash.sh` checks the image checksums before it erases anything.
 - `kernel-driver-esp32-ng/` had drifted from the patches that build the
   kernel. It is back in sync, and CI fails if it drifts again.
 - Patch 04 was a second copy of the RSA driver and is gone; patch 05 no

@@ -357,6 +357,7 @@ native Xtensa Linux; the older approach remains in Git history.
 Built on the Xtensa Linux, Buildroot and esp-hosted work of
 [**jcmvbkbc**](https://github.com/jcmvbkbc) (Max Filippov), and on Espressif's
 firmware. See [NOTICE](NOTICE) for third-party components and licenses.
+The people who helped along the way are in [THANKS.md](THANKS.md).
 
 This project is licensed under the **GPLv3** (see [LICENSE](LICENSE)). Kernel
 code contributed here (`drivers/crypto/esp32s3_rsa.c`) is GPL-2.0-or-later.
