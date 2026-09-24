@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD */
+/*
+ * Espressif Systems Wireless LAN device driver
+ *
+ * SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD
+ *
+ */
 #ifndef __esp_cmd_h_
 #define __esp_cmd_h_
 
@@ -12,6 +17,11 @@
  * holds anything the transport can carry.
  */
 #define ESP_SIZE_OF_CMD_NODE 1600
+/* Largest command payload the shmem transport will carry: its packet cap
+ * (SHMEM_BUF_SIZE, 1600) less the payload header, and the node holds a
+ * header of its own on top of that.
+ */
+#define ESP_MAX_CMD_PAYLOAD (ESP_SIZE_OF_CMD_NODE - 2 * sizeof(struct esp_payload_header))
 
 #define ESP_CMD_HIGH_PRIO    1
 #define ESP_CMD_DFLT_PRIO    0

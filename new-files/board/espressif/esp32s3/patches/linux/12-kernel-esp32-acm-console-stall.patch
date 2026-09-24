@@ -1,0 +1,42 @@
+esp32-acm: dont spin forever when nobody reads the usb console
+
+jiffies dont move with irqs off, so bound the wait with ccount.
+
+--- a/drivers/tty/serial/esp32_acm.c
++++ b/drivers/tty/serial/esp32_acm.c
+@@ -14,6 +14,7 @@
+ #include <linux/slab.h>
+ #include <linux/tty_flip.h>
+ #include <asm/serial.h>
++#include <asm/timex.h>
+ 
+ #define DRIVER_NAME	"esp32s3-acm"
+ #define DEV_NAME	"ttyGS"
+@@ -136,17 +137,24 @@
+ 	esp32s3_acm_write(port, USB_SERIAL_JTAG_EP1_REG, c);
+ }
+ 
++/* nobody reading the usb port, stop yelling into it */
++#define ESP32S3_ACM_SYNC_TIMEOUT_CYCLES	(240000000 / 50)	/* 20 ms at 240 MHz */
++
++static bool esp32s3_acm_stalled;
++
+ static void esp32s3_acm_put_char_sync(struct uart_port *port, u8 c)
+ {
+-	unsigned long timeout = jiffies + HZ;
++	unsigned long start = get_ccount();
+ 
+ 	while (!esp32s3_acm_tx_fifo_free(port)) {
+-		if (time_after(jiffies, timeout)) {
+-			dev_warn(port->dev, "timeout waiting for TX FIFO\n");
++		if (esp32s3_acm_stalled ||
++		    get_ccount() - start > ESP32S3_ACM_SYNC_TIMEOUT_CYCLES) {
++			esp32s3_acm_stalled = true;
+ 			return;
+ 		}
+ 		cpu_relax();
+ 	}
++	esp32s3_acm_stalled = false;
+ 	esp32s3_acm_put_char(port, c);
+ 	esp32s3_acm_push(port);
+ }

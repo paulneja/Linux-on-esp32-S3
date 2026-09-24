@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Paulneja. GPLv3, see LICENSE. https://github.com/paulneja/Linux-on-esp32-S3
 set -uo pipefail
 
 REPO=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -481,7 +482,7 @@ do_test() {
 	n=2
 	while [ -e "$out" ]; do out="$REPO/build-output/board-check-$n"; n=$((n+1)); done
 	info "output: ${out#$REPO/}"
-	info "27 tests, about 5 minutes"
+	info "36 tests, about 5 minutes"
 	"$py" "$REPO/build/test-board.py" "$port" "$a" --output "$out" --reset-from-bootloader
 	local rc=$?
 	if [ -f "$out/results.json" ]; then

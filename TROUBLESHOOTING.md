@@ -21,8 +21,8 @@ Recover by rewriting the factory `/home`:
 
 ```sh
 esptool --chip esp32s3 --port YOUR_COM_ADAPTER \
-    --before default-reset --after no-reset \
-    write-flash 0xcc0000 ARTIFACTS/home.jffs2
+    --before default_reset --after no_reset \
+    write_flash 0xcc0000 ARTIFACTS/home.jffs2
 ```
 
 That erases whatever was in `/home`. Treat the partition as scratch space.
@@ -160,6 +160,12 @@ programs reset the board when they open the port. That is a fresh boot and a
 fresh WiFi association: for a few seconds after any console session the
 board answers no ping and no telnet. It is not a fault. The project's
 `serial-probe.py` lowers both lines before opening to avoid it.
+
+### The USB port shows the boot log, then no login
+
+That is the default. The kernel mirrors its console to the chip's own USB
+port, but the getty there is off to save RAM. Run `usb-console on` once
+from the UART console; it stays on across reboots.
 
 ### `scp: Connection closed` right after connecting
 

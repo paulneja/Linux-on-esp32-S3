@@ -1,0 +1,5 @@
+{
+ "ip": "<LAN address>",
+ "status": "PASS",
+ "detail": "/dev/pts/0"
+}

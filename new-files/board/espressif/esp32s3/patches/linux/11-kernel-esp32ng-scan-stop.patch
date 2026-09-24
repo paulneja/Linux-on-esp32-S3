@@ -1,0 +1,20 @@
+esp32-ng: complete an in-flight scan when the interface stops
+
+otherwise cfg80211 frees the request on NETDEV_DOWN and a late firmware
+reply completes it again. BUG() in wiphy_to_rdev.
+
+--- a/drivers/net/wireless/espressif/esp32-ng/main.c
++++ b/drivers/net/wireless/espressif/esp32-ng/main.c
+@@ -348,6 +348,12 @@
+ 
+ static int esp_stop(struct net_device *ndev)
+ {
++	struct esp_wifi_device *priv = netdev_priv(ndev);
++
++	/* end the scan ourselves, cfg80211 frees it without asking */
++	if (priv && priv->request)
++		ESP_MARK_SCAN_DONE(priv, true);
++
+ 	return 0;
+ }
+ 

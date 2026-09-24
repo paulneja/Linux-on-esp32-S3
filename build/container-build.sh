@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Paulneja. GPLv3, see LICENSE. https://github.com/paulneja/Linux-on-esp32-S3
 set -euo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 work=$(cd "$repo/.." && pwd)
@@ -17,6 +18,7 @@ export KBUILD_BUILD_TIMESTAMP='Sat Sep 5 00:00:00 UTC 2026' KBUILD_BUILD_VERSION
 export SOURCE_DATE_EPOCH=1788566400
 export GIT_AUTHOR_DATE='2026-09-05T00:00:00+00:00' GIT_COMMITTER_DATE='2026-09-05T00:00:00+00:00'
 mkdir -p "$work/refs" "$work/logs" "$work/stages" "$work/artifacts"
+LOG_CAP_BYTES=${LOG_CAP_BYTES:-50000000}
 driver="$work/refs/esp32-linux-build"
 base="$driver/build"
 br="$base/build-buildroot-$PROFILE"
@@ -55,7 +57,7 @@ stage() {
         return
     fi
     echo "START: $name $(date -u +%FT%TZ)"
-    (set -euo pipefail; "$@") 2>&1 | tee "$work/logs/$name.log"
+    (set -euo pipefail; "$@") 2>&1 | tee >(head -c "$LOG_CAP_BYTES" > "$work/logs/$name.log")
     date -u +%FT%TZ > "$work/stages/$name.done"
     echo "PASS: $name"
 }
@@ -155,6 +157,7 @@ firmware() {
     test "$(git -C esp-idf rev-parse HEAD)" = "$ESP_IDF_REV"
     cmake .
     cd esp-idf
+    # github 504s every single time. PLS HELP ME :'(
     for attempt in 1 2 3 4 5 6; do
         if [ "$attempt" -ge 3 ]; then
             export IDF_GITHUB_ASSETS=dl.espressif.com/github_assets
@@ -166,6 +169,7 @@ firmware() {
         fi
         sleep $((attempt * 15))
     done
+    python3 tools/idf_tools.py --non-interactive install-python-env
     set +u
     source export.sh
     set -u

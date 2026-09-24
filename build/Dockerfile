@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Paulneja and contributors. GPLv3, see LICENSE. https://github.com/paulneja/Linux-on-esp32-S3
 FROM debian:12@sha256:9344f8b8992482f80cba753f323adeaf17690076c095ccff6cc9536be98185dc
 RUN apt-get update && apt-get install -y --no-install-recommends \
     autoconf automake bash bc bison build-essential bzip2 ca-certificates \

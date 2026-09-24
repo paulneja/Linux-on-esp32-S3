@@ -1,10 +1,29 @@
 # Linux on an ESP32-S3 — native Linux that stays up
 
+[![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ea4aaa?style=flat&logo=githubsponsors&logoColor=white)](https://donation.streamiverse.io/paulneja)
+[![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen?style=flat)](CONTRIBUTING.md)
+
 Linux 6.11 running **natively on the ESP32-S3's Xtensa cores**, with WiFi,
 Bash, MicroPython and writable storage. Linux is not emulated: Espressif's
 firmware runs alongside it on the same chip and handles WiFi and flash access.
 All of this runs on one N16R8 board, without extra RAM, an SD card or a second
 computer attached to keep it running.
+
+> [!TIP]
+> **Want to help?** Hunt bugs, try it on other boards, or send fixes and
+> ideas: see [CONTRIBUTING.md](CONTRIBUTING.md). And if it saved you a
+> weekend, you can [chip in ❤️](https://donation.streamiverse.io/paulneja).
+
+## What's new in 0.8.1
+
+Fixes, mostly from issues people opened. WiFi no longer panics the kernel or
+leaks a DHCP client when it is taken down and up quickly (#13), `ssh
+root@board` gets a terminal (#9), and `kitten ssh` from kitty works. The
+boot log also comes out of the chip's own USB port, so a board with no UART
+adapter can be watched; `usb-console on` adds a login there (#17). The
+clean build no longer fills the disk (#12) or misses the ESP-IDF Python
+environment (#16). The [changelog](CHANGELOG.md) has each cause and how it
+was checked.
 
 ## What's new in 0.8
 
@@ -88,7 +107,7 @@ console. See [Build targets](#build-targets) for the corresponding
 
 ## Get the current version
 
-`images/` holds the 0.8 release, so the quickest path is to flash what is
+`images/` holds the 0.8.1 release, so the quickest path is to flash what is
 already in the repository:
 
 ```sh
@@ -218,6 +237,11 @@ For example:
 screen /dev/ttyUSB0 115200
 ```
 
+The chip's own USB port works as well: it shows up as `/dev/ttyACM0` (a COM
+port on Windows) and prints the boot log. The login there is off until you
+run `usb-console on` once from the UART, since its getty costs about 100 KiB
+of RAM.
+
 Log in as **`root` / `changeme123`**, then run `passwd` to change the
 password. A factory image has no WiFi configured:
 
@@ -266,8 +290,9 @@ checksums, partition checks and a board suite tied to one exact image.
 - **STA WiFi and BLE provisioning.** Join an existing network over the
   console or through the `Esp32-Linux` BLE service. See [BLE.md](BLE.md).
   SoftAP was removed; the board does not host a WiFi access point.
-- **nano and Lua.** `vi` points to nano rather than the disabled BusyBox vi
-  applet.
+- **nano.** `vi` points to nano rather than the disabled BusyBox vi applet.
+  Lua was carried this far too, but 0.8 dropped it to reclaim flash once the
+  one CGI script that used it was rewritten in sh and awk.
 - **Hardware RSA acceleration.** The `rsa-esp32s3` Linux Crypto API driver
   has boot-time 512-bit and 2048-bit self-tests.
 - **Optional SSH and HTTP services.** Dropbear is controlled with
@@ -276,6 +301,9 @@ checksums, partition checks and a board suite tied to one exact image.
   unless told otherwise.
   Both are off by default. SSH is slow on this hardware; the RSA driver does
   not accelerate its Curve25519 operations.
+- **USB console.** Kernel messages also go to the chip's own USB port
+  (`ttyGS3`). A login there is off by default, since its getty costs about
+  100 KiB of RAM: `usb-console on|off|status`, kept across reboots.
 - **NTP and curl.** Plain HTTP works. HTTPS uses certificate verification
   with a trimmed CA bundle and TLS 1.2, but remains experimental under the
   board's RAM constraints.
@@ -284,21 +312,19 @@ checksums, partition checks and a board suite tied to one exact image.
 
 What was tested, and on which bytes, is written down rather than implied:
 
-- **The 0.8 board suite ran on a clean build of `8ea9011`** (`7b4c94e` in
-  this history): a fresh clone, `run.sh --all`, **36 tests, 0 failed**; then
-  ten checks beyond the suite (10/10), ten factory boots with `dmesg` and the
-  taint flags read back (10 clean), and the board driven from another machine
-  over WiFi (SSH, scp, the web page).
-  [`2026-09-14-final-image.md`](build/verification/2026-09-14-final-image.md).
-- **The published image was built by the Image workflow from `13c85d6`**,
-  the tagged sources. Between `8ea9011` and that commit the build inputs
-  changed only in comments, plus the `wifi connect` fix, and the rootfs in
-  `images/` carries that fix (the script in it is byte-identical to the one
-  in the tree). Two independent container builds of the commit differ in one
-  file, `/etc/shadow`, from the random password salt.
+- **The 0.8.1 images were built by the Image workflow and tested as
+  they are.** Two container builds of the release commit differ in one file,
+  `/etc/shadow`, from the random password salt. The exact bytes in `images/`
+  were then flashed and run: **36 tests, 0 failed**, ten checks beyond the
+  suite (10/10), **20 factory boots, 20 clean** with `dmesg` and the taint
+  flags read back, SSH with a terminal from another machine over WiFi, the
+  `usb-console` switch across reboots, and the WiFi stress that used to
+  panic the kernel.
+  [`2026-09-23-release.md`](build/verification/2026-09-23-release.md).
+- **0.8 was tested on a clean build of `8ea9011`** (`7b4c94e` in this
+  history), not on the published bytes.
+  [`2026-09-14-final-image.md`](build/verification/2026-09-14-final-image.md),
   [`2026-09-14-release.md`](build/verification/2026-09-14-release.md).
-- **Not done yet:** the exact bytes in `images/` have not been through the
-  board suite themselves. That run is the next record.
 - **The corruption fix, measured:** 55 factory boots in a row on the fixed
   firmware, all clean, against 10 faults in 17 before it.
   [`2026-09-14-cache-fix.md`](build/verification/2026-09-14-cache-fix.md).
@@ -345,7 +371,7 @@ flash reclaim.
 ```
 
 The script reads `images/` unless `--images` points elsewhere, and requires
-Python 3 and esptool. Everything in `images/` belongs to the 0.8 release and
+Python 3 and esptool. Everything in `images/` belongs to the 0.8.1 release and
 matches the combined image there byte for byte. Earlier releases and their
 binaries stay on the releases page.
 
@@ -382,8 +408,7 @@ native Xtensa Linux; the older approach remains in Git history.
 Built on the Xtensa Linux, Buildroot and esp-hosted work of
 [**jcmvbkbc**](https://github.com/jcmvbkbc) (Max Filippov), and on Espressif's
 firmware. See [NOTICE](NOTICE) for third-party components and licenses.
+The people who helped along the way are in [THANKS.md](THANKS.md).
 
 This project is licensed under the **GPLv3** (see [LICENSE](LICENSE)). Kernel
 code contributed here (`drivers/crypto/esp32s3_rsa.c`) is GPL-2.0-or-later.
-
-P.S: Sorry for the wait 🥲

@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD */
+/*
+ * Espressif Systems Wireless LAN device driver
+ *
+ * SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD
+ *
+ */
 #include "utils.h"
 #include <linux/init.h>
 #include <linux/module.h>
@@ -343,6 +348,12 @@ static int esp_open(struct net_device *ndev)
 
 static int esp_stop(struct net_device *ndev)
 {
+	struct esp_wifi_device *priv = netdev_priv(ndev);
+
+	/* end the scan ourselves, cfg80211 frees it without asking */
+	if (priv && priv->request)
+		ESP_MARK_SCAN_DONE(priv, true);
+
 	return 0;
 }
 
@@ -915,6 +926,10 @@ static int init_adapter(struct esp_adapter *adapter, const struct esp_if_ops *if
 	memset(adapter, 0, sizeof(*adapter));
 
 	adapter->if_ops = if_ops;
+	/* deinit_adapter() purges this queue on every error path below, so
+	 * it has to exist before the first allocation that can fail.
+	 */
+	skb_queue_head_init(&adapter->events_skb_q);
 
 	/* Prepare interface RX work */
 	adapter->if_rx_workqueue = alloc_workqueue("ESP_IF_RX_WORK_QUEUE", 0, 0);
@@ -925,8 +940,6 @@ static int init_adapter(struct esp_adapter *adapter, const struct esp_if_ops *if
 	}
 
 	INIT_WORK(&adapter->if_rx_work, esp_if_rx_work);
-
-	skb_queue_head_init(&adapter->events_skb_q);
 
 	adapter->events_wq = alloc_workqueue("ESP_EVENTS_WORKQUEUE", WQ_HIGHPRI, 0);
 

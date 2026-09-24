@@ -1,0 +1,25 @@
+esp32s3-rsa: wipe the key on free
+
+n, e, d and rr stayed in the tfm ctx after teardown. d is the private exponent.
+
+--- a/drivers/crypto/esp32s3_rsa.c
++++ b/drivers/crypto/esp32s3_rsa.c
+@@ -3,6 +3,7 @@
+ #include <linux/delay.h>
+ #include <linux/io.h>
+ #include <linux/kernel.h>
++#include <linux/string.h>
+ #include <linux/module.h>
+ #include <linux/moduleparam.h>
+ #include <linux/mutex.h>
+@@ -189,6 +190,10 @@
+ {
+ 	mpi_free(k->n_mpi);
+ 	k->n_mpi = NULL;
++	memzero_explicit(k->n, sizeof(k->n));
++	memzero_explicit(k->e, sizeof(k->e));
++	memzero_explicit(k->d, sizeof(k->d));
++	memzero_explicit(k->rr, sizeof(k->rr));
+ 	k->have_e = k->have_d = false;
+ 	k->nwords = 0;
+ }

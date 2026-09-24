@@ -1,4 +1,5 @@
 #!/bin/sh
+# Copyright (c) 2026 Paulneja. GPLv3, see LICENSE. https://github.com/paulneja/Linux-on-esp32-S3
 set -eu
 
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -202,12 +203,6 @@ else
 	echo "Warning: the full image overwrites /etc and /home, even without --erase."
 fi
 
-if [ "$ERASE" = 1 ]; then
-	echo "==> Erasing the whole chip (this wipes /home too)"
-	# shellcheck disable=SC2086
-	$ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 erase_flash
-fi
-
 # images/ now ships a SHA256SUMS; check it when the directory has one, so a
 # truncated download or a half-written artifact is caught before the erase.
 if [ -f "$IMG/SHA256SUMS" ] && command -v sha256sum >/dev/null 2>&1; then
@@ -216,6 +211,12 @@ if [ -f "$IMG/SHA256SUMS" ] && command -v sha256sum >/dev/null 2>&1; then
 		echo "error: checksum mismatch in $IMG; no board data was changed" >&2
 		exit 1
 	}
+fi
+
+if [ "$ERASE" = 1 ]; then
+	echo "==> Erasing the whole chip (this wipes /home too)"
+	# shellcheck disable=SC2086
+	$ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 erase_flash
 fi
 
 echo "==> Flashing validated images"

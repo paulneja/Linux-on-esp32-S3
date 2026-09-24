@@ -4,6 +4,85 @@ Releases carry one flashable `.bin` for a 16 MB / 8 MB-PSRAM ESP32-S3. Full
 notes and the binaries are on the
 [releases page](https://github.com/paulneja/Linux-on-esp32-S3/releases).
 
+## 0.8.1 — WiFi that survives being poked, and a USB console (2026-09-23)
+
+A fixes release. Everything below was found by a user issue or by pushing the
+board harder than the 0.8 tests did, and each fix was checked on the board by
+repeating what broke it. Measured on a clean build of the release commit:
+**36 board tests, 0 failed**, ten more beyond the suite (10/10), **20 factory
+boots, 20 clean** with `dmesg` and the taint flags read back, MemAvailable
+3708 kB at the start of the suite against 3744 kB in 0.8.
+
+### WiFi
+
+- **The command queue race behind "WiFi doesn't connect and sometimes kernel
+  panics" (#13).** A second command queued while the first was in flight
+  sat with nothing to run it, timed out after five seconds, and was recycled
+  onto the free list while still linked into the pending one, which
+  cross-linked the two. `10-kernel-esp32ng-cmd-race.patch` takes it off the
+  pending queue before recycling it and re-arms the worker when the current
+  command clears. 100 `ip link set espsta0 down/up` in a row used to end in
+  `Command[N] timed out` and a fault in the work queue; now they end clean.
+- **With that fixed, the same 100 cycles hit a `BUG()` in cfg80211.** The
+  driver's `ndo_stop` did nothing, so bringing the interface down during a
+  scan left cfg80211 to finish the scan itself, free the request, and the
+  driver to complete it again when the firmware answered: a use after free
+  that ended in `wiphy_to_rdev()`. `11-kernel-esp32ng-scan-stop.patch`
+  completes the scan in `esp_stop()`, before cfg80211 has to.
+- **Every `wifi connect` leaked a DHCP client and about 100 kB.** The `wifi`
+  script killed `wpa_supplicant` before `ifdown`, so the interface's own
+  `pre-down killall wpa_supplicant` found nothing, failed, and `ifdown` gave
+  up before stopping `udhcpc`, while still forgetting the interface was up.
+  Twelve reconnects left thirteen `udhcpc`; 25 in a row ran the board out of
+  memory. The `pre-down` can no longer fail, `wifi` takes the link down first
+  and sweeps what is left, and the clock script stops the previous `ntpd -q`.
+  25 reconnects now keep one `udhcpc` and a flat MemAvailable.
+
+### SSH
+
+- **`ssh root@board` got no terminal (#9).** Cross-compiling skipped dropbear's
+  `/dev/ptmx` probe, so it fell back to scanning `/dev/pty??`, which this
+  kernel does not build: "PTY allocation request failed". It uses `/dev/ptmx`
+  now. `build/test-ssh-pty.py` checks it from the host over WiFi.
+- **`kitten ssh` from kitty failed with no shell.** Its bootstrap unpacks a
+  `tar.gz` with `tar xpzf`, and BusyBox tar was built without gzip support.
+  `CONFIG_FEATURE_SEAMLESS_GZ` is on; the board still has no `xterm-kitty`
+  terminfo, so kitty falls back to a plain terminal type.
+
+### A console on the chip's own USB port (#17)
+
+- The kernel console is mirrored to the USB Serial/JTAG port as `ttyGS3`,
+  so a board plugged in by its native USB connector shows the boot log with
+  no UART adapter. `/dev/console` and the main login stay on the UART. The
+  firmware no longer claims that port as a secondary ESP-IDF console.
+- A login there is off by default: a getty holding `ttyGS3` open costs about
+  100 kB, most of it tty buffers in the kernel, cable or not. That was
+  measured, 3528 kB against 3716 kB available at boot. `usb-console
+  on|off|status` switches it and the setting survives a reboot. BusyBox init
+  reads `inittab` before `/etc` is mounted, so `S47usbconsole` has it reread
+  the writable copy.
+- With nothing on the other end the port's FIFO never drains, and the
+  console's busy-wait was bounded by `jiffies`, which do not advance with
+  interrupts off. `12-kernel-esp32-acm-console-stall.patch` bounds it by the
+  cycle counter and stops waiting on a port that has stalled once. 300
+  kernel errors with the cable unplugged cost about 4 ms each and hang
+  nothing.
+
+### Build
+
+- **`reproduce.sh` could fill the disk (#12).** Logs are capped at 50 MB each
+  and the build checks for free space before it starts, not hours in.
+- **The ESP-IDF Python environment was missing on a clean build (#16).**
+  `container-build.sh` installs it explicitly.
+- The container no longer receives the host's git identity, a GID that
+  already exists in the image is handled (thanks @yuucha, #11), and
+  `flash.sh` checks the image checksums before it erases anything.
+- `kernel-driver-esp32-ng/` had drifted from the patches that build the
+  kernel. It is back in sync, and CI fails if it drifts again.
+- Patch 04 was a second copy of the RSA driver and is gone; patch 05 no
+  longer carries a 984-line `main.c.orig`. The RSA driver wipes the key when
+  it is freed (patch 09).
+
 ## 0.8 — the board stops crashing (2026-09-14)
 
 Measured on the shipping image, built from a clean clone and read back off

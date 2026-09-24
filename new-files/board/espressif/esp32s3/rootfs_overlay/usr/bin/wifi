@@ -82,10 +82,16 @@ network={
 EOF
 }
 
+# ifdown first or udhcpc breeds like rabbits
+link_down() {
+	ifdown "$IFACE" 2>/dev/null
+	killall -q wpa_supplicant 2>/dev/null
+	killall -q udhcpc 2>/dev/null
+}
+
 apply_conf() {
 	echo "Connecting to '$1'..."
-	killall -q wpa_supplicant 2>/dev/null
-	ifdown "$IFACE" 2>/dev/null
+	link_down
 	ifup "$IFACE"
 	echo "Done. Check with: wifi status"
 }
@@ -212,7 +218,7 @@ scan|list)
 	;;
 connect)        shift; connect "$@" ;;
 status)         status ;;
-disconnect|off) killall -q wpa_supplicant 2>/dev/null; ifdown "$IFACE" 2>/dev/null; echo "STA link down." ;;
+disconnect|off) link_down; echo "STA link down." ;;
 -h|--help|help) usage ;;
 *)              echo "usage: wifi [scan|connect \"SSID\" [pass]|status|disconnect]" >&2; exit 1 ;;
 esac

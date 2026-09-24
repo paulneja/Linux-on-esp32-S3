@@ -1,0 +1,9 @@
+#!/bin/sh
+
+# init read the cramfs inittab before /etc was up. poke it
+case "$1" in
+start)
+	grep -q '^ttyGS3::' /etc/inittab && kill -HUP 1
+	;;
+esac
+exit 0

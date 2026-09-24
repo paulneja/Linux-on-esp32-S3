@@ -13,6 +13,7 @@
 #define MAX_SEQ_LEN                     10
 #define ESP_MAX_KEY_INDEX               0
 
+/* ESP Payload Header Flags */
 #define MORE_FRAGMENT                   (1 << 0)
 #define MAX_SSID_LEN                    32
 
@@ -28,11 +29,14 @@ struct esp_payload_header {
 	uint16_t         offset;
 	uint16_t         checksum;
 	uint8_t          reserved2;
+	/* Position of union field has to always be last,
+	 * this is required for hci_pkt_type */
 	union {
 		uint8_t      reserved3;
-		uint8_t      hci_pkt_type;
-		uint8_t      priv_pkt_type;
+		uint8_t      hci_pkt_type;    /* Packet type for HCI interface */
+		uint8_t      priv_pkt_type;   /* Packet type for priv interface */
 	};
+	/* Do no add anything here */
 } __packed;
 
 struct ieee_mgmt_header {
@@ -231,7 +235,7 @@ struct cmd_set_get_val {
 
 struct cmd_reg_domain {
 	struct     command_header header;
-	char       country_code[4];
+	char       country_code[4];  /* 4 for padding */
 } __packed;
 
 struct cmd_key_operation {

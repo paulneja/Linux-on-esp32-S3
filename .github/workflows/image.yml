@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Paulneja. GPLv3, see LICENSE. https://github.com/paulneja/Linux-on-esp32-S3
 name: Image
 
 on:
@@ -89,8 +90,9 @@ jobs:
               ../experiments/mmu-poc/fork/quiet-trace.patch | sort -u > ../touched
           # One by one, so a bad path in a patch header fails here instead of
           # yielding an empty tree that every patch "applies" to.
+          # Don't ask. It works.
           while read -r f; do
-            if git cat-file -e "$LINUX_KERNEL_REV:$f" 2>/dev/null; then
+            if [ -n "$(git ls-tree "$LINUX_KERNEL_REV" -- "$f")" ]; then
               git checkout -q "$LINUX_KERNEL_REV" -- "$f"
             fi
           done < ../touched
@@ -108,6 +110,36 @@ jobs:
           for p in kernel reclaim quiet-trace; do
             echo "== fork/$p.patch"; apply "../experiments/mmu-poc/fork/$p.patch"
           done
+
+      - name: Check the kernel-driver-esp32-ng/ reference copy is not stale
+        run: |
+          set -e
+          . build/sources.lock
+          # this copy went stale twice already. not a third
+          esp32ng_patches="02-kernel-ble-prov 05-kernel-esp32ng-fixes 10-kernel-esp32ng-cmd-race 11-kernel-esp32ng-scan-stop"
+          git clone --no-checkout --depth 1 --filter=blob:none \
+              https://github.com/jcmvbkbc/linux-xtensa.git ref-check
+          cd ref-check
+          git fetch --depth 1 origin "$LINUX_KERNEL_REV"
+          touched=$(sed -n 's|^+++ b/\(drivers/net/wireless/espressif/esp32-ng/[^[:space:]]*\).*|\1|p' \
+              $(for p in $esp32ng_patches; do echo "../new-files/board/espressif/esp32s3/patches/linux/$p.patch"; done) | sort -u)
+          while read -r f; do
+            [ -z "$(git ls-tree "$LINUX_KERNEL_REV" -- "$f")" ] || git checkout -q "$LINUX_KERNEL_REV" -- "$f"
+          done <<< "$touched"
+          for p in $esp32ng_patches; do
+            patch -p1 -f --no-backup-if-mismatch \
+                < "../new-files/board/espressif/esp32s3/patches/linux/$p.patch" >/dev/null
+          done
+          reference_ok=0
+          while read -r f; do
+            ref="../kernel-driver-esp32-ng/$(basename "$f")"
+            if ! cmp -s "$ref" "$f" 2>/dev/null; then
+              echo "$ref is stale:"
+              diff -u "$ref" "$f" || true
+              reference_ok=1
+            fi
+          done <<< "$touched"
+          exit "$reference_ok"
 
       - name: Check no file is carried by both a patch and new-files
         run: |

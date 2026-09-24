@@ -67,7 +67,7 @@ user files. Back up a used board privately before any full-image test.
 Never publish raw board backups: they may contain credentials and user data.
 
 Point `flash.sh` at this directory with `--images`; without it the script
-reads `images/`, which holds the 0.8 release. Its default combined-image
+reads `images/`, which holds the 0.8.1 release. Its default combined-image
 write replaces `/etc` and `/home` even without `--erase`. `--parts` preserves
 `/home` but still replaces `/etc`, including accounts, password hashes and
 network configuration. `--parts --erase` resets both, writing `home.jffs2`
@@ -83,7 +83,7 @@ then compares every artifact between them and publishes the result in the run
 summary. Each build uploads its images, checksums and logs.
 
 Expect a couple of hours; the job limit is six. The runner has no board, so
-`board_verification` stays `pending` in the manifest: flashing and the 27 board
+`board_verification` stays `pending` in the manifest: flashing and the 36 board
 tests are still a local step.
 
 The older `build-linux.yml` builds the base system only and is kept for
@@ -112,6 +112,14 @@ Three tools drive the board itself, all through the serial console:
   KERN_ERR and worse only, so the console alone cannot decide. A round is
   PASS only on positive evidence, and the summary carries a one-sided 95%
   bound on the rate; twenty rounds are the least that bound means anything.
+
+A fourth drives the board over the network instead: `build/test-ssh-pty.py
+PORT` reads the board's own `wifi status` over the console to find its IP,
+skips cleanly if WiFi is not configured, then opens SSH from the host with
+`get_pty=True` -- the `ssh -tt` equivalent -- and checks a real `/dev/pts/N`
+came back, the regression for issue #9 (dropbear falling back to a `/dev/pty??`
+scan this kernel does not build). It needs `paramiko` on the host in addition
+to `pyserial` and `esptool`.
 
 The fork backend is built by `experiments/mmu-poc/fork/build-kernel-reclaim.sh`
 with the page-set exchange on; `FORK_SWAP_BANKS=0` builds the copying model.
@@ -205,9 +213,8 @@ The exact 16 MiB image SHA256 is
 See the [verification record](verification/2026-09-06.md) and its archived
 machine-readable results for scope and limitations. This result applies to
 that artifact, not automatically to future code changes or other profiles.
-The committed `images/` are the 0.8 release: the artifacts of the Image
-workflow run on `13c85d6`, two container builds of that commit that differ
-only in `/etc/shadow` ([record](verification/2026-09-14-release.md)). The
-board suite, the extra tests and the soaks under `verification/2026-09-14-*`
-ran on the clean build of the commit before the documentation and comment
-pass, `8ea9011`, whose build inputs differ from `13c85d6` only in comments.
+The committed `images/` are the 0.8.1 release: `image-1` of the Image
+workflow run on the release commit, two container builds that differ only
+in `/etc/shadow`. Unlike 0.8, the board suite, the extra tests and the soak
+under `verification/2026-09-23-*` ran on those exact bytes
+([record](verification/2026-09-23-release.md)).

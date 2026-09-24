@@ -10,4 +10,5 @@ iface espsta0 inet dhcp
 	# starts with "find the IP address first".
 	hostname esp32s3
 	post-up wpa_supplicant -i espsta0 -c /etc/wpa_supplicant.conf -B
-	pre-down killall -q wpa_supplicant
+	# killall sulks when theres nothing to kill
+	pre-down killall -q wpa_supplicant || true
