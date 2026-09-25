@@ -11,6 +11,7 @@
 #   FLASH_SIZE
 #   FLASH_BYTES
 #   HAS_HOME
+#   USB_CONSOLE_GETTY
 #   ROOTFS_LIMIT
 #   KERNEL_LIMIT
 #   KERNEL_CONFIG
@@ -48,6 +49,7 @@ values = {
     "FLASH_SIZE": c["flash_size"],
     "FLASH_BYTES": c["flash_bytes"],
     "HAS_HOME": 1 if c["has_home"] else 0,
+    "USB_CONSOLE_GETTY": 1 if c.get("usb_console_getty", False) else 0,
     "ROOTFS_LIMIT": c["rootfs_limit"],
     "KERNEL_LIMIT": c["kernel_limit"],
     "KERNEL_CONFIG": c["kernel_config"],
