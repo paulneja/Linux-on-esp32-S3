@@ -31,6 +31,8 @@ if [ -f "$1/etc/inittab" ]; then
 	sed -i '/^::sysinit:\/sbin\/swapon /d; /^::shutdown:\/sbin\/swapoff /d' \
 		"$1/etc/inittab"
 
-	sed -i 's|^#ttyGS3::respawn:|ttyGS3::respawn:|' \
-		"$1/etc/inittab"
+	grep -q '^ttyGS3::' "$1/etc/inittab" ||
+		sed -i '/^console::respawn:/a\
+ttyGS3::respawn:/sbin/getty -L ttyGS3 0 vt100' \
+			"$1/etc/inittab"
 fi
