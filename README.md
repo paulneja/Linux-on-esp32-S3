@@ -154,12 +154,13 @@ JOBS=8 bash build/reproduce.sh
 #### Build targets
 
 The build supports multiple board and flash configurations through the
-`TARGET` environment variable.
+`TARGET` environment variable. `./run.sh` asks the first time and keeps the
+answer in `.target`. Option 2 in the menu changes it.
 
 | TARGET               | Board                                      | Flash | PSRAM | `/home`                                           |
 | -------------------- | ------------------------------------------ | ----: | ----: | ------------------------------------------------- |
 | `esp32s3_16m`        | ESP32-S3 DevKitC-1 / N16R8                 | 16 MB |  8 MB | JFFS2 in flash                                    |
-| `esp32s3_8m`         | Generic ESP32-S3 / N8R8                    |  8 MB |  8 MB | No dedicated flash partition                      |
+| `esp32s3_8m`         | Generic ESP32-S3 / N8R8 (experimental)     |  8 MB |  8 MB | No dedicated flash partition                      |
 | `xiao_esp32s3_8m`    | Seeed Studio XIAO ESP32S3 / N8R8           |  8 MB |  8 MB | No dedicated flash partition                      |
 | `xiao_esp32s3_8m_sd` | Seeed Studio XIAO ESP32S3 / N8R8 + MicroSD |  8 MB |  8 MB | ext2 on MicroSD (`fdisk` `mke2fs` setup required) |
 

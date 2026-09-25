@@ -14,6 +14,7 @@ ASSUME_YES=0
 QUIET=0
 ACTION=""
 LOGDIR=${LOGDIR:-$(dirname "$REPO")}
+TARGET_FILE="$REPO/.target"
 BOARD_ID_HINT="usb-1a86"
 
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
@@ -45,7 +46,10 @@ import json, sys
 with open(sys.argv[1], encoding="utf-8") as f:
     targets = json.load(f)
 for target_id, config in targets.items():
-    print("{}\t{}".format(target_id, config.get("name", target_id)))
+    name = config.get("name", target_id)
+    if config.get("experimental"):
+        name += " EXPERIMENTAL (not tested on a board)"
+    print("{}\t{}".format(target_id, name))
 ' "$targets_json"
 	)
 
@@ -69,6 +73,7 @@ for target_id, config in targets.items():
 				if [ "$reply" -ge 1 ] && [ "$reply" -le "${#target_ids[@]}" ]; then
 					TARGET="${target_ids[$((reply - 1))]}"
 					export TARGET
+					printf '%s\n' "$TARGET" > "$TARGET_FILE"
 					info "target: ${target_names[$((reply - 1))]} ($TARGET)"
 					echo
 					return 0
@@ -79,8 +84,19 @@ for target_id, config in targets.items():
 	done
 }
 
+# first run asks, then .target remembers it. TARGET=... still wins
 ensure_target() {
 	[ -n "${TARGET:-}" ] && return 0
+	if [ -f "$TARGET_FILE" ]; then
+		TARGET=$(head -n1 "$TARGET_FILE")
+		if python3 -c 'import json,sys; sys.exit(sys.argv[2] not in json.load(open(sys.argv[1])))' \
+			"$REPO/build/targets.json" "$TARGET" 2>/dev/null; then
+			export TARGET
+			return 0
+		fi
+		warn "saved target '$TARGET' no longer exists, pick again"
+		TARGET=""
+	fi
 	select_target
 }
 
@@ -277,11 +293,25 @@ free_port() {
 
 builds() { ls -dt "$REPO"/build-output/reproduce.*/artifacts 2>/dev/null; }
 
+# newest build of the current target. old builds have no target file, so
+# those go by the size of the full image
 latest_artifacts() {
 	if [ -n "$ARTIFACTS" ]; then printf '%s\n' "$ARTIFACTS"; return 0; fi
-	local first
-	first=$(builds | head -1)
-	[ -n "$first" ] && { printf '%s\n' "$first"; return 0; }
+	ensure_target || return 1
+	local bytes d t
+	bytes=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]]["flash_bytes"])' \
+		"$REPO/build/targets.json" "$TARGET") || return 1
+	while read -r d; do
+		if [ -f "$d/../target" ]; then
+			t=$(head -n1 "$d/../target")
+			[ "$t" = "$TARGET" ] || continue
+		elif [ "$(wc -c < "$d/linux-esp32s3-native-full.bin" 2>/dev/null)" != "$bytes" ]; then
+			continue
+		fi
+		printf '%s\n' "$d"
+		return 0
+	done < <(builds)
+	warn "no build for $TARGET yet"
 	return 1
 }
 
@@ -506,24 +536,39 @@ PY
 
 do_recover() {
 	bold "== Restore /etc and /home to factory =="
-	local a port
+	local a port offs parts f
+	ensure_target || return 1
+	# shellcheck source=build/load-target.sh
+	source "$REPO/build/load-target.sh" || return 1
 	a=$(latest_artifacts) || { red "no artifacts to take the partitions from"; return 1; }
 	port=$(detect_port) || { red "no board detected"; return 1; }
-	for f in etc.jffs2 home.jffs2; do
-		[ -f "$a/$f" ] || { red "$a/$f is missing"; return 1; }
-	done
+	offs=$(python3 - "$REPO/new-files/esp-hosted/network_adapter/$PARTITION_CSV" <<'PY'
+import csv, sys
+for row in csv.reader(open(sys.argv[1])):
+    if row and row[0].strip() in ('etc', 'home'):
+        print(row[0].strip(), row[3].strip())
+PY
+) || { red "could not read $PARTITION_CSV"; return 1; }
+	parts=()
+	while read -r name off; do
+		[ "$name" = home ] && [ "$HAS_HOME" != 1 ] && continue
+		f="$a/$name.jffs2"
+		[ -f "$f" ] || { red "$f is missing"; return 1; }
+		parts+=("$off" "$f")
+	done <<< "$offs"
+	[ "${#parts[@]}" -gt 0 ] || { red "no etc partition in $PARTITION_CSV"; return 1; }
 	red "this erases the current /etc and /home on the board"
 	ask "  Continue?" || return 1
 	free_port "$port" || return 1
 	# The hyphenated spellings are esptool 5 only, and build/Dockerfile pins
 	# 4.8.1, which rejects them -- so this failed against the very version the
 	# project builds with. The underscore forms work in both: esptool 5 takes
-	# them with a deprecation warning. The offsets are the etc and home
-	# partitions; flash.sh reads those from the CSV instead of hardcoding them.
+	# them with a deprecation warning. The offsets come from the target's CSV,
+	# the 8 MB ones have no home partition.
 	local tool; tool=$(have esptool && echo esptool || echo esptool.py)
 	"$tool" --chip esp32s3 --port "$port" --baud 460800 \
 		--before default_reset --after hard_reset \
-		write_flash 0xd0000 "$a/etc.jffs2" 0xcc0000 "$a/home.jffs2"
+		write_flash "${parts[@]}"
 	local rc=$?
 	[ "$rc" -eq 0 ] && green "partitions restored; the board was reset" || red "the restore failed"
 	return "$rc"
@@ -563,19 +608,22 @@ do_all() {
 }
 
 menu() {
+	ensure_target
 	while true; do
 		echo
 		bold "=== Linux on ESP32-S3 ==="
+		info "target: $TARGET"
 		cat <<'EOF'
   1) Check the environment
-  2) Build the selected target
-  3) Check the checksums of a build
-  4) Flash the board
-  5) Run the board test suite
-  6) EVERYTHING: build, check, flash and test
-  7) Reproducibility: two builds and a comparison
-  8) Recover the board (restore /etc and /home)
-  9) Status
+  2) Change the target
+  3) Build the selected target
+  4) Check the checksums of a build
+  5) Flash the board
+  6) Run the board test suite
+  7) EVERYTHING: build, check, flash and test
+  8) Reproducibility: two builds and a comparison
+  9) Recover the board (restore /etc and /home)
+ 10) Status
   0) Quit
 EOF
 		printf 'Choice: '
@@ -583,14 +631,15 @@ EOF
 		read_reply choice || { echo; return 0; }
 		case "$choice" in
 			1) check_env ;;
-			2) ensure_target && do_build ;;
-			3) do_verify ;;
-			4) do_flash ;;
-			5) do_test ;;
-			6) ensure_target && ensure_cache && ensure_jobs && do_all ;;
-			7) ensure_target && ensure_cache && ensure_jobs && do_repro ;;
-			8) do_recover ;;
-			9) do_status ;;
+			2) select_target ;;
+			3) ensure_target && do_build ;;
+			4) do_verify ;;
+			5) do_flash ;;
+			6) do_test ;;
+			7) ensure_target && ensure_cache && ensure_jobs && do_all ;;
+			8) ensure_target && ensure_cache && ensure_jobs && do_repro ;;
+			9) do_recover ;;
+			10) do_status ;;
 			0|q|Q) return 0 ;;
 			*) warn "invalid choice" ;;
 		esac
