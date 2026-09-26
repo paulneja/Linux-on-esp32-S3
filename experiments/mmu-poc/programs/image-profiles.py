@@ -15,8 +15,22 @@ OUT = EXP / 'out'
 PROGRAMS = OUT / 'programs'
 REPO = EXP.parent.parent
 BUILD = (REPO.parent / 'refs/esp32-linux-build/build').resolve()
-HOST = BUILD / 'build-buildroot-esp32s3_devkit_c1_16m/host'
-LIMIT = 0x780000
+TARGET = os.environ.get('TARGET', 'esp32s3_16m')
+
+with open(REPO / 'build/targets.json', encoding='utf-8') as f:
+    TARGETS = json.load(f)
+
+if TARGET not in TARGETS:
+    raise SystemExit(
+        f'error: unknown TARGET={TARGET}; supported targets: '
+        + ' '.join(TARGETS)
+    )
+
+TARGET_CONFIG = TARGETS[TARGET]
+PROFILE = TARGET_CONFIG['profile']
+LIMIT = TARGET_CONFIG['rootfs_limit']
+
+HOST = BUILD / f'build-buildroot-{PROFILE}/host'
 PROFILES = {'all': ['bash', 'dash', 'make', 'micropython', 'socat'],
             'bash-red': ['bash', 'dash', 'make', 'socat'],
             'python-automatizacion': ['dash', 'make', 'micropython'], 'base': []}

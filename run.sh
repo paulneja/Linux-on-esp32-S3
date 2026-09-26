@@ -5,13 +5,16 @@ set -uo pipefail
 REPO=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$REPO" || exit 1
 
-JOBS=${JOBS:-$( (nproc 2>/dev/null || echo 4) )}
+JOBS=${JOBS:-}
+DEFAULT_JOBS=4
+CACHE=${CACHE:-}
 PORT=${PORT:-}
 ARTIFACTS=${ARTIFACTS:-}
 ASSUME_YES=0
 QUIET=0
 ACTION=""
 LOGDIR=${LOGDIR:-$(dirname "$REPO")}
+TARGET_FILE="$REPO/.target"
 BOARD_ID_HINT="usb-1a86"
 
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
@@ -27,6 +30,165 @@ read_reply() {
 	else
 		read -r "$1"
 	fi
+}
+select_target() {
+	local targets_json="$REPO/build/targets.json"
+	local -a target_ids=()
+	local -a target_names=()
+	local id name reply i
+
+	while IFS=$'\t' read -r id name; do
+		target_ids+=("$id")
+		target_names+=("$name")
+	done < <(
+		python3 -c '
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    targets = json.load(f)
+for target_id, config in targets.items():
+    name = config.get("name", target_id)
+    if config.get("experimental"):
+        name += " EXPERIMENTAL (not tested on a board)"
+    print("{}\t{}".format(target_id, name))
+' "$targets_json"
+	)
+
+	[ "${#target_ids[@]}" -gt 0 ] || die "no targets defined in $targets_json"
+
+	bold "Select target:"
+	echo
+	for ((i = 0; i < ${#target_ids[@]}; i++)); do
+		printf '  %d) %s\n' "$((i + 1))" "${target_names[$i]}"
+	done
+	echo
+
+	while true; do
+		printf 'Target [1-%d]: ' "${#target_ids[@]}"
+		read_reply reply || die "could not read target selection"
+		case "$reply" in
+			''|*[!0-9]*)
+				warn "enter a number from 1 to ${#target_ids[@]}"
+				;;
+			*)
+				if [ "$reply" -ge 1 ] && [ "$reply" -le "${#target_ids[@]}" ]; then
+					TARGET="${target_ids[$((reply - 1))]}"
+					export TARGET
+					printf '%s\n' "$TARGET" > "$TARGET_FILE"
+					info "target: ${target_names[$((reply - 1))]} ($TARGET)"
+					echo
+					return 0
+				fi
+				warn "enter a number from 1 to ${#target_ids[@]}"
+				;;
+		esac
+	done
+}
+
+# first run asks, then .target remembers it. TARGET=... still wins
+ensure_target() {
+	[ -n "${TARGET:-}" ] && return 0
+	if [ -f "$TARGET_FILE" ]; then
+		TARGET=$(head -n1 "$TARGET_FILE")
+		if python3 -c 'import json,sys; sys.exit(sys.argv[2] not in json.load(open(sys.argv[1])))' \
+			"$REPO/build/targets.json" "$TARGET" 2>/dev/null; then
+			export TARGET
+			return 0
+		fi
+		warn "saved target '$TARGET' no longer exists, pick again"
+		TARGET=""
+	fi
+	select_target
+}
+
+select_cache() {
+	local reply
+
+	bold "Select cache mode:"
+	echo
+	printf '  1) dev   - reuse build caches\n'
+	printf '  2) clean - build without persistent caches\n'
+	echo
+
+	while true; do
+		printf 'Cache [1-2]: '
+		read_reply reply || die "could not read cache selection"
+
+		case "$reply" in
+			1)
+				CACHE=dev
+				export CACHE
+				info "cache: dev"
+				echo
+				return 0
+				;;
+			2)
+				CACHE=clean
+				export CACHE
+				info "cache: clean"
+				echo
+				return 0
+				;;
+			*)
+				warn "enter 1 or 2"
+				;;
+		esac
+	done
+}
+
+ensure_cache() {
+	case "${CACHE:-}" in
+		dev|clean)
+			return 0
+			;;
+		"")
+			select_cache
+			;;
+		*)
+			die "CACHE must be dev or clean (got: $CACHE)"
+			;;
+	esac
+}
+
+select_jobs() {
+	local reply
+
+	while true; do
+		printf 'Build jobs [%s]: ' "$DEFAULT_JOBS"
+		read_reply reply || die "could not read build jobs"
+
+		[ -n "$reply" ] || reply="$DEFAULT_JOBS"
+
+		case "$reply" in
+			*[!0-9]*|'')
+				warn "enter a positive integer"
+				;;
+			*)
+				if [ "$reply" -ge 1 ]; then
+					JOBS="$reply"
+					export JOBS
+					info "jobs: $JOBS"
+					echo
+					return 0
+				fi
+				warn "enter a positive integer"
+				;;
+		esac
+	done
+}
+
+ensure_jobs() {
+	if [ -z "${JOBS:-}" ]; then
+		select_jobs
+		return
+	fi
+
+	case "$JOBS" in
+		*[!0-9]*|'')
+			die "JOBS must be a positive integer (got: $JOBS)"
+			;;
+	esac
+
+	[ "$JOBS" -ge 1 ] || die "JOBS must be a positive integer (got: $JOBS)"
 }
 
 ask() {
@@ -45,7 +207,7 @@ With no action it opens the interactive menu.
 
 Actions:
   --check        Check the environment and fix what can be fixed
-  --build        Build everything from clean sources
+  --build        Build the selected target
   --verify       Check the checksums of a build
   --flash        Write the image to the board (ERASES /etc and /home)
   --test         Run the board test suite
@@ -131,11 +293,25 @@ free_port() {
 
 builds() { ls -dt "$REPO"/build-output/reproduce.*/artifacts 2>/dev/null; }
 
+# newest build of the current target. old builds have no target file, so
+# those go by the size of the full image
 latest_artifacts() {
 	if [ -n "$ARTIFACTS" ]; then printf '%s\n' "$ARTIFACTS"; return 0; fi
-	local first
-	first=$(builds | head -1)
-	[ -n "$first" ] && { printf '%s\n' "$first"; return 0; }
+	ensure_target || return 1
+	local bytes d t
+	bytes=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]]["flash_bytes"])' \
+		"$REPO/build/targets.json" "$TARGET") || return 1
+	while read -r d; do
+		if [ -f "$d/../target" ]; then
+			t=$(head -n1 "$d/../target")
+			[ "$t" = "$TARGET" ] || continue
+		elif [ "$(wc -c < "$d/linux-esp32s3-native-full.bin" 2>/dev/null)" != "$bytes" ]; then
+			continue
+		fi
+		printf '%s\n' "$d"
+		return 0
+	done < <(builds)
+	warn "no build for $TARGET yet"
 	return 1
 }
 
@@ -249,7 +425,9 @@ PY
 }
 
 do_build() {
-	bold "== Build from clean sources =="
+	ensure_cache
+	ensure_jobs
+	bold "== Build =="
 	have docker || die "docker is missing"
 	docker info >/dev/null 2>&1 || die "docker does not respond"
 	local free; free=$(disk_free_gb)
@@ -259,8 +437,10 @@ do_build() {
 	fi
 	clean_tree_or_fix || return 1
 	local log="$LOGDIR/esp32-build-$(date +%Y%m%d-%H%M%S).log"
-	info "jobs:  $JOBS"
-	info "log:   $log"
+	info "target: $TARGET"
+	info "cache:  $CACHE"
+	info "jobs:   $JOBS"
+	info "log:    $log"
 	echo
 	bold "This downloads and compiles a cross toolchain, the kernel, the"
 	bold "firmware and the userspace from source. It takes a long time:"
@@ -273,10 +453,10 @@ do_build() {
 	local started rc elapsed
 	started=$(date +%s)
 	if [ "$QUIET" = 1 ]; then
-		JOBS="$JOBS" bash "$REPO/build/reproduce.sh" > "$log" 2>&1
+		CACHE="$CACHE" TARGET="$TARGET" JOBS="$JOBS" bash "$REPO/build/reproduce.sh" > "$log" 2>&1
 		rc=$?
 	else
-		JOBS="$JOBS" bash "$REPO/build/reproduce.sh" 2>&1 | tee "$log"
+		CACHE="$CACHE" TARGET="$TARGET" JOBS="$JOBS" bash "$REPO/build/reproduce.sh" 2>&1 | tee "$log"
 		rc=${PIPESTATUS[0]}
 	fi
 	elapsed=$(( $(date +%s) - started ))
@@ -356,24 +536,39 @@ PY
 
 do_recover() {
 	bold "== Restore /etc and /home to factory =="
-	local a port
+	local a port offs parts f
+	ensure_target || return 1
+	# shellcheck source=build/load-target.sh
+	source "$REPO/build/load-target.sh" || return 1
 	a=$(latest_artifacts) || { red "no artifacts to take the partitions from"; return 1; }
 	port=$(detect_port) || { red "no board detected"; return 1; }
-	for f in etc.jffs2 home.jffs2; do
-		[ -f "$a/$f" ] || { red "$a/$f is missing"; return 1; }
-	done
+	offs=$(python3 - "$REPO/new-files/esp-hosted/network_adapter/$PARTITION_CSV" <<'PY'
+import csv, sys
+for row in csv.reader(open(sys.argv[1])):
+    if row and row[0].strip() in ('etc', 'home'):
+        print(row[0].strip(), row[3].strip())
+PY
+) || { red "could not read $PARTITION_CSV"; return 1; }
+	parts=()
+	while read -r name off; do
+		[ "$name" = home ] && [ "$HAS_HOME" != 1 ] && continue
+		f="$a/$name.jffs2"
+		[ -f "$f" ] || { red "$f is missing"; return 1; }
+		parts+=("$off" "$f")
+	done <<< "$offs"
+	[ "${#parts[@]}" -gt 0 ] || { red "no etc partition in $PARTITION_CSV"; return 1; }
 	red "this erases the current /etc and /home on the board"
 	ask "  Continue?" || return 1
 	free_port "$port" || return 1
 	# The hyphenated spellings are esptool 5 only, and build/Dockerfile pins
 	# 4.8.1, which rejects them -- so this failed against the very version the
 	# project builds with. The underscore forms work in both: esptool 5 takes
-	# them with a deprecation warning. The offsets are the etc and home
-	# partitions; flash.sh reads those from the CSV instead of hardcoding them.
+	# them with a deprecation warning. The offsets come from the target's CSV,
+	# the 8 MB ones have no home partition.
 	local tool; tool=$(have esptool && echo esptool || echo esptool.py)
 	"$tool" --chip esp32s3 --port "$port" --baud 460800 \
 		--before default_reset --after hard_reset \
-		write_flash 0xd0000 "$a/etc.jffs2" 0xcc0000 "$a/home.jffs2"
+		write_flash "${parts[@]}"
 	local rc=$?
 	[ "$rc" -eq 0 ] && green "partitions restored; the board was reset" || red "the restore failed"
 	return "$rc"
@@ -381,21 +576,26 @@ do_recover() {
 
 do_repro() {
 	bold "== Reproducibility: two builds of the same commit =="
+
 	local first second
-	first=$(builds | head -1)
-	if [ -z "$first" ]; then
-		info "no build yet; making the first one"
-		do_build || return 1
-		first=$(builds | head -1)
-	else
-		info "first: ${first#$REPO/}"
-	fi
-	info "now the second one, same commit"
+
+	info "making the first build"
 	do_build || return 1
-	second=$(builds | head -1)
-	if [ "$second" = "$first" ]; then red "a second build did not appear"; return 1; fi
+	first="$ARTIFACTS"
+
+	info "making the second build, same target and commit"
+	do_build || return 1
+	second="$ARTIFACTS"
+
+	if [ "$second" = "$first" ]; then
+		red "a second build did not appear"
+		return 1
+	fi
+
 	bold "== Comparison =="
-	python3 "$REPO/build/compare-builds.py" "${first%/artifacts}" "${second%/artifacts}"
+	python3 "$REPO/build/compare-builds.py" \
+		"${first%/artifacts}" \
+		"${second%/artifacts}"
 }
 
 do_all() {
@@ -408,19 +608,22 @@ do_all() {
 }
 
 menu() {
+	ensure_target
 	while true; do
 		echo
 		bold "=== Linux on ESP32-S3 ==="
+		info "target: $TARGET"
 		cat <<'EOF'
   1) Check the environment
-  2) Build everything from clean sources
-  3) Check the checksums of a build
-  4) Flash the board
-  5) Run the board test suite
-  6) EVERYTHING: build, check, flash and test
-  7) Reproducibility: two builds and a comparison
-  8) Recover the board (restore /etc and /home)
-  9) Status
+  2) Change the target
+  3) Build the selected target
+  4) Check the checksums of a build
+  5) Flash the board
+  6) Run the board test suite
+  7) EVERYTHING: build, check, flash and test
+  8) Reproducibility: two builds and a comparison
+  9) Recover the board (restore /etc and /home)
+ 10) Status
   0) Quit
 EOF
 		printf 'Choice: '
@@ -428,14 +631,15 @@ EOF
 		read_reply choice || { echo; return 0; }
 		case "$choice" in
 			1) check_env ;;
-			2) do_build ;;
-			3) do_verify ;;
-			4) do_flash ;;
-			5) do_test ;;
-			6) do_all ;;
-			7) do_repro ;;
-			8) do_recover ;;
-			9) do_status ;;
+			2) select_target ;;
+			3) ensure_target && do_build ;;
+			4) do_verify ;;
+			5) do_flash ;;
+			6) do_test ;;
+			7) ensure_target && ensure_cache && ensure_jobs && do_all ;;
+			8) ensure_target && ensure_cache && ensure_jobs && do_repro ;;
+			9) do_recover ;;
+			10) do_status ;;
 			0|q|Q) return 0 ;;
 			*) warn "invalid choice" ;;
 		esac
@@ -459,6 +663,12 @@ done
 if [ -n "$ARTIFACTS" ] && [ ! -d "$ARTIFACTS" ]; then
 	die "artifacts directory does not exist: $ARTIFACTS"
 fi
+
+case "$ACTION" in
+	build|all|repro)
+		ensure_target
+		;;
+esac
 
 case "$ACTION" in
 	check)   check_env ;;

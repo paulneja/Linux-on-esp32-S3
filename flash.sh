@@ -16,7 +16,8 @@ Usage: ./flash.sh [-p PORT] [--images DIR] [--parts] [--erase]
 
 Requires Python 3 and esptool. Images come from images/ beside this script
 unless --images points somewhere else, such as a build-output artifacts
-directory.
+directory. The board comes from TARGET, else the .target run.sh saved, else
+esp32s3_16m.
   -p, --port PORT  Serial/COM adapter (otherwise autodetected)
   --images DIR     Read the images from DIR instead of images/
   --parts          Write separate images; preserve /home unless --erase is used
@@ -63,6 +64,30 @@ else
 	exit 1
 fi
 
+# which board. sizes and the partition table come from build/targets.json
+TARGET=${TARGET:-}
+if [ -z "$TARGET" ] && [ -f "$DIR/.target" ]; then
+	TARGET=$(head -n1 "$DIR/.target")
+fi
+TARGET=${TARGET:-esp32s3_16m}
+TGT=$(python3 - "$DIR/build/targets.json" "$TARGET" <<'PY'
+import json, sys
+try:
+    c = json.load(open(sys.argv[1]))[sys.argv[2]]
+except (OSError, ValueError, KeyError):
+    sys.exit('error: unknown target ' + sys.argv[2] + ' (see build/targets.json)')
+print(c['partition_csv'], c['flash_size'], c['flash_bytes'], 1 if c['has_home'] else 0)
+PY
+) || exit 1
+# shellcheck disable=SC2086
+set -- $TGT
+CSV="$DIR/new-files/esp-hosted/network_adapter/$1"
+FLASH_SIZE=$2
+FLASH_BYTES=$3
+HAS_HOME=$4
+set --
+echo "Target: $TARGET ($FLASH_SIZE flash)"
+
 if [ -z "$PORT" ]; then
 	for p in /dev/ttyACM0 /dev/ttyACM1 /dev/ttyUSB0 /dev/ttyUSB1; do
 		[ -e "$p" ] && { PORT="$p"; break; }
@@ -76,13 +101,12 @@ fi
 # this runs before the preflight and leaves without touching anything else.
 if [ -n "$BACKUP" ]; then
 	mkdir -p "$BACKUP"
-	BCSV="$DIR/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r"
 	# Offsets come from the CSV, so a recut layout backs up the right regions
 	# without this script being edited.
-	RANGES=$(python3 - "$BCSV" <<'CSVEOF'
+	RANGES=$(python3 - "$CSV" "$HAS_HOME" <<'CSVEOF'
 import csv, sys
 from pathlib import Path
-want = ('etc', 'home')
+want = ('etc', 'home') if sys.argv[2] == '1' else ('etc',)
 found = {}
 for row in csv.reader(Path(sys.argv[1]).open()):
     if not row or not row[0].strip() or row[0].lstrip().startswith('#'):
@@ -101,15 +125,16 @@ CSVEOF
 	# shellcheck disable=SC2086
 	$ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 --before default_reset --after hard_reset \
 		read_flash "$1" "$2" "$BACKUP/etc.jffs2.bak"
-	# shellcheck disable=SC2086
-	$ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 --before default_reset --after hard_reset \
-		read_flash "$3" "$4" "$BACKUP/home.jffs2.bak"
+	if [ "$HAS_HOME" = 1 ]; then
+		# shellcheck disable=SC2086
+		$ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 --before default_reset --after hard_reset \
+			read_flash "$3" "$4" "$BACKUP/home.jffs2.bak"
+	fi
 	echo "Saved. These hold password hashes and wifi credentials: keep them private."
 	exit 0
 fi
 
-CSV="$DIR/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r"
-OFFSETS=$(python3 - "$IMG" "$CSV" "$PARTS" "$ERASE" <<'PY'
+OFFSETS=$(python3 - "$IMG" "$CSV" "$PARTS" "$ERASE" "$FLASH_BYTES" "$HAS_HOME" <<'PY'
 import csv
 from pathlib import Path
 import struct
@@ -117,7 +142,8 @@ import sys
 
 image_dir, table = map(Path, sys.argv[1:3])
 parts_mode, erase = sys.argv[3:5]
-flash_size = 16 * 1024 * 1024
+flash_size = int(sys.argv[5])
+has_home = sys.argv[6] == '1'
 
 def check_image(name, limit, exact=False):
     path = image_dir / name
@@ -145,14 +171,14 @@ try:
                 if offset < 0x9000 or size <= 0 or (offset | size) % 4096:
                     raise ValueError(f'{name}: invalid partition offset or size')
                 if offset + size > flash_size:
-                    raise ValueError(f'{name}: partition exceeds 16 MiB flash')
+                    raise ValueError(f'{name}: partition exceeds {flash_size >> 20} MiB flash')
                 parts[name] = (offset, size)
         end = 0x9000
         for name, (offset, size) in sorted(parts.items(), key=lambda item: item[1][0]):
             if offset < end:
                 raise ValueError(f'{name}: overlapping partitions')
             end = offset + size
-        required = ('factory', 'etc', 'linux', 'rootfs', 'home')
+        required = ('factory', 'etc', 'linux', 'rootfs') + (('home',) if has_home else ())
         for name in required:
             if name not in parts:
                 raise ValueError(f'{table}: missing {name} partition')
@@ -175,7 +201,7 @@ try:
                 check_image(filename, parts[name][1])
             elif erase == '1' and (image_dir / filename).exists():
                 check_image(filename, parts[name][1], exact=True)
-        print(' '.join(str(parts[name][0]) for name in required))
+        print(' '.join(str(parts[name][0]) for name in required) + ('' if has_home else ' -'))
 except (OSError, ValueError, struct.error) as error:
     sys.exit(f'error: preflight failed: {error}; no board data was changed')
 PY
@@ -188,13 +214,15 @@ if [ "$PARTS" = 1 ]; then
 	set -- 0x0 "$IMG/bootloader.bin" 0x8000 "$IMG/partition-table.bin" \
 		"$OFF_APP" "$IMG/network_adapter.bin" "$OFF_ETC" "$IMG/etc.jffs2" \
 		"$OFF_LINUX" "$IMG/xipImage" "$OFF_ROOTFS" "$IMG/rootfs.cramfs"
-	if [ "$ERASE" = 1 ]; then
+	if [ "$ERASE" = 1 ] && [ "$HAS_HOME" = 1 ]; then
 		if [ -f "$IMG/home.jffs2" ]; then
 			set -- "$@" "$OFF_HOME" "$IMG/home.jffs2"
 		else
 			echo "Note: no home.jffs2 here; /home is left erased and formatted on first write."
 		fi
 		echo "Warning: --parts --erase resets /etc and /home; all board data will be lost."
+	elif [ "$ERASE" = 1 ]; then
+		echo "Warning: --parts --erase resets /etc; all board data will be lost."
 	else
 		echo "Warning: --parts preserves /home but overwrites /etc (accounts and configuration)."
 	fi
@@ -222,7 +250,7 @@ fi
 echo "==> Flashing validated images"
 # shellcheck disable=SC2086
 $ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 --before default_reset --after hard_reset \
-	write_flash --flash_mode dio --flash_size 16MB --flash_freq 80m "$@"
+	write_flash --flash_mode dio --flash_size "$FLASH_SIZE" --flash_freq 80m "$@"
 
 cat <<'EOF'
 

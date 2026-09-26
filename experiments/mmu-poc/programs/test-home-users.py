@@ -11,7 +11,21 @@ import tempfile
 here = Path(__file__).resolve().parent
 repo = here.parents[2]
 board = repo / 'new-files/board/espressif/esp32s3'
-host = repo.parent / 'refs/esp32-linux-build/build/build-buildroot-esp32s3_devkit_c1_16m/host'
+target = os.environ.get('TARGET', 'esp32s3_16m')
+
+import json
+with (repo / 'build/targets.json').open(encoding='utf-8') as f:
+    targets = json.load(f)
+
+if target not in targets:
+    raise SystemExit(
+        f'error: unknown TARGET={target}; supported targets: '
+        + ' '.join(targets)
+    )
+
+profile = targets[target]['profile']
+
+host = repo.parent / f'refs/esp32-linux-build/build/build-buildroot-{profile}/host'
 image = Path(sys.argv[1]) if len(sys.argv) > 1 else here.parent / 'out/programs/rootfs-home-users-ready.cramfs'
 data = image.read_bytes()
 assert struct.unpack_from('<I', data)[0] == 0x28CD3D45

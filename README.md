@@ -93,10 +93,17 @@ xychart-beta
 
 ## Hardware
 
-- **ESP32-S3 with 16 MB flash and 8 MB Octal PSRAM**: an N16R8 module such as
-  the corresponding DevKitC-1.
-- Power and a serial/COM connection for flashing and the console. Use your
-  board's actual adapter port; no additional peripherals are required.
+The build supports multiple ESP32-S3 board and memory configurations.
+
+- **ESP32-S3 DevKitC-1 / N16R8**: 16 MB flash and 8 MB Octal PSRAM.
+- **Generic ESP32-S3 / N8R8**: 8 MB flash and 8 MB PSRAM.
+- **Seeed Studio XIAO ESP32S3 / N8R8**: 8 MB flash and 8 MB PSRAM.
+- **Seeed Studio XIAO ESP32S3 / N8R8 + MicroSD**: 8 MB flash and
+  8 MB PSRAM, with MicroSD available as writable `/home` storage.
+
+Power and a serial/COM connection are required for flashing and the
+console. See [Build targets](#build-targets) for the corresponding
+`TARGET` values.
 
 ## Get the current version
 
@@ -144,12 +151,56 @@ cd Linux-on-esp32-S3
 JOBS=8 bash build/reproduce.sh
 ```
 
+#### Build targets
+
+The build supports multiple board and flash configurations through the
+`TARGET` environment variable. `./run.sh` asks the first time and keeps the
+answer in `.target`. Option 2 in the menu changes it.
+
+| TARGET               | Board                                      | Flash | PSRAM | `/home`                                           |
+| -------------------- | ------------------------------------------ | ----: | ----: | ------------------------------------------------- |
+| `esp32s3_16m`        | ESP32-S3 DevKitC-1 / N16R8                 | 16 MB |  8 MB | JFFS2 in flash                                    |
+| `esp32s3_8m`         | Generic ESP32-S3 / N8R8 (experimental)     |  8 MB |  8 MB | No dedicated flash partition                      |
+| `xiao_esp32s3_8m`    | Seeed Studio XIAO ESP32S3 / N8R8           |  8 MB |  8 MB | No dedicated flash partition                      |
+| `xiao_esp32s3_8m_sd` | Seeed Studio XIAO ESP32S3 / N8R8 + MicroSD |  8 MB |  8 MB | ext2 on MicroSD (`fdisk` `mke2fs` setup required) |
+
+The existing 16 MB target remains the default:
+
+```sh
+TARGET=esp32s3_16m JOBS=8 bash build/reproduce.sh
+```
+
+#### Build cache
+
+`build/reproduce.sh` supports two cache modes:
+
+- `CACHE=clean` performs a build without persistent development caches.
+  Use this mode for final reproducibility validation.
+- `CACHE=dev` enables persistent development caches to reduce rebuild
+  time during development.
+
+Development cache mode currently reuses:
+
+- ESP-IDF tools and Python environment
+- Buildroot downloads
+- compiler cache
+- crosstool-NG source downloads
+- the completed Xtensa Linux toolchain
+
+Build output trees, Linux kernel build trees, root filesystems and final
+flash images are not reused as completed build outputs.
+
+```sh
+CACHE=dev TARGET=xiao_esp32s3_8m_sd JOBS=8 bash build/reproduce.sh
+```
+
 Allow time for downloads and compilation, and substantial free disk space.
-The build uses its own directory and does not reuse the development machine's
-toolchain or overwrite the older committed images.
+Each build uses a fresh build directory and does not overwrite the
+committed images. With `CACHE=dev`, selected downloads, tools and
+compiler caches are reused from the persistent development cache.
 
 The output is `build-output/reproduce.XXXXXX/artifacts/`, containing the
-16 MiB `linux-esp32s3-native-full.bin`, its component images,
+target-specific `linux-esp32s3-native-full.bin`, its component images,
 `SHA256SUMS` and `build-manifest.json`. Replace `XXXXXX` with the directory
 printed by your run. See the [complete build instructions](build/README.md).
 
@@ -168,12 +219,13 @@ you need first.**
 
 `flash.sh` checks every input, its size and the partition layout before it
 touches the board. Without `--images` it reads the committed `images/`, so
-pass the directory your build produced when you want that one instead. The
-equivalent by hand:
+pass the directory your build produced when you want that one instead.
+The equivalent by hand (replace `FLASH_SIZE` with `16MB` or `8MB`
+for the selected target):
 
 ```sh
 esptool --chip esp32s3 --port /dev/ttyUSB0 --baud 460800 \
-    write_flash --flash_mode dio --flash_size 16MB --flash_freq 80m \
+    write_flash --flash_mode dio --flash_size FLASH_SIZE --flash_freq 80m \
     0x0 build-output/reproduce.XXXXXX/artifacts/linux-esp32s3-native-full.bin
 ```
 

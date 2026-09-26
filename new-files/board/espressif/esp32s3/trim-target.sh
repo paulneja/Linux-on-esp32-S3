@@ -30,7 +30,17 @@ fi
 if [ -f "$1/etc/inittab" ]; then
 	sed -i '/^::sysinit:\/sbin\/swapon /d; /^::shutdown:\/sbin\/swapoff /d' \
 		"$1/etc/inittab"
+
+	# Keep the ttyGS3 entry in inittab for the runtime usb-console command.
+	# Targets may choose whether the USB login getty is enabled by default.
 	grep -q '^#\?ttyGS3::' "$1/etc/inittab" ||
-		sed -i '/^console::respawn:/a #ttyGS3::respawn:/sbin/getty -L ttyGS3 0 vt100' \
+		sed -i '/^console::respawn:/a\
+#ttyGS3::respawn:/sbin/getty -L ttyGS3 0 vt100' \
 			"$1/etc/inittab"
+
+	if [ "${USB_CONSOLE_GETTY:-0}" = "1" ]; then
+		sed -i 's/^#ttyGS3::/ttyGS3::/' "$1/etc/inittab"
+	else
+		sed -i 's/^ttyGS3::/#ttyGS3::/' "$1/etc/inittab"
+	fi
 fi

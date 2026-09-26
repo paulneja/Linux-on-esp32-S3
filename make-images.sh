@@ -4,7 +4,8 @@ set -euo pipefail
 
 REPO=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 OUT="$REPO/images"
-PROFILE=esp32s3_devkit_c1_16m
+TARGET="${TARGET:-esp32s3_16m}"
+source "$REPO/build/load-target.sh"
 
 die() { echo "error: $*" >&2; exit 1; }
 
@@ -44,7 +45,7 @@ else die "esptool not found (pip install esptool)"; fi
 
 mkdir -p "$OUT"
 
-CSV="$REPO/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r"
+CSV="$REPO/new-files/esp-hosted/network_adapter/$PARTITION_CSV"
 GEN=$(find "$BUILD/" -path '*partition_table/gen_esp32part.py' -print -quit 2>/dev/null) \
 	|| die "gen_esp32part.py not found under $BUILD"
 [ -n "$GEN" ] || die "gen_esp32part.py not found under $BUILD"
@@ -69,26 +70,33 @@ cp -v "$BR/xipImage"                         "$OUT/xipImage"
 cp -v "$BR/rootfs.cramfs"                    "$OUT/rootfs.cramfs"
 
 MKFS=""
-if [ -f "$HOST/sbin/mkfs.jffs2" ]; then
-	[ -x "$HOST/sbin/mkfs.jffs2" ] || chmod +x "$HOST/sbin/mkfs.jffs2" 2>/dev/null || true
-	[ -x "$HOST/sbin/mkfs.jffs2" ] && MKFS="$HOST/sbin/mkfs.jffs2"
-fi
-if [ -z "$MKFS" ] && command -v mkfs.jffs2 >/dev/null 2>&1; then
-	MKFS=$(command -v mkfs.jffs2)
-fi
 
-if [ -n "$MKFS" ]; then
-	echo "==> building the factory /home"
-	EMPTY_HOME=$(mktemp -d)
-	trap 'rm -rf -- "$EMPTY_HOME"' EXIT
-	chmod 755 "$EMPTY_HOME"
-	"$MKFS" -l -e 65536 -U -f --pad=$(($SIZE_HOME)) \
-		-d "$EMPTY_HOME" -o "$OUT/home.jffs2"
+if [ "$HAS_HOME" -eq 1 ]; then
+    if [ -f "$HOST/sbin/mkfs.jffs2" ]; then
+        [ -x "$HOST/sbin/mkfs.jffs2" ] || chmod +x "$HOST/sbin/mkfs.jffs2" 2>/dev/null || true
+        [ -x "$HOST/sbin/mkfs.jffs2" ] && MKFS="$HOST/sbin/mkfs.jffs2"
+    fi
+
+    if [ -z "$MKFS" ] && command -v mkfs.jffs2 >/dev/null 2>&1; then
+        MKFS=$(command -v mkfs.jffs2)
+    fi
+
+    if [ -n "$MKFS" ]; then
+        echo "==> building the factory /home"
+        EMPTY_HOME=$(mktemp -d)
+        trap 'rm -rf -- "$EMPTY_HOME"' EXIT
+        chmod 755 "$EMPTY_HOME"
+        "$MKFS" -l -e 65536 -U -f --pad=$(($SIZE_HOME)) \
+            -d "$EMPTY_HOME" -o "$OUT/home.jffs2"
+    else
+        echo "==> no usable mkfs.jffs2; leaving the home partition erased"
+        echo "    (build trees copied through CI artifacts lose the executable bit;"
+        echo "     the board formats an erased home on its first write)"
+        rm -f "$OUT/home.jffs2"
+    fi
 else
-	echo "==> no usable mkfs.jffs2; leaving the home partition erased"
-	echo "    (build trees copied through CI artifacts lose the executable bit;"
-	echo "     the board formats an erased home on its first write)"
-	rm -f "$OUT/home.jffs2"
+    echo "==> target has no /home partition"
+    rm -f "$OUT/home.jffs2"
 fi
 
 fits() {
@@ -104,7 +112,7 @@ fits "$OUT/network_adapter.bin" "$OFF_APP"    "$SIZE_APP"    network_adapter.bin
 fits "$OUT/etc.jffs2"           "$OFF_ETC"    "$SIZE_ETC"    etc.jffs2
 fits "$OUT/xipImage"            "$OFF_LINUX"  "$SIZE_LINUX"  xipImage
 fits "$OUT/rootfs.cramfs"       "$OFF_ROOTFS" "$SIZE_ROOTFS" rootfs.cramfs
-if [ -n "$MKFS" ]; then
+if [ "$HAS_HOME" -eq 1 ] && [ -n "$MKFS" ]; then
 	fits "$OUT/home.jffs2"  "$OFF_HOME"   "$SIZE_HOME"   home.jffs2
 fi
 
@@ -125,7 +133,7 @@ fi
 echo "    clean"
 
 echo "==> checking Linux vector address against the firmware"
-KCONF="$REPO/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config"
+KCONF="$REPO/new-files/$KERNEL_CONFIG"
 FW_ELF="$NA/build/network_adapter.elf"
 
 elf_symbol_addr() {
@@ -199,18 +207,23 @@ else
 	fi
 fi
 
+MERGE_HOME=()
+if [ "$HAS_HOME" -eq 1 ] && [ -n "$MKFS" ]; then
+    MERGE_HOME=("$OFF_HOME" "$OUT/home.jffs2")
+fi
+
 echo "==> merging into linux-esp32s3-native-full.bin"
 # shellcheck disable=SC2086
 $ESPTOOL --chip esp32s3 merge_bin -o "$OUT/linux-esp32s3-native-full.bin" \
-	--flash_mode dio --flash_freq 80m --flash_size 16MB \
-	--fill-flash-size 16MB \
+	--flash_mode dio --flash_freq 80m --flash_size "$FLASH_SIZE" \
+	--fill-flash-size "$FLASH_SIZE" \
 	0x0            "$OUT/bootloader.bin" \
 	0x8000         "$OUT/partition-table.bin" \
 	"$OFF_APP"     "$OUT/network_adapter.bin" \
 	"$OFF_ETC"     "$OUT/etc.jffs2" \
 	"$OFF_LINUX"   "$OUT/xipImage" \
 	"$OFF_ROOTFS"  "$OUT/rootfs.cramfs" \
-	${MKFS:+"$OFF_HOME" "$OUT/home.jffs2"} >/dev/null
+	"${MERGE_HOME[@]}" >/dev/null
 
 echo
 echo "Done. images/ now holds:"

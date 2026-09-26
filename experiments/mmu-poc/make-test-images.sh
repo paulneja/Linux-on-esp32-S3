@@ -3,7 +3,11 @@ set -euo pipefail
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "$script_dir/../.." && pwd)
 build_dir=${1:-"$repo_dir/../refs/esp32-linux-build/build"}
-host_dir="$build_dir/build-buildroot-esp32s3_devkit_c1_16m/host"
+TARGET="${TARGET:-esp32s3_16m}"
+source "$repo_dir/build/load-target.sh"
+
+host_dir="$build_dir/build-buildroot-$PROFILE/host"
+
 bash "$script_dir/build.sh" "$build_dir"
 bash "$script_dir/build-micropython.sh" "$build_dir"
 bash "$script_dir/test-host.sh"

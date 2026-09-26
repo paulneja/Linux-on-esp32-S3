@@ -8,6 +8,11 @@ set -a
 source "$repo/build/sources.lock"
 set +a
 export JOBS=${JOBS:-8}
+
+TARGET="${TARGET:-esp32s3_16m}"
+source "$repo/build/load-target.sh"
+
+export TARGET PROFILE USB_CONSOLE_GETTY
 export KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=esp32-repro
 export KBUILD_BUILD_TIMESTAMP='Sat Sep 5 00:00:00 UTC 2026' KBUILD_BUILD_VERSION=1
 export SOURCE_DATE_EPOCH=1788566400
@@ -16,7 +21,17 @@ mkdir -p "$work/refs" "$work/logs" "$work/stages" "$work/artifacts"
 LOG_CAP_BYTES=${LOG_CAP_BYTES:-50000000}
 driver="$work/refs/esp32-linux-build"
 base="$driver/build"
-br="$base/build-buildroot-esp32s3_devkit_c1_16m"
+br="$base/build-buildroot-$PROFILE"
+BR2_DL_ARGS=()
+if [ -d /cache/buildroot-dl ]; then
+    BR2_DL_ARGS=(BR2_DL_DIR=/cache/buildroot-dl)
+fi
+BR2_CCACHE_ARGS=()
+if [ -d /cache/ccache ]; then
+    BR2_CCACHE_ARGS=(
+        BR2_CCACHE_DIR=/cache/ccache
+    )
+fi
 exp="$repo/experiments/mmu-poc"
 
 clone_locked() {
@@ -59,9 +74,57 @@ toolchain() {
     ./configure --enable-local
     make -j"$JOBS"
     ./ct-ng xtensa-esp32s3-linux-uclibcfdpic
+
     python3 "$repo/build/pin-toolchain.py" .config
-    CT_PREFIX="$PWD/builds" ./ct-ng build
-    test -x builds/xtensa-esp32s3-linux-uclibcfdpic/bin/xtensa-esp32s3-linux-uclibcfdpic-gcc
+
+    toolchain_name=xtensa-esp32s3-linux-uclibcfdpic
+    toolchain_path="$PWD/builds/$toolchain_name"
+
+    if [ -d /cache/toolchain ]; then
+        toolchain_key=$(
+            {
+                printf '%s\n' \
+                    "$BUILD_DRIVER_REV" \
+                    "$DYNCONFIG_REV" \
+                    "$ESP32_CONFIG_REV" \
+                    "$CTNG_REV"
+                grep -v '^CT_PARALLEL_JOBS=' .config
+                cat "$repo/build/pin-toolchain.py"
+            } | sha256sum | cut -d' ' -f1
+        )
+
+        toolchain_cache_dir="/cache/toolchain/$toolchain_key"
+        toolchain_cache="$toolchain_cache_dir/toolchain.tar"
+
+        if [ -f "$toolchain_cache" ]; then
+            echo "Using cached Xtensa toolchain: $toolchain_key"
+            mkdir -p "$PWD/builds"
+            tar -xf "$toolchain_cache" -C "$PWD/builds"
+            test -x "$toolchain_path/bin/$toolchain_name-gcc"
+        else
+            echo "Building Xtensa toolchain: $toolchain_key"
+            CT_PREFIX="$PWD/builds" ./ct-ng build
+            test -x "$toolchain_path/bin/$toolchain_name-gcc"
+
+            mkdir -p "$toolchain_cache_dir"
+            cache_tmp=$(mktemp "$toolchain_cache_dir/.toolchain.tar.tmp.XXXXXX")
+
+            tar -cf "$cache_tmp" -C "$PWD/builds" "$toolchain_name"
+
+            if [ ! -e "$toolchain_cache" ]; then
+                mv "$cache_tmp" "$toolchain_cache"
+                echo "Cached Xtensa toolchain: $toolchain_key"
+            else
+                echo "Xtensa toolchain cache already exists: $toolchain_key"
+                rm -f "$cache_tmp"
+            fi
+        fi
+    else
+        echo "Toolchain cache disabled"
+        CT_PREFIX="$PWD/builds" ./ct-ng build
+    fi
+
+    test -x "$toolchain_path/bin/$toolchain_name-gcc"
 }
 
 rootfs_base() {
@@ -71,14 +134,19 @@ rootfs_base() {
     test "$(readlink "$driver/local-changes")" = "$repo"
     cd "$driver"
     ./apply-local-changes.sh buildroot
-    make -C "$base/buildroot" O="$br" esp32s3_devkit_c1_16m_defconfig
+    make -C "$base/buildroot" O="$br" "${PROFILE}_defconfig"
+    if [ -d /cache/ccache ]; then
+        "$base/buildroot/utils/config" --file "$br/.config" --enable CCACHE
+    fi
     "$base/buildroot/utils/config" --file "$br/.config" --set-str TOOLCHAIN_EXTERNAL_PATH "$base/crosstool-NG/builds/xtensa-esp32s3-linux-uclibcfdpic"
     "$base/buildroot/utils/config" --file "$br/.config" --set-str TOOLCHAIN_EXTERNAL_CUSTOM_PREFIX '$(ARCH)-esp32s3-linux-uclibcfdpic'
     "$base/buildroot/utils/config" --file "$br/.config" --undefine PRIMARY_SITE --set-str PRIMARY_SITE 'https://sources.buildroot.net'
     grep -qx 'BR2_PRIMARY_SITE="https://sources.buildroot.net"' "$br/.config"
     "$base/buildroot/utils/config" --file "$br/.config" --set-str WGET 'wget -nd -t 3 --timeout=20'
     test "$(git ls-remote https://github.com/jcmvbkbc/linux-xtensa.git "refs/tags/$LINUX_KERNEL_TAG^{}" | cut -f1)" = "$LINUX_KERNEL_REV"
-    make -C "$base/buildroot" O="$br" BR2_JLEVEL="$JOBS"
+    make -C "$base/buildroot" O="$br" BR2_JLEVEL="$JOBS" \
+        "${BR2_DL_ARGS[@]}" \
+        "${BR2_CCACHE_ARGS[@]}"
     test -s "$br/images/rootfs.cramfs"
 }
 
@@ -110,9 +178,11 @@ firmware() {
     cd ../network_adapter
     idf.py set-target esp32s3
     cp sdkconfig.defaults.esp32s3.16m8r sdkconfig
+    sed -i "s|^CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=.*|CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"$PARTITION_CSV\"|" sdkconfig
+    sed -i "s|^CONFIG_PARTITION_TABLE_FILENAME=.*|CONFIG_PARTITION_TABLE_FILENAME=\"$PARTITION_CSV\"|" sdkconfig
     idf.py build
     cd "$repo"
-    bash make-images.sh "$driver"
+    TARGET="$TARGET" bash make-images.sh "$driver"
     cp -a images "$work/base-images"
 }
 
@@ -120,7 +190,7 @@ userspace() {
     mkdir -p "$exp/out/programs" "$exp/out/real-bins"
     clone_locked https://github.com/micropython/micropython "$MICROPYTHON_REV" "$exp/out/micropython-src"
     git -C "$exp/out/micropython-src" submodule update --init --depth 1 lib/berkeley-db-1.xx lib/libffi lib/mbedtls
-    bash "$exp/make-test-images.sh" "$base"
+    TARGET="$TARGET" bash "$exp/make-test-images.sh" "$base"
     bash "$exp/fork/build-kernel-reclaim.sh"
     bash "$exp/fork/make-image.sh"
     bash "$exp/fork/real/fetch.sh"
@@ -146,13 +216,25 @@ userspace() {
 }
 
 package() {
-    python3 "$repo/build/package-final.py" "$work"
+    TARGET="$TARGET" python3 "$repo/build/package-final.py" "$work"
 }
 
 export XTENSA_GNU_CONFIG="$base/xtensa-dynconfig/esp32s3.so"
 stage toolchain toolchain
 stage base-rootfs rootfs_base
 stage firmware firmware
-stage userspace userspace
-stage package package
+case "$FINAL_IMAGE" in
+    experimental)
+        stage userspace userspace
+        stage package package
+        ;;
+    buildroot)
+        stage package-buildroot cp -a "$work/base-images/." "$work/artifacts/"
+        ;;
+    *)
+        echo "error: unknown FINAL_IMAGE=$FINAL_IMAGE" >&2
+        exit 1
+        ;;
+esac
+
 sha256sum "$work/artifacts/linux-esp32s3-native-full.bin"
