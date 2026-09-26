@@ -21,7 +21,8 @@
     "rootfs_limit": 3670016,
     "kernel_limit": 3407872,
     "kernel_config": "board/espressif/esp32s3/devkit_c1_16m_linux.config",
-    "final_image": "buildroot"
+    "final_image": "buildroot",
+    "experimental": true
   },
   "xiao_esp32s3_8m": {
     "name": "XIAO ESP32S3 N8R8",

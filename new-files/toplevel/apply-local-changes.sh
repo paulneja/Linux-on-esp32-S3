@@ -64,12 +64,14 @@ esp-hosted)
 	else
 		git apply "$LOCAL/patches/02-firmware-network-adapter.patch"
 		cp "$LOCAL/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r" \
+		"$LOCAL/new-files/esp-hosted/network_adapter/partition_table.esp32s3.8m8r" \
 		"$LOCAL/new-files/esp-hosted/network_adapter/partition_table.xiao_esp32s3.8m8r" \
 			"$LOCAL/new-files/esp-hosted/network_adapter/sdkconfig.defaults.esp32s3.16m8r" \
 			esp/esp_driver/network_adapter/
 		git add esp/esp_driver/network_adapter/main/ \
 			esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3 \
 			esp/esp_driver/network_adapter/partition_table.esp32s3.16m8r \
+		esp/esp_driver/network_adapter/partition_table.esp32s3.8m8r \
 		esp/esp_driver/network_adapter/partition_table.xiao_esp32s3.8m8r \
 			esp/esp_driver/network_adapter/sdkconfig.defaults.esp32s3.16m8r
 		# the host git name ended up in the fw hash once. nope

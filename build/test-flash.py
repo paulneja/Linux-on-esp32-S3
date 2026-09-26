@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
+import csv
 import json
 import os
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -10,6 +12,7 @@ import unittest
 
 REPO = Path(__file__).resolve().parents[1]
 TABLE = Path('new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r')
+TABLE_8M = Path('new-files/esp-hosted/network_adapter/partition_table.esp32s3.8m8r')
 
 
 class FlashTests(unittest.TestCase):
@@ -23,6 +26,9 @@ class FlashTests(unittest.TestCase):
         self.table = self.root / TABLE
         self.table.parent.mkdir(parents=True)
         shutil.copy2(REPO / TABLE, self.table)
+        shutil.copy2(REPO / TABLE_8M, self.root / TABLE_8M)
+        (self.root / 'build').mkdir()
+        shutil.copy2(REPO / 'build/targets.json', self.root / 'build/targets.json')
         shutil.copy2(REPO / 'images/partition-table.bin', self.images)
         for name, size in {
             'bootloader.bin': 4096, 'network_adapter.bin': 4096,
@@ -46,6 +52,20 @@ if 'write_flash' in sys.argv and os.environ.get('FAIL_WRITE') == '1':
         mock.chmod(0o755)
         self.env = {**os.environ, 'PATH': str(mock_dir) + ':' + os.environ['PATH'],
                     'FLASH_TEST_LOG': str(self.log)}
+        self.env.pop('TARGET', None)
+
+    def use_8m(self):
+        # 8 MB image set, no home partition, table built from the CSV
+        self.env['TARGET'] = 'esp32s3_8m'
+        table = b''
+        for row in csv.reader((self.root / TABLE_8M).read_text().splitlines()):
+            if row and not row[0].lstrip().startswith('#'):
+                table += struct.pack('<HBBII16sI', 0x50AA, 1, 0, int(row[3], 0),
+                                     int(row[4], 0), row[0].strip().encode(), 0)
+        (self.images / 'partition-table.bin').write_bytes(table + b'\xff' * 32)
+        (self.images / 'home.jffs2').unlink()
+        with (self.images / 'linux-esp32s3-native-full.bin').open('r+b') as stream:
+            stream.truncate(0x800000)
 
     def run_flash(self, *args):
         result = subprocess.run(['sh', self.root / 'flash.sh', '-p', 'COM test', *args],
@@ -66,6 +86,42 @@ if 'write_flash' in sys.argv and os.environ.get('FAIL_WRITE') == '1':
         self.assertIn('COM test', calls[0])
         self.assertEqual(calls[0][-2:], ['0x0', str(self.images / 'linux-esp32s3-native-full.bin')])
         self.assertIn('even without --erase', result.stdout)
+        self.assertEqual(calls[0][calls[0].index('--flash_size') + 1], '16MB')
+
+    def test_8m_full_write_uses_8mb(self):
+        self.use_8m()
+        result, calls = self.run_flash()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls[0][calls[0].index('--flash_size') + 1], '8MB')
+        self.assertEqual(calls[0][-2:], ['0x0', str(self.images / 'linux-esp32s3-native-full.bin')])
+
+    def test_16m_image_on_8m_target_never_erases(self):
+        self.env['TARGET'] = 'esp32s3_8m'
+        self.reject('--erase')
+
+    def test_8m_parts_without_home(self):
+        self.use_8m()
+        result, calls = self.run_flash('--parts', '--erase')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(calls), 2)
+        self.assertIn(str(self.images / 'rootfs.cramfs'), calls[1])
+        self.assertNotIn(str(self.images / 'home.jffs2'), calls[1])
+        self.assertNotIn('left erased', result.stdout)
+
+    def test_saved_target_is_used(self):
+        self.use_8m()
+        del self.env['TARGET']
+        (self.root / '.target').write_text('esp32s3_8m\n')
+        result, calls = self.run_flash()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls[0][calls[0].index('--flash_size') + 1], '8MB')
+
+    def test_unknown_target_never_accesses_device(self):
+        self.env['TARGET'] = 'nope'
+        result, calls = self.run_flash('--erase')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(calls, [])
+        self.assertIn('unknown target', result.stderr)
 
     def test_full_erase_then_write(self):
         result, calls = self.run_flash('--erase')
