@@ -2,16 +2,33 @@
 
 IFACE=espsta0
 CONF=/etc/wpa_supplicant.conf
+WPALOG=/run/wpa_supplicant.log
+CONNECT_WAIT=${CONNECT_WAIT:-20}
 TAB=$(printf '\t')
 NL=$(printf '\nx'); NL=${NL%x}
 
+wrong_key() {
+	grep -q 'reason=WRONG_KEY' "$WPALOG" 2>/dev/null
+}
+
 raw_scan() {
+	if wrong_key && ! iw dev "$IFACE" link 2>/dev/null | grep -q "Connected to"; then
+		link_down
+	fi
 	ip link set "$IFACE" up 2>/dev/null
 
 	# No wpa_cli branch here: the image is built without it, and without a
 	# control socket for it to talk to, so trying it first only costs two
 	# failed exec attempts per scan on a board where that is expensive.
-	iw dev "$IFACE" scan 2>/dev/null | awk '
+	# not a variable: a full scan overflows ash's stack, no guard page on nommu
+	out=$(mktemp /run/wifi-raw.XXXXXX) || return 1
+	tries=0
+	until iw dev "$IFACE" scan > "$out" 2>/dev/null; do
+		tries=$((tries + 1))
+		[ "$tries" -ge 3 ] && break
+		sleep 2
+	done
+	awk '
 		function flush() {
 			if (ssid != "") print sig "\t" sec "\t" ssid
 			ssid = ""; sec = "OPEN"; sig = "-100"
@@ -20,7 +37,8 @@ raw_scan() {
 		/signal:/ { sig = $2 + 0 }
 		/^\tSSID: / { s = $0; sub(/^\tSSID: /, "", s); ssid = s }
 		/RSN:|WPA:/ { sec = "SEC" }
-		END { flush() }'
+		END { flush() }' "$out"
+	rm -f "$out"
 }
 
 scan_list() {
@@ -89,11 +107,31 @@ link_down() {
 	killall -q udhcpc 2>/dev/null
 }
 
+current_ip() {
+	ip -4 addr show "$IFACE" 2>/dev/null | sed -n 's/.*inet \([0-9.]*\).*/\1/p'
+}
+
 apply_conf() {
 	echo "Connecting to '$1'..."
 	link_down
-	ifup "$IFACE"
-	echo "Done. Check with: wifi status"
+	ifup "$IFACE" >/dev/null 2>&1
+	n=0
+	while [ "$n" -lt "$CONNECT_WAIT" ]; do
+		if wrong_key; then
+			link_down
+			echo "Wrong password for '$1'. Run wifi to try again." >&2
+			return 2
+		fi
+		addr=$(current_ip)
+		if [ -n "$addr" ]; then
+			echo "Connected, IP address $addr"
+			return 0
+		fi
+		sleep 1
+		n=$((n + 1))
+	done
+	echo "Not connected yet, still trying in the background. Check with: wifi status"
+	return 3
 }
 
 connect() {
@@ -180,6 +218,7 @@ status() {
 		iw dev "$IFACE" link 2>/dev/null | grep -E "Connected to|SSID|signal"
 	else
 		echo "Not associated."
+		wrong_key && echo "The last attempt failed: wrong password. Run wifi to try again."
 	fi
 	ip addr show "$IFACE" 2>/dev/null | grep -E "inet " || echo "No IP address."
 }
