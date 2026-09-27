@@ -1,0 +1,53 @@
+#!/bin/sh
+
+FACTORY=changeme123
+CHOICE=/etc/remote-login
+
+[ -e "$CHOICE" ] && exit 0
+
+trap 'echo; exit 1' INT TERM
+
+root_hash() {
+	sed -n 's/^root:\([^:]*\):.*/\1/p' /etc/shadow
+}
+
+factory_password() {
+	hash=$(root_hash)
+	[ -n "$hash" ] || return 0
+	case $hash in
+	'$5$'*) ;;
+	*) return 1 ;;
+	esac
+	salt=${hash#\$5\$}
+	salt=${salt%%\$*}
+	[ "$(mkpasswd -m sha256 "$FACTORY" "$salt" 2>/dev/null)" = "$hash" ]
+}
+
+if factory_password; then
+	echo
+	echo "This board still has the factory password. Pick a new one for root."
+	while :; do
+		passwd root || continue
+		factory_password || break
+		echo "That is the factory password, or an empty one. Pick another."
+	done
+fi
+
+if [ -x /usr/sbin/dropbear ]; then
+	echo
+	echo "Which way in over the network? Only the one you pick is turned on."
+	echo "  1) SSH     encrypted, slow to connect on this board"
+	echo "  2) Telnet  clear text, only on a LAN you trust"
+	while :; do
+		printf "Pick 1 or 2: "
+		read -r answer || exit 1
+		case $answer in
+		1) remote-login ssh; break ;;
+		2) remote-login telnet; break ;;
+		esac
+	done
+else
+	remote-login telnet
+fi
+echo "Change it later with: remote-login ssh|telnet"
+echo

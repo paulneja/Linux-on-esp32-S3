@@ -1,4 +1,8 @@
 #!/bin/sh
+if [ "$#" -eq 0 ] && [ ! -e /etc/remote-login ] && [ -t 0 ] &&
+   [ -x /usr/sbin/first-login ] && [ "$(id -u)" = 0 ]; then
+    /usr/sbin/first-login || exit 1
+fi
 pref=
 if [ -n "${HOME-}" ] && [ -r "$HOME/.shell" ]; then
     read -r pref < "$HOME/.shell" 2>/dev/null || pref=
