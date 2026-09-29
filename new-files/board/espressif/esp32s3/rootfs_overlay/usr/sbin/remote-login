@@ -6,8 +6,9 @@ if [ "$(id -u)" != 0 ]; then
 	exit 1
 fi
 
-CONF=/etc/inetd.conf
-CHOICE=/etc/remote-login
+ETC=${REMOTE_LOGIN_ETC:-/etc}
+CONF=$ETC/inetd.conf
+CHOICE=$ETC/remote-login
 SSH_LINE='ssh	stream	tcp	nowait	root	/usr/sbin/dropbear	dropbear -i -R -I 600'
 TELNET_LINE='telnet	stream	tcp	nowait	root	/usr/sbin/telnetd	telnetd -i'
 
@@ -32,7 +33,7 @@ use() {
 
 case "$1" in
 ssh)
-	if [ ! -x /usr/sbin/dropbear ]; then
+	if [ ! -x "${REMOTE_LOGIN_DROPBEAR:-/usr/sbin/dropbear}" ]; then
 		echo "remote-login: this image has no SSH server" >&2
 		exit 1
 	fi
