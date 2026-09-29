@@ -11,13 +11,61 @@ import sys
 import time
 
 parser = argparse.ArgumentParser(description='Test an explicitly flashed image over COM; never flashes.')
-parser.add_argument('port')
-parser.add_argument('artifacts', type=Path)
-parser.add_argument('--output', type=Path, required=True)
+parser.add_argument('port', nargs='?')
+parser.add_argument('artifacts', nargs='?', type=Path)
+parser.add_argument('--output', type=Path)
+parser.add_argument('--plan-target', choices=('esp32s3_16m', 'esp32s3_8m', 'xiao_esp32s3_8m', 'xiao_esp32s3_8m_sd'))
 parser.add_argument('--reset-from-bootloader', action='store_true',
                     help='Reset via RTS after a flash with --after no-reset; capture startup.')
 args = parser.parse_args()
 repo = Path(__file__).resolve().parent.parent
+
+TARGETS_8M = {'esp32s3_8m', 'xiao_esp32s3_8m', 'xiao_esp32s3_8m_sd'}
+XIAO_TARGETS = {'xiao_esp32s3_8m', 'xiao_esp32s3_8m_sd'}
+SD_TARGET = 'xiao_esp32s3_8m_sd'
+N16_ONLY_TESTS = {
+    'shell-policy', 'first-boot-home', 'mmu-executable-remap', 'mmu-fibonacci',
+    'fork-static', 'fork-dynamic', 'atfork', 'process-compatibility', 'bash',
+    'dash', 'make', 'micropython', 'network-tools', 'hush-login', 'jobq',
+    'benchmarks-lightweight-launcher', 'fork-exec-cycles',
+    'test-home-users-board', 'test-cron-board', 'test-home-reboot',
+}
+
+def planned_counts(target):
+    # run.sh always invokes the suite with --reset-from-bootloader. Keep the
+    # number comparable with the historical N16R8 "36 tests" banner.
+    base = 36
+    if target == 'esp32s3_16m':
+        return base, 0, 5
+    # The 8 MB run keeps the same named checks in results.json, records the
+    # unsupported N16R8 checks as skipped, and adds target-specific storage,
+    # persistence and USB-console checks.
+    extra = 4
+    return base + extra, len(N16_ONLY_TESTS), 5
+
+if args.plan_target:
+    total, skipped, minutes = planned_counts(args.plan_target)
+    print(f'{total} checks ({total - skipped} run, {skipped} skipped), about {minutes} minutes')
+    raise SystemExit(0)
+
+if args.port is None or args.artifacts is None or args.output is None:
+    parser.error('port, artifacts and --output are required unless --plan-target is used')
+
+def selected_target():
+    # A build records its target next to artifacts. Prefer that over .target so
+    # a later menu selection cannot change the meaning of an older image.
+    build_target = args.artifacts.parent / 'target'
+    if build_target.is_file():
+        return build_target.read_text().strip()
+    saved = repo / '.target'
+    if saved.is_file():
+        return saved.read_text().strip()
+    return 'esp32s3_16m'
+
+target = selected_target()
+if target not in {'esp32s3_16m', *TARGETS_8M}:
+    raise RuntimeError(f'unknown target: {target}')
+
 exp = repo / 'experiments/mmu-poc'
 manifest = json.loads((args.artifacts / 'build-manifest.json').read_text())
 for name, expected in manifest['sha256'].items():
@@ -26,7 +74,8 @@ args.output.mkdir(parents=True, exist_ok=False)
 spec = importlib.util.spec_from_file_location('probe', exp / 'serial-probe.py')
 probe = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(probe)
-results = {'image_sha256': manifest['sha256']['linux-esp32s3-native-full.bin'],
+results = {'target': target,
+           'image_sha256': manifest['sha256']['linux-esp32s3-native-full.bin'],
            'source_commit': manifest['source_commit'],
            'test_runner_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
            'tests': [], 'status': 'running'}
@@ -54,6 +103,11 @@ def record(name, operation):
     finally:
         item['seconds'] = round(time.monotonic() - started, 3)
         (args.output / 'results.json').write_text(json.dumps(results, indent=2) + '\n')
+
+def skip(name, reason):
+    print('SKIP:', name, '--', reason, flush=True)
+    results['tests'].append({'name': name, 'status': 'skipped', 'reason': reason, 'seconds': 0.0})
+    (args.output / 'results.json').write_text(json.dumps(results, indent=2) + '\n')
 
 def command(text, seconds=60, expected=None):
     output = console.command(text, seconds)
@@ -148,9 +202,10 @@ def record_memory_after():
     results['memory_final'] = final
     baseline = results['memory_baseline']['meminfo_kb']
     shadow = values.get('ForkShadow')
-    assert shadow == 0, (
-        'ForkShadow is %s kB with no forked children left: the backend kept '
-        'backup pages that nothing owns' % shadow)
+    if target == 'esp32s3_16m':
+        assert shadow == 0, (
+            'ForkShadow is %s kB with no forked children left: the backend kept '
+            'backup pages that nothing owns' % shadow)
     lost = baseline['MemAvailable'] - values['MemAvailable']
     print('  final: MemAvailable {} kB ({:+d} kB against the baseline)'.format(
         values['MemAvailable'], -lost), flush=True)
@@ -194,6 +249,76 @@ def jffs2_write_timing():
     print('  256 KiB to /home took {} s'.format(seconds), flush=True)
 
 
+def wait_for_login(seconds=240):
+    data = b''
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        chunk = console.port.read(max(1, console.port.in_waiting))
+        if not chunk:
+            continue
+        print(chunk.decode(errors='replace'), end='', flush=True)
+        data = (data + chunk)[-512:]
+        if re.search(rb'buildroot login: ?', data):
+            return
+    raise RuntimeError('No login after reboot')
+
+
+def etc_persistence():
+    marker = 'board-test-etc-persistence'
+    command(f"printf '%s\\n' {marker} > /etc/.board-test-persist && sync && cat /etc/.board-test-persist",
+            60, marker)
+    console.port.write(b'sync; reboot\n')
+    wait_for_login()
+    console.login()
+    command('cat /etc/.board-test-persist', 60, marker)
+    command('rm -f /etc/.board-test-persist && sync')
+
+
+def usb_console_getty():
+    output = command("ps | grep '[g]etty.*ttyGS3' || true; echo GETTY_CHECK_DONE", 60,
+                     'GETTY_CHECK_DONE')
+    running = bool(re.search(r'getty[^\n]*ttyGS3|ttyGS3[^\n]*getty', output))
+    expected = target in XIAO_TARGETS
+    assert running == expected, 'ttyGS3 getty is {} but target {} expects {}'.format(
+        'on' if running else 'off', target, 'on' if expected else 'off')
+
+
+def sd_home():
+    output = command("awk '$2==\"/home\" {print $1, $2, $3, $4}' /proc/mounts", 60,
+                     '/dev/mmcblk0p1 /home ext2')
+    line = next(line for line in output.splitlines() if '/dev/mmcblk0p1 /home ext2' in line)
+    fields = line.split()
+    assert 'rw' in fields[3].split(','), line
+    command('test -f /home/README.txt && echo HOME_INIT_OK', 60, 'HOME_INIT_OK')
+    token = 'sd-persist-{}'.format(int(time.time()))
+    command(f"printf '%s\\n' {token} > /home/.board-test-persist && sync && cat /home/.board-test-persist",
+            60, token)
+    console.port.write(b'sync; reboot\n')
+    wait_for_login()
+    console.login()
+    command('cat /home/.board-test-persist', 60, token)
+    command('rm -f /home/.board-test-persist && sync')
+
+
+def no_writable_home():
+    output = command("if touch /home/.board-test-write 2>/dev/null; then rm -f /home/.board-test-write; echo HOME_WRITABLE; else echo HOME_NOT_WRITABLE; fi", 60,
+                     'HOME_NOT_WRITABLE')
+    assert 'HOME_WRITABLE' not in output
+    command('test ! -e /home/README.txt && echo HOME_INIT_NOT_PRESENT', 60,
+            'HOME_INIT_NOT_PRESENT')
+
+
+def home_write_timing():
+    output = command('time_start=$(cut -d. -f1 /proc/uptime); '
+                     'dd if=/dev/zero of=/home/.write-probe bs=4096 count=64 2>/dev/null; '
+                     'sync; time_end=$(cut -d. -f1 /proc/uptime); '
+                     'rm -f /home/.write-probe; '
+                     'echo WRITE_SECONDS=$((time_end - time_start))', 300, 'WRITE_SECONDS=')
+    seconds = int(re.search(r'WRITE_SECONDS=(\d+)', output).group(1))
+    results['home_write_256k_seconds'] = seconds
+    print('  256 KiB to /home took {} s'.format(seconds), flush=True)
+
+
 def benchmarks():
     console.port.write(b'exec /usr/bin/dash -c \'trap "sleep 1" EXIT; . /usr/share/program-tests/benchmark-suite.sh\'\n')
     output, _ = console.until(rb'buildroot login: ?', 180)
@@ -222,14 +347,11 @@ try:
     record('quiesce-background-forks', quiesce)
     record('memory-baseline', record_memory)
     record('installed-kernel-and-rootfs-hashes', verify_installed)
+
     checks = [
         ('boot', 'uname -a && id && mount && free && dmesg',
          ('6.11.0-forkbank', 'Mounted root (cramfs filesystem) readonly')),
-        # The self-test no longer runs on every boot (esp32s3_rsa.selftest=1
-        # brings it back). What matters is that the driver came up and
-        # registered, which is what the crypto API reports.
-        ('hardware-rsa-registered', 'grep -A2 "^name *: rsa$" /proc/crypto | grep -B2 esp32s3 || grep -c rsa-esp32s3 /proc/crypto',
-         'esp32s3'),
+        ('hardware-rsa-registered', 'grep -A2 "^name *: rsa$" /proc/crypto | grep -B2 esp32s3 || grep -c rsa-esp32s3 /proc/crypto', 'esp32s3'),
         ('no-driver-timeout', '! dmesg | grep -q "accelerator did not report ready" && echo RSA_OK', 'RSA_OK'),
         ('shell-policy', 'test -n "$BASH_VERSION" && test "$(readlink /bin/sh)" = busybox && test "$HOME" = /home/root', None),
         ('first-boot-home', 'test -f /home/root/README.txt && test "$(stat -c %a /home/root)" = 700 && test -f /home/www/index.html && test -x /home/www/cgi-bin/status && test ! -e /www && set -- /home/.www-seed.* && test ! -e "$1"', None),
@@ -247,36 +369,61 @@ try:
         ('network-tools', '/usr/bin/dash /usr/share/program-tests/network-tools-test.sh', 'PASS'),
         ('hush-login', '/usr/bin/dash /usr/share/program-tests/hush-login-test.sh', 'PASS'),
         ('jobq', '/usr/bin/dash /usr/share/program-tests/jobq-test.sh', 'PASS'),
-        # The console switch: default quiet, verbose raises the level for real,
-        # and it goes back. Left as it was found, which is the default.
         ('bootlog-default-is-quiet', 'bootlog status', 'quiet (the default)'),
-        ('bootlog-verbose-raises-the-level',
-         'bootlog verbose >/dev/null && cut -f1 /proc/sys/kernel/printk', '8'),
-        ('bootlog-quiet-restores-it',
-         'bootlog quiet >/dev/null && cut -f1 /proc/sys/kernel/printk', '4'),
+        ('bootlog-verbose-raises-the-level', 'bootlog verbose >/dev/null && cut -f1 /proc/sys/kernel/printk', '8'),
+        ('bootlog-quiet-restores-it', 'bootlog quiet >/dev/null && cut -f1 /proc/sys/kernel/printk', '4'),
     ]
     for name, text, expected in checks:
+        if target in TARGETS_8M and name in N16_ONLY_TESTS:
+            skip(name, 'not available in the reduced 8MB Buildroot image')
+            continue
+        if target in TARGETS_8M and name == 'boot':
+            expected = 'Mounted root (cramfs filesystem) readonly'
         record(name, lambda text=text, expected=expected: command(text, 180, expected))
-    record('benchmarks-lightweight-launcher', benchmarks)
-    record('fork-exec-cycles', fork_exec_cycles)
-    record('jffs2-write-timing', jffs2_write_timing)
+
+    if target == 'esp32s3_16m':
+        record('benchmarks-lightweight-launcher', benchmarks)
+        record('fork-exec-cycles', fork_exec_cycles)
+        record('jffs2-write-timing', jffs2_write_timing)
+    else:
+        skip('benchmarks-lightweight-launcher', 'dash/benchmark suite is not in the reduced 8MB image')
+        skip('fork-exec-cycles', 'forkbank is not available on 8MB targets')
+        skip('jffs2-write-timing', '8MB targets have no JFFS2 /home partition')
+
     record('kernel-health', lambda: command('test "$(cat /proc/sys/kernel/tainted)" = 0 && ! dmesg | grep -E "Out of memory:|Kernel panic|BUG:|Oops:" && free'))
     record('memory-final', record_memory_after)
+
+    if target in TARGETS_8M:
+        record('etc-persistence-after-reboot', etc_persistence)
+        record('usb-console-getty-state', usb_console_getty)
+        if target == SD_TARGET:
+            record('sd-home-ext2-rw-and-persistence', sd_home)
+            record('sd-home-write-timing', home_write_timing)
+        else:
+            record('home-not-writable', no_writable_home)
+            skip('sd-home-write-timing', 'no SD-backed /home on this target')
+
     console.close()
     console = None
     for name in ('test-home-users-board', 'test-cron-board', 'test-com-reconnect', 'test-home-reboot'):
-        record(name, lambda name=name: external(name))
+        if target in TARGETS_8M and name in N16_ONLY_TESTS:
+            skip(name, 'test assumes the N16R8 writable /home and full userspace')
+        else:
+            record(name, lambda name=name: external(name))
     console = probe.Console(args.port)
     console.login()
     record('final-kernel-health', lambda: command('test "$(cat /proc/sys/kernel/tainted)" = 0 && ! dmesg | grep -E "Out of memory:|Kernel panic|BUG:|Oops:" && free'))
     results['status'] = 'pass'
     results['finished_utc'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    passed = sum(t['status'] == 'pass' for t in results['tests'])
+    skipped = sum(t['status'] == 'skipped' for t in results['tests'])
+    results['summary'] = {'passed': passed, 'skipped': skipped, 'failed': 0, 'total': len(results['tests'])}
     manifest['board_verification'] = {
-        'status': 'pass', 'image_sha256': results['image_sha256'],
+        'status': 'pass', 'target': target, 'image_sha256': results['image_sha256'],
         'finished_utc': results['finished_utc'],
         'report': os.path.relpath(args.output.resolve() / 'results.json', args.artifacts.resolve()),
         'test_runner_sha256': results['test_runner_sha256'],
-        'scope': 'Local COM, memory, programs, users, loopback network, cron and persistence; no external WiFi test',
+        'scope': 'Local COM, memory, target-aware storage/persistence and applicable programs; no external WiFi test',
     }
     (args.artifacts / 'build-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
 except BaseException:

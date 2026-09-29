@@ -519,16 +519,22 @@ do_test() {
 	n=2
 	while [ -e "$out" ]; do out="$REPO/build-output/board-check-$n"; n=$((n+1)); done
 	info "output: ${out#$REPO/}"
-	info "36 tests, about 5 minutes"
+	local plan
+	plan=$("$py" "$REPO/build/test-board.py" --plan-target "$TARGET" 2>/dev/null) || plan="target-aware board tests"
+	info "$plan"
 	"$py" "$REPO/build/test-board.py" "$port" "$a" --output "$out" --reset-from-bootloader
 	local rc=$?
 	if [ -f "$out/results.json" ]; then
 		python3 - "$out/results.json" <<'PY'
 import json, sys
 r = json.load(open(sys.argv[1]))
-bad = [t['name'] for t in r['tests'] if t['status'] != 'pass']
-print(f"  {r['status'].upper()}: {len(r['tests'])} tests, {len(bad)} failed")
-for name in bad:
+failed = [t['name'] for t in r['tests'] if t['status'] == 'fail']
+skipped = [t for t in r['tests'] if t['status'] == 'skipped']
+passed = sum(t['status'] == 'pass' for t in r['tests'])
+print(f"  {r['status'].upper()}: {len(r['tests'])} checks, {passed} passed, {len(skipped)} skipped, {len(failed)} failed")
+for item in skipped:
+    print('    skipped:', item['name'], '--', item.get('reason', 'not applicable'))
+for name in failed:
     print('    failed:', name)
 PY
 	fi
