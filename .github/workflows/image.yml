@@ -175,6 +175,12 @@ jobs:
       - name: Kept-configuration tests
         run: python3 build/test-keepconfig.py
 
+      - name: wifi script tests
+        run: python3 build/test-wifi-script.py
+
+      - name: First login tests
+        run: python3 build/test-first-login.py
+
   build:
     name: Full image ${{ matrix.run }}
     needs: host-tests
