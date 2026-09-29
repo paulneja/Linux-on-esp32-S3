@@ -191,8 +191,11 @@ port on Windows) and prints the boot log. The login there is off until you
 run `usb-console on` once from the UART, since its getty costs about 100 KiB
 of RAM.
 
-Log in as **`root` / `changeme123`**, then run `passwd` to change the
-password. A factory image has no WiFi configured:
+Log in as **`root` / `changeme123`**. The first login asks for a new root
+password, then whether the board should answer SSH or Telnet on the network.
+Only the one you pick is turned on, and nothing listens before that, so this
+first login happens on the console. `remote-login ssh|telnet` switches later.
+A factory image has no WiFi configured:
 
 ```sh
 wifi
@@ -206,8 +209,10 @@ that WiFi connected. Check `/var/log/network.log` for the result. NTP sets
 the clock after networking comes up; until then, HTTPS certificate checks
 can fail because the board has no battery-backed clock.
 
-Telnet is enabled by default and sends credentials in clear text. Use a
-trusted LAN and read [SECURITY.md](SECURITY.md) before connecting.
+`wifi` says so when the password is wrong, instead of leaving it retrying.
+
+If you picked Telnet, it sends credentials in clear text. Use a trusted LAN
+and read [SECURITY.md](SECURITY.md) before connecting.
 
 ## Things to try
 
