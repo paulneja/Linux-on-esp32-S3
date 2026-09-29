@@ -219,6 +219,25 @@ package() {
     TARGET="$TARGET" python3 "$repo/build/package-final.py" "$work"
 }
 
+package_buildroot() {
+    cp -a "$work/base-images/." "$work/artifacts/"
+
+    (
+        cd "$work/artifacts"
+        sha256sum \
+            bootloader.bin \
+            partition-table.bin \
+            network_adapter.bin \
+            xipImage \
+            rootfs.cramfs \
+            etc.jffs2 \
+            linux-esp32s3-native-full.bin \
+            > SHA256SUMS
+    )
+
+    cp "$repo/build/sources.lock" "$work/artifacts/sources.lock"
+}
+
 export XTENSA_GNU_CONFIG="$base/xtensa-dynconfig/esp32s3.so"
 stage toolchain toolchain
 stage base-rootfs rootfs_base
@@ -229,7 +248,7 @@ case "$FINAL_IMAGE" in
         stage package package
         ;;
     buildroot)
-        stage package-buildroot cp -a "$work/base-images/." "$work/artifacts/"
+        stage package-buildroot package_buildroot
         ;;
     *)
         echo "error: unknown FINAL_IMAGE=$FINAL_IMAGE" >&2
