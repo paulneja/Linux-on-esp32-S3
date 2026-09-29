@@ -6,10 +6,11 @@ REPO=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$REPO" || exit 1
 
 JOBS=${JOBS:-}
-DEFAULT_JOBS=4
+DEFAULT_JOBS=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
 CACHE=${CACHE:-}
 PORT=${PORT:-}
 ARTIFACTS=${ARTIFACTS:-}
+ARTIFACTS_EXPLICIT=0
 ASSUME_YES=0
 QUIET=0
 ACTION=""
@@ -73,6 +74,7 @@ for target_id, config in targets.items():
 				if [ "$reply" -ge 1 ] && [ "$reply" -le "${#target_ids[@]}" ]; then
 					TARGET="${target_ids[$((reply - 1))]}"
 					export TARGET
+					[ "$ARTIFACTS_EXPLICIT" -eq 1 ] || ARTIFACTS=""
 					printf '%s\n' "$TARGET" > "$TARGET_FILE"
 					info "target: ${target_names[$((reply - 1))]} ($TARGET)"
 					echo
@@ -178,7 +180,12 @@ select_jobs() {
 
 ensure_jobs() {
 	if [ -z "${JOBS:-}" ]; then
-		select_jobs
+		if [ -z "$ACTION" ]; then
+			select_jobs
+		else
+			JOBS="$DEFAULT_JOBS"
+			export JOBS
+		fi
 		return
 	fi
 
@@ -257,7 +264,7 @@ detect_port() {
 	for p in /dev/serial/by-id/*; do
 		[ -e "$p" ] && { printf '%s\n' "$p"; return 0; }
 	done
-	for p in /dev/ttyACM0 /dev/ttyACM1 /dev/ttyUSB0 /dev/ttyUSB1; do
+	for p in /dev/cu.usbmodem* /dev/ttyACM0 /dev/ttyACM1 /dev/ttyUSB0 /dev/ttyUSB1; do
 		[ -e "$p" ] && { printf '%s\n' "$p"; return 0; }
 	done
 	return 1
@@ -652,7 +659,7 @@ while [ $# -gt 0 ]; do
 		-q|--quiet)      QUIET=1; shift ;;
 		-j|--jobs)       JOBS="${2:?-j needs a number}"; shift 2 ;;
 		-p|--port)       PORT="${2:?-p needs a path}"; shift 2 ;;
-		-a|--artifacts)  ARTIFACTS="${2:?-a needs a directory}"; shift 2 ;;
+		-a|--artifacts)  ARTIFACTS="${2:?-a needs a directory}"; ARTIFACTS_EXPLICIT=1; shift 2 ;;
 		-h|--help)       usage; exit 0 ;;
 		--check|--build|--verify|--flash|--test|--all|--repro|--recover|--status)
 		                 ACTION="${1#--}"; shift ;;
