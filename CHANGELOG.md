@@ -4,6 +4,34 @@ Releases carry one flashable `.bin` for a 16 MB / 8 MB-PSRAM ESP32-S3. Full
 notes and the binaries are on the
 [releases page](https://github.com/paulneja/Linux-on-esp32-S3/releases).
 
+## 0.8.2 — unreleased
+
+### WiFi
+
+- **A wrong password left the board unable to scan (#20).** `wpa_supplicant`
+  kept retrying the network, and while it authenticates the firmware refuses
+  a scan (`cmd_scan_request ... ret: -1`) or the kernel answers busy. It
+  recovered only when the retry backoff left a gap, minutes later. Killing
+  `wpa_supplicant` made the next scan work at once, which is what confirmed
+  it on the board. `wpa_supplicant` now logs to `/run/wpa_supplicant.log`;
+  `wifi connect` reads it, says "Wrong password" (exit status 2) and stops the
+  retries, `wifi status` says the last attempt failed, and a scan stops a
+  wrong-password loop before it starts. Over Bluetooth the phone is told the
+  password was wrong instead of "got no IP". On the board: a wrong password
+  is reported in 19 s and the scan right after it works, five times in a row;
+  the right one gets an address in 13 s.
+
+### Logging in
+
+- **Nothing listens on the network until the first login.** Telnet used to
+  be on from the factory with `changeme123`, and a board joined to WiFi over
+  Bluetooth was reachable with it before anyone had touched the console. The
+  first root login now asks for a new password, refuses the factory one, and
+  then asks whether to turn on SSH or Telnet. Only that one is turned on.
+  `remote-login ssh|telnet|status` switches later; `ssh-server on` can still
+  add SSH next to Telnet by hand. An update keeps the choice, and a board
+  coming from 0.8.1 is asked once.
+
 ## 0.8.1 — WiFi that survives being poked, and a USB console (2026-09-23)
 
 A fixes release. Everything below was found by a user issue or by pushing the
