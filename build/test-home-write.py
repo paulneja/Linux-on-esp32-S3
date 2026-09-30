@@ -13,6 +13,7 @@ parser.add_argument('--stages', default='25,50,70,85', help='percent of /home to
 parser.add_argument('--chunk-kb', type=int, default=64)
 parser.add_argument('--budget', type=int, default=1500, help='seconds before giving up')
 parser.add_argument('--keep', action='store_true', help='leave the files on the board')
+parser.add_argument('--churn', type=int, default=1, help='delete-half-and-rewrite rounds')
 args = parser.parse_args()
 
 repo = Path(__file__).resolve().parent.parent
@@ -27,6 +28,10 @@ c.login()
 
 def run(cmd, seconds=120):
     return c.command(cmd, seconds, check=False)
+
+
+def last(cmd):
+    return run(cmd).splitlines()[-1].strip()
 
 
 def usage():
@@ -79,7 +84,7 @@ run('rm -rf /home/bench; mkdir -p /home/bench; sync')
 run(f'dd if=/dev/urandom of=/tmp/bench-src bs=1024 count={args.chunk_kb} 2>/dev/null')
 size, used = usage()
 results = {'home_kb': size, 'start_used_kb': used, 'chunk_kb': args.chunk_kb,
-           'uname': run('uname -r'), 'stages': []}
+           'uname': last('uname -r'), 'stages': []}
 written = []
 for pct in (int(x) for x in args.stages.split(',')):
     size, used = usage()
@@ -91,12 +96,18 @@ for pct in (int(x) for x in args.stages.split(',')):
     if r['aborted']:
         break
 else:
-    gone = written[::2]
-    run('cd /home/bench && rm -f ' + ' '.join(gone) + '; sync', 300)
-    results['stages'].append(stage('churn', [f'r{i}' for i in range(len(gone))]))
+    for n in range(args.churn):
+        gone, written = written[::2], written[1::2]
+        run('cd /home/bench && rm -f ' + ' '.join(gone) + '; sync', 300)
+        fresh = [f'c{n}-{i}' for i in range(len(gone))]
+        r = stage(f'churn-{n + 1}', fresh)
+        written += fresh[:r['files']]
+        results['stages'].append(r)
+        if r['aborted']:
+            break
 
-results['tainted'] = run('cat /proc/sys/kernel/tainted').strip()
-results['meminfo'] = run('grep -E "MemFree|MemAvailable" /proc/meminfo')
+results['tainted'] = last('cat /proc/sys/kernel/tainted')
+results['mem_available'] = last('grep MemAvailable /proc/meminfo')
 if not args.keep:
     run('rm -rf /home/bench /tmp/bench-src; sync', 600)
 c.close()
