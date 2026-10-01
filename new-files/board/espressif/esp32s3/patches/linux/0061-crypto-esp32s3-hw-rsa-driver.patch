@@ -1,6 +1,29 @@
---- a/drivers/crypto/esp32s3_rsa.c	1969-12-31 21:00:00.000000000 -0300
-+++ b/drivers/crypto/esp32s3_rsa.c	2026-07-16 22:55:12.410162550 -0300
-@@ -0,0 +1,509 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: paulneja <207793167+paulneja@users.noreply.github.com>
+Date: Sun, 26 Jul 2026 15:06:04 -0300
+Subject: [PATCH 61/73] crypto: esp32s3 hw rsa driver
+
+---
+ drivers/crypto/Makefile      |   1 +
+ drivers/crypto/esp32s3_rsa.c | 516 +++++++++++++++++++++++++++++++++++
+ 2 files changed, 517 insertions(+)
+ create mode 100644 drivers/crypto/esp32s3_rsa.c
+
+diff --git a/drivers/crypto/Makefile b/drivers/crypto/Makefile
+index 5a950c7abc393..a1e96a8af1511 100644
+--- a/drivers/crypto/Makefile
++++ b/drivers/crypto/Makefile
+@@ -47,3 +47,4 @@ obj-y += intel/
+ obj-y += starfive/
+ obj-y += cavium/
+ obj-y += ti/
++obj-y += esp32s3_rsa.o
+diff --git a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
+new file mode 100644
+index 0000000000000..e96d0ac9fff69
+--- /dev/null
++++ b/drivers/crypto/esp32s3_rsa.c
+@@ -0,0 +1,516 @@
 +// SPDX-License-Identifier: GPL-2.0-or-later
 +
 +#include <linux/delay.h>
@@ -82,6 +105,13 @@
 +	return (u32)(0 - inv);
 +}
 +
++static MPI esp32s3_rsa_mpi_u32(u32 v)
++{
++	__be32 be = cpu_to_be32(v);
++
++	return mpi_read_raw_data(&be, sizeof(be));
++}
++
 +static int compute_rr(MPI n, int nwords, u32 *rr_words)
 +{
 +	MPI two, exp, rr;
@@ -89,8 +119,8 @@
 +	unsigned nbytes, got;
 +	int sign, ret = -ENOMEM;
 +
-+	two = mpi_alloc_set_ui(2);
-+	exp = mpi_alloc_set_ui(64u * nwords);
++	two = esp32s3_rsa_mpi_u32(2);
++	exp = esp32s3_rsa_mpi_u32(64u * nwords);
 +	rr = mpi_alloc(0);
 +	nbytes = nwords * 4;
 +	be = kzalloc(nbytes, GFP_KERNEL);
@@ -510,11 +540,3 @@
 +MODULE_LICENSE("GPL");
 +MODULE_DESCRIPTION("ESP32-S3 hardware RSA accelerator (Crypto API akcipher)");
 +MODULE_ALIAS_CRYPTO("rsa");
-diff -Naur a/drivers/crypto/Makefile b/drivers/crypto/Makefile
---- a/drivers/crypto/Makefile	2026-07-16 22:55:12.403414161 -0300
-+++ b/drivers/crypto/Makefile	2026-07-16 22:55:12.407197077 -0300
-@@ -52,3 +52,4 @@
- obj-$(CONFIG_CRYPTO_DEV_AMLOGIC_GXL) += amlogic/
- obj-y += intel/
- obj-y += starfive/
-+obj-y += esp32s3_rsa.o

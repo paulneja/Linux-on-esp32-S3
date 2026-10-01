@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Fri, 21 Jul 2023 09:26:04 -0700
+Subject: [PATCH 50/73] WIP: mm/nommu: don't require sharing on XIP kernel for
+ ptraced process
+
+This fixes an attempt to load executable code segment instead of
+mmapping it directly in a process running under strace. On xtensa kernel
+built with XIP for a platform where RAM is not executable this results
+in an immediate fault.
+
+TODO: this solution is working but a thought about a bigger picture is
+needed.
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit 8c42ad065929f87ea5ec48cf8dee256e6e6725ca)
+---
+ mm/nommu.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/mm/nommu.c b/mm/nommu.c
+index ed3934bc2de48..7c4d1b7689e2a 100644
+--- a/mm/nommu.c
++++ b/mm/nommu.c
+@@ -867,7 +867,8 @@ static vm_flags_t determine_vm_flags(struct file *file,
+ 		else
+ 			vm_flags |= VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC;
+ 
+-		if (!(prot & PROT_WRITE) && !current->ptrace)
++		if (!(prot & PROT_WRITE) &&
++		    (IS_ENABLED(CONFIG_XIP_KERNEL) || !current->ptrace))
+ 			/*
+ 			 * R/O private file mapping which cannot be used to
+ 			 * modify memory, especially also not via active ptrace

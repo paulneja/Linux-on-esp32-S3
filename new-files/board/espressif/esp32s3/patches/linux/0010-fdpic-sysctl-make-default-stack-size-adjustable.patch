@@ -1,0 +1,77 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Tue, 17 Oct 2023 17:41:55 -0700
+Subject: [PATCH 10/73] fdpic: sysctl: make default stack size adjustable
+
+Use
+  echo new-default-stack-size > /proc/sys/kernel/default_stack_size
+to change the default stack size for the newly created processes or add
+  kernel.default_stack_size = new-size
+to the /etc/sysctl.conf for the boot-time setting of that parameter.
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit 64dcdc0fd6a6a8e4b210d8b8aeee012534b1d1a0)
+---
+ fs/binfmt_elf_fdpic.c   | 20 +++++++++++++++++++-
+ include/linux/binfmts.h |  1 +
+ 2 files changed, 20 insertions(+), 1 deletion(-)
+
+diff --git a/fs/binfmt_elf_fdpic.c b/fs/binfmt_elf_fdpic.c
+index fe0b5c5ed2bcc..38d29bcacdab4 100644
+--- a/fs/binfmt_elf_fdpic.c
++++ b/fs/binfmt_elf_fdpic.c
+@@ -32,6 +32,7 @@
+ #include <linux/init.h>
+ #include <linux/elf.h>
+ #include <linux/elf-fdpic.h>
++#include <linux/sysctl.h>
+ #include <linux/elfcore.h>
+ #include <linux/coredump.h>
+ #include <linux/dax.h>
+@@ -87,8 +88,25 @@ static struct linux_binfmt elf_fdpic_format = {
+ #endif
+ };
+ 
++unsigned long default_stack_size = 131072UL;
++
++#ifdef CONFIG_SYSCTL
++static const struct ctl_table fdpic_sysctl_table[] = {
++	{
++		.procname	= "default_stack_size",
++		.data		= &default_stack_size,
++		.maxlen		= sizeof(unsigned long),
++		.mode		= 0644,
++		.proc_handler	= proc_doulongvec_minmax,
++	},
++};
++#endif
++
+ static int __init init_elf_fdpic_binfmt(void)
+ {
++#ifdef CONFIG_SYSCTL
++	register_sysctl_init("kernel", fdpic_sysctl_table);
++#endif
+ 	register_binfmt(&elf_fdpic_format);
+ 	return 0;
+ }
+@@ -336,7 +354,7 @@ static int load_elf_fdpic_binary(struct linux_binprm *bprm)
+ 
+ 	retval = -ENOEXEC;
+ 	if (stack_size == 0)
+-		stack_size = 131072UL; /* same as exec.c's default commit */
++		stack_size = default_stack_size; /* same as exec.c's default commit */
+ 
+ 	if (is_constdisp(&interp_params.hdr))
+ 		interp_params.flags |= ELF_FDPIC_FLAG_CONSTDISP;
+diff --git a/include/linux/binfmts.h b/include/linux/binfmts.h
+index 2c77e383e7375..24067fbd2fd08 100644
+--- a/include/linux/binfmts.h
++++ b/include/linux/binfmts.h
+@@ -131,6 +131,7 @@ extern void finalize_exec(struct linux_binprm *bprm);
+ extern void would_dump(struct linux_binprm *, struct file *);
+ 
+ extern int suid_dumpable;
++extern unsigned long default_stack_size;
+ 
+ /* Stack area protections */
+ #define EXSTACK_DEFAULT   0	/* Whatever the arch defaults to */

@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Fri, 6 Oct 2023 21:35:15 -0700
+Subject: [PATCH 04/73] xtensa: enable suspend support
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit dca01ab332e7d330be6215e9d513be9a83ecdd6d)
+---
+ arch/xtensa/Kconfig | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/arch/xtensa/Kconfig b/arch/xtensa/Kconfig
+index 87a4e6035b392..938fb6ee04793 100644
+--- a/arch/xtensa/Kconfig
++++ b/arch/xtensa/Kconfig
+@@ -811,6 +811,9 @@ menu "Power management options"
+ config ARCH_HIBERNATION_POSSIBLE
+ 	def_bool y
+ 
++config ARCH_SUSPEND_POSSIBLE
++	def_bool y
++
+ source "kernel/power/Kconfig"
+ 
+ endmenu

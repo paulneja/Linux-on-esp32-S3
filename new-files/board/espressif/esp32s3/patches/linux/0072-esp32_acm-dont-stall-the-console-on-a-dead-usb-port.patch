@@ -1,7 +1,14 @@
-esp32-acm: dont spin forever when nobody reads the usb console
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: paulneja <207793167+paulneja@users.noreply.github.com>
+Date: Wed, 23 Sep 2026 11:11:30 -0300
+Subject: [PATCH 72/73] esp32_acm: dont stall the console on a dead usb port
 
-jiffies dont move with irqs off, so bound the wait with ccount.
+---
+ drivers/tty/serial/esp32_acm.c | 14 +++++++++++---
+ 1 file changed, 11 insertions(+), 3 deletions(-)
 
+diff --git a/drivers/tty/serial/esp32_acm.c b/drivers/tty/serial/esp32_acm.c
+index 2903284071d29..b042e40239b7a 100644
 --- a/drivers/tty/serial/esp32_acm.c
 +++ b/drivers/tty/serial/esp32_acm.c
 @@ -14,6 +14,7 @@
@@ -12,7 +19,7 @@ jiffies dont move with irqs off, so bound the wait with ccount.
  
  #define DRIVER_NAME	"esp32s3-acm"
  #define DEV_NAME	"ttyGS"
-@@ -136,17 +137,24 @@
+@@ -136,17 +137,24 @@ static void esp32s3_acm_put_char(struct uart_port *port, u8 c)
  	esp32s3_acm_write(port, USB_SERIAL_JTAG_EP1_REG, c);
  }
  

@@ -1,19 +1,17 @@
-esp32-ipc: run the completion pass whenever core 0 consumed something
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: paulneja <207793167+paulneja@users.noreply.github.com>
+Date: Sun, 13 Sep 2026 12:35:34 -0300
+Subject: [PATCH 68/73] esp32-ipc: run tx completion whenever the queue moved
 
-rx_batch_done is where a client frees the transmit buffers core 0 has
-finished with and wakes its netdev queue. The thread handler ran it only for
-a client whose receive callback had just returned true in the same batch,
-so a batch of transmit completions alone, or of receives that failed for
-lack of memory, freed nothing. Under memory pressure that is exactly when
-those buffers are needed back, and with nothing to wake it the transmit
-queue could stay stopped.
+---
+ drivers/misc/esp32-ipc.c | 21 ++++++++++++++++++---
+ 1 file changed, 18 insertions(+), 3 deletions(-)
 
-Track the write queue's read index and run the pass for every registered
-client when it moved, keeping the run after a successful receive as before.
-
+diff --git a/drivers/misc/esp32-ipc.c b/drivers/misc/esp32-ipc.c
+index 01bad9ed60e4a..4cffd40960a6f 100644
 --- a/drivers/misc/esp32-ipc.c
 +++ b/drivers/misc/esp32-ipc.c
-@@ -33,6 +33,11 @@
+@@ -33,6 +33,11 @@ struct esp32_ipc {
  	struct esp32_ipc_queue *hw_q;
  	spinlock_t lock;
  	struct esp32_ipc_client client[ESP32_IPC_CLIENTS_MAX];
@@ -25,7 +23,7 @@ client when it moved, keeping the run after a successful receive as before.
  };
  
  int esp32_ipc_register_rx(void *ipc, u32 addr, void *p,
-@@ -132,12 +137,22 @@
+@@ -132,12 +137,22 @@ static irqreturn_t esp32_ipc_thread_handler(int irq, void *dev)
  	r = READ_ONCE(q->read);
  	rmb();
  

@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Mon, 1 Jan 2024 16:22:06 -0800
+Subject: [PATCH 02/73] xtensa: allow vectors in text with XIP
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit 12018ec31d4481676bb7f302bc67e37688500db4)
+---
+ arch/xtensa/Kconfig | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/arch/xtensa/Kconfig b/arch/xtensa/Kconfig
+index f2f9cd9cde505..87a4e6035b392 100644
+--- a/arch/xtensa/Kconfig
++++ b/arch/xtensa/Kconfig
+@@ -694,7 +694,6 @@ choice
+ 
+ config XTENSA_VECTORS_IN_TEXT
+ 	bool "Merge relocatable vectors into kernel text"
+-	depends on !MTD_XIP
+ 	help
+ 	  This option puts relocatable vectors into the kernel .text section
+ 	  with proper alignment.

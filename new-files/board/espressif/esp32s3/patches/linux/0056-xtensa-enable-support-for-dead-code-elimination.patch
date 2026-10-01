@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Sun, 6 Jul 2025 04:46:01 -0700
+Subject: [PATCH 56/73] xtensa: enable support for dead code elimination
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit c492d6909ab1d5d30a0d25bf49b19a4b0f5e0fc5)
+---
+ arch/xtensa/Kconfig              | 1 +
+ arch/xtensa/kernel/vmlinux.lds.S | 6 +++---
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/arch/xtensa/Kconfig b/arch/xtensa/Kconfig
+index 35050030b13f1..05956068523c6 100644
+--- a/arch/xtensa/Kconfig
++++ b/arch/xtensa/Kconfig
+@@ -47,6 +47,7 @@ config XTENSA
+ 	select HAVE_GCC_PLUGINS if GCC_VERSION >= 120000
+ 	select HAVE_HW_BREAKPOINT if PERF_EVENTS
+ 	select HAVE_IRQ_TIME_ACCOUNTING
++	select HAVE_LD_DEAD_CODE_DATA_ELIMINATION
+ 	select HAVE_PAGE_SIZE_4KB
+ 	select HAVE_PCI
+ 	select HAVE_PERF_EVENTS
+diff --git a/arch/xtensa/kernel/vmlinux.lds.S b/arch/xtensa/kernel/vmlinux.lds.S
+index f47e9bbbd2911..85c08d16bdb86 100644
+--- a/arch/xtensa/kernel/vmlinux.lds.S
++++ b/arch/xtensa/kernel/vmlinux.lds.S
+@@ -65,13 +65,13 @@ jiffies = jiffies_64;
+   {									    \
+     . = ALIGN(4);							    \
+     sym ## _start = ABSOLUTE(.);		 			    \
+-    *(section)								    \
++    KEEP(*(section))							    \
+     sym ## _end = ABSOLUTE(.);						    \
+   }
+ 
+ #define SECTION_VECTOR2(section, addr)					    \
+   . = addr;								    \
+-  *(section)
++  KEEP(*(section))
+ 
+ /*
+  *  Mapping of input sections to output sections when linking.
+@@ -161,7 +161,7 @@ SECTIONS
+   {
+     . = ALIGN(0x4);
+     __tagtable_begin = .;
+-    *(.taglist)
++    KEEP(*(.taglist))
+     __tagtable_end = .;
+ 
+     . = ALIGN(16);

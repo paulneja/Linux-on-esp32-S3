@@ -1,11 +1,17 @@
-esp32-ng: dont recycle a cmd node still in the pending queue
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: paulneja <207793167+paulneja@users.noreply.github.com>
+Date: Tue, 22 Sep 2026 23:02:53 -0300
+Subject: [PATCH 70/73] esp32-ng: fix the cmd queue race, #13
 
-issue #13. a timed out node landed in both lists, and nothing re-armed the
-work when the slot freed up.
+---
+ drivers/net/wireless/espressif/esp32-ng/esp_cmd.c | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
 
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c b/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c
+index 9bb2ef526245b..5fb985d0e6019 100644
 --- a/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c
 +++ b/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c
-@@ -191,6 +191,7 @@
+@@ -191,6 +191,7 @@ static int wait_and_decode_cmd_resp(struct esp_wifi_device *priv,
  {
  	struct esp_adapter *adapter = NULL;
  	int ret = 0;
@@ -13,7 +19,7 @@ work when the slot freed up.
  
  	if (!priv || !priv->adapter || !cmd_node) {
  		esp_info("Invalid params\n");
-@@ -224,6 +225,12 @@
+@@ -224,6 +225,12 @@ static int wait_and_decode_cmd_resp(struct esp_wifi_device *priv,
  	adapter->cmd_resp = 0;
  	spin_unlock_bh(&adapter->cmd_lock);
  
@@ -26,7 +32,7 @@ work when the slot freed up.
  	switch (cmd_node->cmd_code) {
  
  	case CMD_SCAN_REQUEST:
-@@ -272,6 +279,12 @@
+@@ -272,6 +279,12 @@ static int wait_and_decode_cmd_resp(struct esp_wifi_device *priv,
  		break;
  	}
  
@@ -39,7 +45,7 @@ work when the slot freed up.
  	recycle_cmd_node(adapter, cmd_node);
  	return ret;
  }
-@@ -360,7 +373,7 @@
+@@ -360,7 +373,7 @@ static void esp_cmd_work(struct work_struct *work)
  	}
  	/*esp_dbg("Processing Command [0x%X]\n", cmd_node->cmd_code);*/
  

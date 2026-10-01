@@ -1,0 +1,97 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Fri, 16 Jun 2023 16:31:55 -0700
+Subject: [PATCH 24/73] WIP: xtensa: load/store: collect and display exception
+ statistics
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit 50d49e7e1917517597b25f87b7c2f76815bb3730)
+---
+ arch/xtensa/include/asm/traps.h  |  4 ++++
+ arch/xtensa/kernel/align.S       | 12 ++++++++++++
+ arch/xtensa/kernel/asm-offsets.c |  6 ++++++
+ arch/xtensa/kernel/setup.c       |  8 ++++++++
+ 4 files changed, 30 insertions(+)
+
+diff --git a/arch/xtensa/include/asm/traps.h b/arch/xtensa/include/asm/traps.h
+index 212c3b9ff4078..693e66bfb6f63 100644
+--- a/arch/xtensa/include/asm/traps.h
++++ b/arch/xtensa/include/asm/traps.h
+@@ -37,6 +37,10 @@ struct exc_table {
+ 	void *fast_kernel_handler[EXCCAUSE_N];
+ 	/* Default C-Handlers */
+ 	xtensa_exception_handler *default_handler[EXCCAUSE_N];
++
++	u32 fast_handler_start;
++	u32 fast_handler_count;
++	u32 fast_handler_total;
+ };
+ 
+ DECLARE_PER_CPU(struct exc_table, exc_table);
+diff --git a/arch/xtensa/kernel/align.S b/arch/xtensa/kernel/align.S
+index f2d0d831ce43c..1eb67c8977ff0 100644
+--- a/arch/xtensa/kernel/align.S
++++ b/arch/xtensa/kernel/align.S
+@@ -468,7 +468,13 @@ ENTRY(fast_unaligned)
+ 1:
+ 	movi	a4, 0
+ 	rsr	a3, excsave1
++	rsr	a5, ccount
++	l32i	a6, a3, EXC_TABLE_FAST_HANDLER_START
++	l32i	a7, a3, EXC_TABLE_FAST_HANDLER_TOTAL
+ 	s32i	a4, a3, EXC_TABLE_FIXUP
++	sub	a5, a5, a6
++	add	a7, a7, a5
++	s32i	a7, a3, EXC_TABLE_FAST_HANDLER_TOTAL
+ 
+ 	/* Restore working register */
+ 
+@@ -509,6 +515,12 @@ ENTRY(fast_unaligned)
+ 	movi	a4, fast_unaligned_fixup
+ 	s32i	a4, a3, EXC_TABLE_FIXUP
+ 
++	l32i	a5, a3, EXC_TABLE_FAST_HANDLER_COUNT
++	rsr	a6, ccount
++	addi	a5, a5, 1
++	s32i	a6, a3, EXC_TABLE_FAST_HANDLER_START
++	s32i	a5, a3, EXC_TABLE_FAST_HANDLER_COUNT
++
+ 	rsr	a8, excvaddr		# load unaligned memory address
+ 
+ 	/* Now, identify one of the following load/store instructions.
+diff --git a/arch/xtensa/kernel/asm-offsets.c b/arch/xtensa/kernel/asm-offsets.c
+index cfbced95e944a..3168f30eeacfc 100644
+--- a/arch/xtensa/kernel/asm-offsets.c
++++ b/arch/xtensa/kernel/asm-offsets.c
+@@ -153,6 +153,12 @@ int main(void)
+ 	DEFINE(EXC_TABLE_FAST_KERNEL,
+ 	       offsetof(struct exc_table, fast_kernel_handler));
+ 	DEFINE(EXC_TABLE_DEFAULT, offsetof(struct exc_table, default_handler));
++	DEFINE(EXC_TABLE_FAST_HANDLER_START,
++	       offsetof(struct exc_table, fast_handler_start));
++	DEFINE(EXC_TABLE_FAST_HANDLER_COUNT,
++	       offsetof(struct exc_table, fast_handler_count));
++	DEFINE(EXC_TABLE_FAST_HANDLER_TOTAL,
++	       offsetof(struct exc_table, fast_handler_total));
+ 
+ #ifdef CONFIG_HIBERNATION
+ 	DEFINE(PBE_ADDRESS, offsetof(struct pbe, address));
+diff --git a/arch/xtensa/kernel/setup.c b/arch/xtensa/kernel/setup.c
+index f72e280363be1..421198c6e2528 100644
+--- a/arch/xtensa/kernel/setup.c
++++ b/arch/xtensa/kernel/setup.c
+@@ -686,6 +686,14 @@ c_show(struct seq_file *f, void *slot)
+ 		     XCHAL_DCACHE_LINESIZE,
+ 		     XCHAL_DCACHE_WAYS,
+ 		     XCHAL_DCACHE_SIZE);
++	seq_printf(f,
++		   "load/store exceptions\t: %d\n"
++		   "load/store clock count\t: %d\n",
++		   this_cpu_ptr(&exc_table)->fast_handler_count,
++		   this_cpu_ptr(&exc_table)->fast_handler_total);
++
++
++
+ 
+ 	return 0;
+ }

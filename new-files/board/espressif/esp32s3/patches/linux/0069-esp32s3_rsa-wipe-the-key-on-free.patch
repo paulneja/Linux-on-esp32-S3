@@ -1,7 +1,14 @@
-esp32s3-rsa: wipe the key on free
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: paulneja <207793167+paulneja@users.noreply.github.com>
+Date: Tue, 22 Sep 2026 21:27:29 -0300
+Subject: [PATCH 69/73] esp32s3_rsa: wipe the key on free
 
-n, e, d and rr stayed in the tfm ctx after teardown. d is the private exponent.
+---
+ drivers/crypto/esp32s3_rsa.c | 5 +++++
+ 1 file changed, 5 insertions(+)
 
+diff --git a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
+index 388dabcd32014..920aa735a8ddd 100644
 --- a/drivers/crypto/esp32s3_rsa.c
 +++ b/drivers/crypto/esp32s3_rsa.c
 @@ -3,6 +3,7 @@
@@ -12,7 +19,7 @@ n, e, d and rr stayed in the tfm ctx after teardown. d is the private exponent.
  #include <linux/module.h>
  #include <linux/moduleparam.h>
  #include <linux/mutex.h>
-@@ -189,6 +190,10 @@
+@@ -196,6 +197,10 @@ static void esp_rsa_free_key(struct esp_rsa_key *k)
  {
  	mpi_free(k->n_mpi);
  	k->n_mpi = NULL;

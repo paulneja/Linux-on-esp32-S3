@@ -1,0 +1,134 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Sat, 29 Jul 2023 18:13:53 -0700
+Subject: [PATCH 14/73] drivers/char/hw_random: add esp32-trng driver
+
+esp32-trng is the driver for the random number generator peripheral of
+the ESP32xx chips.
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit a9e0b297ad79ea588c4bd634831bce62a22fc49a)
+---
+ drivers/char/hw_random/Kconfig      | 10 ++++
+ drivers/char/hw_random/Makefile     |  1 +
+ drivers/char/hw_random/esp32-trng.c | 81 +++++++++++++++++++++++++++++
+ 3 files changed, 92 insertions(+)
+ create mode 100644 drivers/char/hw_random/esp32-trng.c
+
+diff --git a/drivers/char/hw_random/Kconfig b/drivers/char/hw_random/Kconfig
+index a5bcef4a54eea..f845a988db9d2 100644
+--- a/drivers/char/hw_random/Kconfig
++++ b/drivers/char/hw_random/Kconfig
+@@ -636,6 +636,16 @@ config HW_RANDOM_XILINX
+ 	  To compile this driver as a module, choose M here: the module
+ 	  will be called xilinx-trng.
+ 
++config HW_RANDOM_ESP32
++	tristate "Espressif ESP32xx Random Number Generator support"
++	depends on HAS_IOMEM && OF
++	help
++	  This driver provides support for the True Random Number
++	  Generator in Espressif ESP32xx chips.
++
++	  To compile this driver as a module, choose M here.
++	  The module will be called esp32-trng.
++
+ endif # HW_RANDOM
+ 
+ config UML_RANDOM
+diff --git a/drivers/char/hw_random/Makefile b/drivers/char/hw_random/Makefile
+index 95b5adb49560d..29d3fa1acacea 100644
+--- a/drivers/char/hw_random/Makefile
++++ b/drivers/char/hw_random/Makefile
+@@ -54,3 +54,4 @@ obj-$(CONFIG_HW_RANDOM_POLARFIRE_SOC) += mpfs-rng.o
+ obj-$(CONFIG_HW_RANDOM_ROCKCHIP) += rockchip-rng.o
+ obj-$(CONFIG_HW_RANDOM_JH7110) += jh7110-trng.o
+ obj-$(CONFIG_HW_RANDOM_XILINX) += xilinx-trng.o
++obj-$(CONFIG_HW_RANDOM_ESP32) += esp32-trng.o
+diff --git a/drivers/char/hw_random/esp32-trng.c b/drivers/char/hw_random/esp32-trng.c
+new file mode 100644
+index 0000000000000..a02798fecd419
+--- /dev/null
++++ b/drivers/char/hw_random/esp32-trng.c
+@@ -0,0 +1,81 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++#include <linux/delay.h>
++#include <linux/err.h>
++#include <linux/hw_random.h>
++#include <linux/io.h>
++#include <linux/kernel.h>
++#include <linux/mod_devicetable.h>
++#include <linux/module.h>
++#include <linux/of_device.h>
++#include <linux/platform_device.h>
++
++struct esp32_trng {
++	void __iomem *mem;
++	struct hwrng rng;
++};
++
++static int esp32_trng_read(struct hwrng *rng, void *buf, size_t max, bool wait)
++{
++	struct esp32_trng *trng = container_of(rng, struct esp32_trng, rng);
++	int ret = 0;
++
++	while (max >= sizeof(u32)) {
++		*(u32 *)buf = readl(trng->mem);
++		ret += sizeof(u32);
++		buf += sizeof(u32);
++		max -= sizeof(u32);
++		/* esp32 TRM recommends reading RNG_DATA_REG at a maximum rate of 5MHz */
++		ndelay(200);
++	}
++	return ret;
++}
++
++static int esp32_trng_probe(struct platform_device *pdev)
++{
++	int ret;
++	struct esp32_trng *trng;
++	struct device *dev = &pdev->dev;
++
++	trng = devm_kzalloc(dev, sizeof(*trng), GFP_KERNEL);
++	if (!trng)
++		return -ENOMEM;
++
++	trng->mem = devm_platform_ioremap_resource(pdev, 0);
++	if (IS_ERR(trng->mem))
++		return PTR_ERR(trng->mem);
++
++	trng->rng.name = pdev->name;
++	trng->rng.read = esp32_trng_read;
++	trng->rng.quality = 900;
++
++	ret = devm_hwrng_register(dev, &trng->rng);
++	if (ret) {
++		dev_err(dev, "failed to register rng device: %d\n", ret);
++		return ret;
++	}
++
++	platform_set_drvdata(pdev, trng);
++
++	return 0;
++}
++
++static const struct of_device_id esp32_trng_of_match[] = {
++	{ .compatible = "esp,esp32-trng", },
++	{},
++};
++MODULE_DEVICE_TABLE(of, esp32_trng_of_match);
++
++static struct platform_driver esp32_trng_driver = {
++	.driver = {
++		.name = "esp32-trng",
++		.of_match_table	= esp32_trng_of_match,
++	},
++	.probe = esp32_trng_probe,
++};
++
++module_platform_driver(esp32_trng_driver);
++
++MODULE_LICENSE("GPL");
++MODULE_AUTHOR("Max Filippov <jcmvbkbc@gmail.com>");
++MODULE_DESCRIPTION("ESP32 true random number generator driver");

@@ -1,0 +1,104 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Fri, 21 Jul 2023 09:25:18 -0700
+Subject: [PATCH 06/73] xtensa: trax: add trax buffer dumping
+
+Dump TRAX buffer in exception handlers and protection fault handler.
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit f78914824bce67fc111120452460d32461f932f6)
+---
+ arch/xtensa/kernel/traps.c |  9 +++++++++
+ arch/xtensa/mm/fault.c     | 10 +++++++++-
+ 2 files changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/arch/xtensa/kernel/traps.c b/arch/xtensa/kernel/traps.c
+index 44c07c4e0833a..a0a00b82811a3 100644
+--- a/arch/xtensa/kernel/traps.c
++++ b/arch/xtensa/kernel/traps.c
+@@ -44,6 +44,7 @@
+ #include <asm/processor.h>
+ #include <asm/traps.h>
+ #include <asm/hw_breakpoint.h>
++#include <asm/trax.h>
+ 
+ /*
+  * Machine specific interrupt handlers
+@@ -200,6 +201,8 @@ static inline void dump_user_code(struct pt_regs *regs)
+ 
+ void do_unhandled(struct pt_regs *regs)
+ {
++	trax_dump();
++	trax_start();
+ 	__die_if_kernel("Caught unhandled exception - should not happen",
+ 			regs, SIGKILL);
+ 
+@@ -358,6 +361,9 @@ static void do_illegal_instruction(struct pt_regs *regs)
+ 		return;
+ 	}
+ 
++	trax_dump();
++	trax_start();
++
+ 	__die_if_kernel("Illegal instruction in kernel", regs, SIGKILL);
+ 
+ 	/* If in user mode, send SIGILL signal to current process. */
+@@ -630,6 +636,9 @@ void __noreturn die(const char * str, struct pt_regs * regs, long err)
+ {
+ 	static int die_counter;
+ 
++	trax_dump();
++	trax_start();
++
+ 	console_verbose();
+ 	spin_lock_irq(&die_lock);
+ 
+diff --git a/arch/xtensa/mm/fault.c b/arch/xtensa/mm/fault.c
+index 16e11b6f6f78e..29d9db7311169 100644
+--- a/arch/xtensa/mm/fault.c
++++ b/arch/xtensa/mm/fault.c
+@@ -21,6 +21,7 @@
+ #include <asm/cacheflush.h>
+ #include <asm/hardirq.h>
+ #include <asm/traps.h>
++#include <asm/trax.h>
+ 
+ void bad_page_fault(struct pt_regs*, unsigned long, int);
+ 
+@@ -199,6 +200,8 @@ void do_page_fault(struct pt_regs *regs)
+ 	mmap_read_unlock(mm);
+ bad_area_nosemaphore:
+ 	if (user_mode(regs)) {
++		trax_dump();
++		trax_start();
+ 		force_sig_fault(SIGSEGV, code, (void *) address);
+ 		return;
+ 	}
+@@ -211,6 +214,8 @@ void do_page_fault(struct pt_regs *regs)
+ 	 */
+ out_of_memory:
+ 	mmap_read_unlock(mm);
++	trax_dump();
++	trax_start();
+ 	if (!user_mode(regs))
+ 		bad_page_fault(regs, address, SIGKILL);
+ 	else
+@@ -218,6 +223,8 @@ void do_page_fault(struct pt_regs *regs)
+ 	return;
+ 
+ do_sigbus:
++	trax_dump();
++	trax_start();
+ 	mmap_read_unlock(mm);
+ 
+ 	/* Send a sigbus, regardless of whether we were in kernel
+@@ -245,7 +252,8 @@ bad_page_fault(struct pt_regs *regs, unsigned long address, int sig)
+ 		regs->pc = entry->fixup;
+ 		return;
+ 	}
+-
++	trax_dump();
++	trax_start();
+ 	/* Oops. The kernel tried to access some bad page. We'll have to
+ 	 * terminate things with extreme prejudice.
+ 	 */

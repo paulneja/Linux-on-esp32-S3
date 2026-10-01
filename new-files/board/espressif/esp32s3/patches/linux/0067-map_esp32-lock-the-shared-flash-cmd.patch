@@ -1,19 +1,16 @@
-map_esp32: serialise every flash operation on the one shared command
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: paulneja <207793167+paulneja@users.noreply.github.com>
+Date: Sun, 13 Sep 2026 12:35:34 -0300
+Subject: [PATCH 67/73] map_esp32: lock the shared flash cmd
 
-The driver has a single command object shared with core 0 and a single
-flash controller behind it, but nothing serialised its users. MTD does not
-provide that exclusion, jffs2's alloc_sem is per superblock, and this board
-mounts two (/etc and /home), so under PREEMPT a second task could rewrite
-the command's fields while the first was between publishing it and entering
-the IRAM wait, and both could enqueue the same pointer. XIP reads had no
-lock at all: core 0 disables the flash cache while it writes, so a read
-from another task during a write returned whatever the cache held.
+---
+ drivers/mtd/chips/map_esp32.c | 35 ++++++++++++++++++++++++++++++++---
+ 1 file changed, 32 insertions(+), 3 deletions(-)
 
-One mutex now covers erase, write and read from the first field written to
-the result consumed.
-
---- a/drivers/mtd/chips/map_esp32.c	2026-09-13 12:14:54.368620383 -0300
-+++ b/drivers/mtd/chips/map_esp32.c	2026-09-13 12:14:54.386440265 -0300
+diff --git a/drivers/mtd/chips/map_esp32.c b/drivers/mtd/chips/map_esp32.c
+index fabf6e0f4a5e5..b1dc47c8bb812 100644
+--- a/drivers/mtd/chips/map_esp32.c
++++ b/drivers/mtd/chips/map_esp32.c
 @@ -6,6 +6,7 @@
  #include <linux/init.h>
  #include <linux/kernel.h>
@@ -22,7 +19,7 @@ the result consumed.
  #include <linux/mtd/map.h>
  #include <linux/mtd/mtd.h>
  #include <linux/mtd/partitions.h>
-@@ -54,6 +55,16 @@
+@@ -54,6 +55,16 @@ struct esp32_ipc_flash {
  	struct map_info *map;
  	struct esp32_ipc_flash_cmd *cmd;
  	struct completion *completion;
@@ -39,7 +36,7 @@ the result consumed.
  };
  
  static int esp32_ipc_flash_erase(struct esp32_ipc_flash *hw, u32 off, u32 size);
-@@ -156,7 +167,9 @@
+@@ -156,7 +167,9 @@ static int map_esp32_read(struct mtd_info *mtd, loff_t from, size_t len,
  	struct esp32_ipc_flash *hw = mtd->priv;
  	struct map_info *map = hw->map;
  
@@ -49,7 +46,7 @@ the result consumed.
  	*retlen = len;
  	return 0;
  }
-@@ -219,31 +232,46 @@
+@@ -219,31 +232,46 @@ static int esp32_ipc_flash_io(struct esp32_ipc_flash *hw,
  
  static int esp32_ipc_flash_erase(struct esp32_ipc_flash *hw, u32 off, u32 size)
  {
@@ -99,7 +96,7 @@ the result consumed.
  }
  
  static int esp32_ipc_flash_rx(void *p, void *data)
-@@ -265,6 +293,7 @@
+@@ -265,6 +293,7 @@ static int esp32_ipc_flash_probe(struct platform_device *pdev)
  	if (!hw)
  		return -ENOMEM;
  	platform_set_drvdata(pdev, hw);

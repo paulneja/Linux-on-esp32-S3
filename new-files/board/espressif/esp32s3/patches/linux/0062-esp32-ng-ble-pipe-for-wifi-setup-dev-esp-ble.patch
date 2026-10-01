@@ -1,6 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: paulneja <207793167+paulneja@users.noreply.github.com>
+Date: Sun, 26 Jul 2026 15:06:04 -0300
+Subject: [PATCH 62/73] esp32-ng: ble pipe for wifi setup, /dev/esp-ble
+
+---
+ .../net/wireless/espressif/esp32-ng/Makefile  |   2 +-
+ .../net/wireless/espressif/esp32-ng/adapter.h |   1 +
+ .../net/wireless/espressif/esp32-ng/esp_api.h |   4 +
+ .../espressif/esp32-ng/esp_ble_prov.c         | 196 ++++++++++++++++++
+ .../net/wireless/espressif/esp32-ng/main.c    |   6 +
+ 5 files changed, 208 insertions(+), 1 deletion(-)
+ create mode 100644 drivers/net/wireless/espressif/esp32-ng/esp_ble_prov.c
+
+diff --git a/drivers/net/wireless/espressif/esp32-ng/Makefile b/drivers/net/wireless/espressif/esp32-ng/Makefile
+index 4d8688d45a1c6..86185da4b9169 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/Makefile
++++ b/drivers/net/wireless/espressif/esp32-ng/Makefile
+@@ -1,5 +1,5 @@
+ obj-$(CONFIG_ESP32_WIFI)		+= esp32-wifi.o
+-esp32-wifi-objs				+= main.o esp_cmd.o esp_cfg80211.o esp_stats.o esp_utils.o
++esp32-wifi-objs				+= main.o esp_cmd.o esp_cfg80211.o esp_stats.o esp_utils.o esp_ble_prov.o
+ esp32-wifi-$(CONFIG_ESP32_BT)		+= esp_bt.o
+ esp32-wifi-$(CONFIG_ESP32_WIFI_SPI)	+= esp_spi.o
+ esp32-wifi-$(CONFIG_ESP32_WIFI_SDIO)	+= esp_sdio.o
+diff --git a/drivers/net/wireless/espressif/esp32-ng/adapter.h b/drivers/net/wireless/espressif/esp32-ng/adapter.h
+index 783d08bd71f97..803859f6e8703 100644
 --- a/drivers/net/wireless/espressif/esp32-ng/adapter.h
 +++ b/drivers/net/wireless/espressif/esp32-ng/adapter.h
-@@ -54,6 +54,7 @@
+@@ -54,6 +54,7 @@ enum ESP_INTERFACE_TYPE {
  	ESP_HCI_IF,
  	ESP_INTERNAL_IF,
  	ESP_TEST_IF,
@@ -8,10 +35,11 @@
  	ESP_MAX_IF,
  };
  
-diff -Naur a/drivers/net/wireless/espressif/esp32-ng/esp_api.h b/drivers/net/wireless/espressif/esp32-ng/esp_api.h
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_api.h b/drivers/net/wireless/espressif/esp32-ng/esp_api.h
+index b990327de87d3..7788093c99fe8 100644
 --- a/drivers/net/wireless/espressif/esp32-ng/esp_api.h
 +++ b/drivers/net/wireless/espressif/esp32-ng/esp_api.h
-@@ -26,6 +26,10 @@
+@@ -26,6 +26,10 @@ struct esp_wifi_device *get_priv_from_payload_header(struct esp_adapter *adapter
  						     struct esp_payload_header *header);
  struct sk_buff *esp_alloc_skb(u32 len);
  int esp_send_packet(struct esp_adapter *adapter, struct sk_buff *skb);
@@ -22,10 +50,12 @@ diff -Naur a/drivers/net/wireless/espressif/esp32-ng/esp_api.h b/drivers/net/wir
  u8 esp_is_bt_supported_over_sdio(u32 cap);
  void esp_tx_pause(struct esp_wifi_device *priv);
  void esp_tx_resume(struct esp_wifi_device *priv);
-diff -Naur a/drivers/net/wireless/espressif/esp32-ng/esp_ble_prov.c b/drivers/net/wireless/espressif/esp32-ng/esp_ble_prov.c
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_ble_prov.c b/drivers/net/wireless/espressif/esp32-ng/esp_ble_prov.c
+new file mode 100644
+index 0000000000000..31fdced4dc370
 --- /dev/null
 +++ b/drivers/net/wireless/espressif/esp32-ng/esp_ble_prov.c
-@@ -0,0 +1,197 @@
+@@ -0,0 +1,196 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +
 +#include <linux/module.h>
@@ -184,7 +214,6 @@ diff -Naur a/drivers/net/wireless/espressif/esp32-ng/esp_ble_prov.c b/drivers/ne
 +	.read		= esp_ble_prov_read,
 +	.write		= esp_ble_prov_write,
 +	.poll		= esp_ble_prov_poll,
-+	.llseek		= no_llseek,
 +};
 +
 +static struct miscdevice esp_ble_prov_misc = {
@@ -223,10 +252,11 @@ diff -Naur a/drivers/net/wireless/espressif/esp32-ng/esp_ble_prov.c b/drivers/ne
 +	skb_queue_purge(&rx_q);
 +	ble_adapter = NULL;
 +}
-diff -Naur a/drivers/net/wireless/espressif/esp32-ng/main.c b/drivers/net/wireless/espressif/esp32-ng/main.c
+diff --git a/drivers/net/wireless/espressif/esp32-ng/main.c b/drivers/net/wireless/espressif/esp32-ng/main.c
+index f05a2b1483d15..56355d9533be1 100644
 --- a/drivers/net/wireless/espressif/esp32-ng/main.c
 +++ b/drivers/net/wireless/espressif/esp32-ng/main.c
-@@ -488,6 +488,8 @@
+@@ -488,6 +488,8 @@ int esp_add_card(struct esp_adapter *adapter)
  	RET_ON_FAIL(esp_add_wiphy(adapter));
  	RET_ON_FAIL(esp_add_network_ifaces(adapter));
  
@@ -235,7 +265,7 @@ diff -Naur a/drivers/net/wireless/espressif/esp32-ng/main.c b/drivers/net/wirele
  	return 0;
  }
  
-@@ -579,6 +581,7 @@
+@@ -579,6 +581,7 @@ int esp_remove_card(struct esp_adapter *adapter)
  	esp_stop_network_ifaces(adapter);
  #ifdef CONFIG_ESP32_BT
  	/* BT may have been initialized after fw bootup event, deinit it */
@@ -243,7 +273,7 @@ diff -Naur a/drivers/net/wireless/espressif/esp32-ng/main.c b/drivers/net/wirele
  	esp_deinit_bt(adapter);
  #endif
  	esp_commands_teardown(adapter);
-@@ -789,6 +792,9 @@
+@@ -789,6 +792,9 @@ static void process_rx_packet(struct esp_adapter *adapter, struct sk_buff *skb)
  			dev_kfree_skb_any(skb);
  		}
  
@@ -253,13 +283,3 @@ diff -Naur a/drivers/net/wireless/espressif/esp32-ng/main.c b/drivers/net/wirele
  	} else if (payload_header->if_type == ESP_TEST_IF) {
  #if TEST_RAW_TP
  		if (raw_tp_mode != 0) {
-diff -Naur a/drivers/net/wireless/espressif/esp32-ng/Makefile b/drivers/net/wireless/espressif/esp32-ng/Makefile
---- a/drivers/net/wireless/espressif/esp32-ng/Makefile
-+++ b/drivers/net/wireless/espressif/esp32-ng/Makefile
-@@ -1,5 +1,5 @@
- obj-$(CONFIG_ESP32_WIFI)		+= esp32-wifi.o
--esp32-wifi-objs				+= main.o esp_cmd.o esp_cfg80211.o esp_stats.o esp_utils.o
-+esp32-wifi-objs				+= main.o esp_cmd.o esp_cfg80211.o esp_stats.o esp_utils.o esp_ble_prov.o
- esp32-wifi-$(CONFIG_ESP32_BT)		+= esp_bt.o
- esp32-wifi-$(CONFIG_ESP32_WIFI_SPI)	+= esp_spi.o
- esp32-wifi-$(CONFIG_ESP32_WIFI_SDIO)	+= esp_sdio.o

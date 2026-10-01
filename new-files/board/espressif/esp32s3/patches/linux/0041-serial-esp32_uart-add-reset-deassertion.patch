@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Mon, 23 Oct 2023 15:02:03 -0700
+Subject: [PATCH 41/73] serial: esp32_uart: add reset deassertion
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit 36a7c6252c92caf3a04ddfe87d71692cc3c0d20f)
+---
+ drivers/tty/serial/esp32_uart.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/drivers/tty/serial/esp32_uart.c b/drivers/tty/serial/esp32_uart.c
+index 667c2198a03a5..04be5363025e9 100644
+--- a/drivers/tty/serial/esp32_uart.c
++++ b/drivers/tty/serial/esp32_uart.c
+@@ -11,6 +11,7 @@
+ #include <linux/of.h>
+ #include <linux/platform_device.h>
+ #include <linux/property.h>
++#include <linux/reset.h>
+ #include <linux/serial_core.h>
+ #include <linux/slab.h>
+ #include <linux/tty_flip.h>
+@@ -682,6 +683,7 @@ static int esp32_uart_probe(struct platform_device *pdev)
+ 	struct uart_port *port;
+ 	struct esp32_port *sport;
+ 	struct resource *res;
++	struct reset_control *rst;
+ 	int ret;
+ 
+ 	sport = devm_kzalloc(&pdev->dev, sizeof(*sport), GFP_KERNEL);
+@@ -715,6 +717,10 @@ static int esp32_uart_probe(struct platform_device *pdev)
+ 	if (IS_ERR(sport->clk))
+ 		return PTR_ERR(sport->clk);
+ 
++	rst = devm_reset_control_get(&pdev->dev, NULL);
++	if (!IS_ERR(rst))
++		reset_control_deassert(rst);
++
+ 	port->uartclk = clk_get_rate(sport->clk);
+ 	port->dev = &pdev->dev;
+ 	port->type = PORT_GENERIC;
