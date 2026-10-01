@@ -25,6 +25,26 @@ where this gets fixed; exchanging pages lazily, on first access rather than
 at switch time, is. The number is recorded so that work can start from a
 measurement.
 
+diff --git a/fs/proc/meminfo.c b/fs/proc/meminfo.c
+index a05869a03c72c..d6d816252a965 100644
+--- a/fs/proc/meminfo.c
++++ b/fs/proc/meminfo.c
+@@ -66,6 +66,13 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
+ #ifdef CONFIG_XTENSA_NOMMU_FORK
+ 	show_val_kb(m, "ForkShadow:     ", atomic_long_read(&nommu_bank_shadow_pages));
+ 	show_val_kb(m, "ForkRecovered:  ", atomic_long_read(&nommu_bank_recovered_pages));
++	/* Microseconds at the nominal 240 MHz: the worst and the most recent
++	 * time a context switch held interrupts off to exchange banked pages.
++	 */
++	seq_printf(m, "ForkSwitchMax:  %8lu us\n",
++		   nommu_bank_switch_max_cycles / 240);
++	seq_printf(m, "ForkSwitchLast: %8lu us\n",
++		   nommu_bank_switch_last_cycles / 240);
+ #endif
+ 	show_val_kb(m, "Buffers:        ", i.bufferram);
+ 	show_val_kb(m, "Cached:         ", cached);
+diff --git a/include/linux/nommu-bank.h b/include/linux/nommu-bank.h
+index 6388c85f1c802..ea7d1cbc78c9e 100644
 --- a/include/linux/nommu-bank.h
 +++ b/include/linux/nommu-bank.h
 @@ -4,6 +4,8 @@
@@ -36,9 +56,11 @@ measurement.
  struct mm_struct;
  struct vm_area_struct;
  void nommu_bank_switch(struct mm_struct *mm);
+diff --git a/mm/nommu-bank.inc b/mm/nommu-bank.inc
+index 12451d0892f33..ceb7c90b7045a 100644
 --- a/mm/nommu-bank.inc
 +++ b/mm/nommu-bank.inc
-@@ -105,6 +105,17 @@
+@@ -105,6 +105,17 @@ static void bank_report_broken(const char *where)
  	dump_stack();
  }
  
@@ -56,7 +78,7 @@ measurement.
  /* A single-owner descriptor survives, but owns no backup pages. Keeping
   * that descriptor stable matters when another mm exits while fork sleeps
   * in bank_alloc(). Only the owning mm can replace its descriptor.
-@@ -251,12 +262,13 @@
+@@ -251,12 +262,13 @@ static void bank_move_pages(struct nommu_bank *to, struct nommu_bank *from)
  void nommu_bank_switch(struct mm_struct *mm)
  {
  	struct nommu_bank *bank;
@@ -71,7 +93,7 @@ measurement.
  	list_for_each_entry(bank, &mm->context.nommu_banks, link) {
  		struct vm_region *region = bank->region;
  		struct nommu_bank *out = region->bank_owner;
-@@ -297,6 +309,12 @@
+@@ -297,6 +309,12 @@ void nommu_bank_switch(struct mm_struct *mm)
  		}
  		region->bank_owner = bank;
  	}
@@ -84,19 +106,3 @@ measurement.
  	local_irq_restore(flags);
  }
  
---- a/fs/proc/meminfo.c
-+++ b/fs/proc/meminfo.c
-@@ -66,6 +66,13 @@
- #ifdef CONFIG_XTENSA_NOMMU_FORK
- 	show_val_kb(m, "ForkShadow:     ", atomic_long_read(&nommu_bank_shadow_pages));
- 	show_val_kb(m, "ForkRecovered:  ", atomic_long_read(&nommu_bank_recovered_pages));
-+	/* Microseconds at the nominal 240 MHz: the worst and the most recent
-+	 * time a context switch held interrupts off to exchange banked pages.
-+	 */
-+	seq_printf(m, "ForkSwitchMax:  %8lu us\n",
-+		   nommu_bank_switch_max_cycles / 240);
-+	seq_printf(m, "ForkSwitchLast: %8lu us\n",
-+		   nommu_bank_switch_last_cycles / 240);
- #endif
- 	show_val_kb(m, "Buffers:        ", i.bufferram);
- 	show_val_kb(m, "Cached:         ", cached);

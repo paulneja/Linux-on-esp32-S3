@@ -70,6 +70,8 @@ snapshot with its live pages parked in a descriptor that no longer owns them.
 dup_mmap()'s vm_usage check happens to prevent it today, but that check is
 there for other reasons.
 
+diff --git a/mm/nommu-bank.inc b/mm/nommu-bank.inc
+index 186f045bd4cc5..12451d0892f33 100644
 --- a/mm/nommu-bank.inc
 +++ b/mm/nommu-bank.inc
 @@ -7,20 +7,104 @@
@@ -178,7 +180,7 @@ there for other reasons.
  /* A single-owner descriptor survives, but owns no backup pages. Keeping
   * that descriptor stable matters when another mm exits while fork sleeps
   * in bank_alloc(). Only the owning mm can replace its descriptor.
-@@ -28,8 +112,14 @@
+@@ -28,8 +112,14 @@ atomic_long_t nommu_bank_recovered_pages = ATOMIC_LONG_INIT(0);
  static void bank_release_pages(struct nommu_bank *bank)
  {
  	unsigned int i;
@@ -194,7 +196,7 @@ there for other reasons.
  	atomic_long_sub(bank->count, &nommu_bank_shadow_pages);
  	bank->count = 0;
  }
-@@ -40,26 +130,53 @@
+@@ -40,26 +130,53 @@ static void bank_free(struct nommu_bank *bank)
  	kfree(bank);
  }
  
@@ -254,7 +256,7 @@ there for other reasons.
  	return bank;
  }
  
-@@ -76,6 +193,61 @@
+@@ -76,6 +193,61 @@ static void bank_copy(struct nommu_bank *bank, bool save)
  	}
  }
  
@@ -316,7 +318,7 @@ there for other reasons.
  void nommu_bank_switch(struct mm_struct *mm)
  {
  	struct nommu_bank *bank;
-@@ -87,11 +259,42 @@
+@@ -87,11 +259,42 @@ void nommu_bank_switch(struct mm_struct *mm)
  	local_irq_save(flags);
  	list_for_each_entry(bank, &mm->context.nommu_banks, link) {
  		struct vm_region *region = bank->region;
@@ -363,7 +365,7 @@ there for other reasons.
  		region->bank_owner = bank;
  	}
  	local_irq_restore(flags);
-@@ -101,29 +304,37 @@
+@@ -101,29 +304,37 @@ static void bank_detach(struct vm_area_struct *vma)
  {
  	struct nommu_bank *bank = vma->nommu_bank;
  	unsigned long flags;
@@ -415,7 +417,7 @@ there for other reasons.
  	}
  	vma->nommu_bank = NULL;
  	local_irq_restore(flags);
-@@ -133,27 +344,59 @@
+@@ -133,27 +344,59 @@ static void bank_detach(struct vm_area_struct *vma)
  static int bank_clone(struct vm_area_struct *dst, struct vm_area_struct *src)
  {
  	struct vm_region *region = src->vm_region;
@@ -479,7 +481,7 @@ there for other reasons.
  	if (fresh) {
  		src->nommu_bank = parent;
  		list_add_tail(&parent->link, &src->vm_mm->context.nommu_banks);
-@@ -165,8 +408,6 @@
+@@ -165,8 +408,6 @@ static int bank_clone(struct vm_area_struct *dst, struct vm_area_struct *src)
  	list_add_tail(&child->siblings, &parent->siblings);
  	list_add_tail(&child->link, &dst->vm_mm->context.nommu_banks);
  	local_irq_restore(flags);
@@ -488,7 +490,7 @@ there for other reasons.
  	return 0;
  }
  
-@@ -276,19 +517,27 @@
+@@ -276,19 +517,27 @@ static void bank_access(struct vm_area_struct *vma, unsigned long addr,
  {
  	struct nommu_bank *bank = vma->nommu_bank;
  	unsigned long flags;

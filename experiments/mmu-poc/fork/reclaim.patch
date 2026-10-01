@@ -1,3 +1,98 @@
+diff --git a/fs/proc/meminfo.c b/fs/proc/meminfo.c
+index b2813ff13cb23..a05869a03c72c 100644
+--- a/fs/proc/meminfo.c
++++ b/fs/proc/meminfo.c
+@@ -14,6 +14,9 @@
+ #include <linux/vmstat.h>
+ #include <linux/atomic.h>
+ #include <linux/vmalloc.h>
++#ifdef CONFIG_XTENSA_NOMMU_FORK
++#include <linux/nommu-bank.h>
++#endif
+ #ifdef CONFIG_CMA
+ #include <linux/cma.h>
+ #endif
+@@ -60,6 +63,10 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
+ 	show_val_kb(m, "MemTotal:       ", i.totalram);
+ 	show_val_kb(m, "MemFree:        ", i.freeram);
+ 	show_val_kb(m, "MemAvailable:   ", available);
++#ifdef CONFIG_XTENSA_NOMMU_FORK
++	show_val_kb(m, "ForkShadow:     ", atomic_long_read(&nommu_bank_shadow_pages));
++	show_val_kb(m, "ForkRecovered:  ", atomic_long_read(&nommu_bank_recovered_pages));
++#endif
+ 	show_val_kb(m, "Buffers:        ", i.bufferram);
+ 	show_val_kb(m, "Cached:         ", cached);
+ 	show_val_kb(m, "SwapCached:     ", total_swapcache_pages());
+diff --git a/fs/proc/task_nommu.c b/fs/proc/task_nommu.c
+index d362919f4f688..5883d3e2e0c9f 100644
+--- a/fs/proc/task_nommu.c
++++ b/fs/proc/task_nommu.c
+@@ -9,6 +9,9 @@
+ #include <linux/slab.h>
+ #include <linux/seq_file.h>
+ #include <linux/sched/mm.h>
++#ifdef CONFIG_XTENSA_NOMMU_FORK
++#include <linux/nommu-bank.h>
++#endif
+ 
+ #include "internal.h"
+ 
+@@ -24,12 +27,20 @@ void task_mem(struct seq_file *m, struct mm_struct *mm)
+ 	struct vm_area_struct *vma;
+ 	struct vm_region *region;
+ 	unsigned long bytes = 0, sbytes = 0, slack = 0, size;
++#ifdef CONFIG_XTENSA_NOMMU_FORK
++	unsigned long private_ram = 0;
++#endif
+ 
+ 	mmap_read_lock(mm);
+ 	for_each_vma(vmi, vma) {
+ 		bytes += kobjsize(vma);
+ 
+ 		region = vma->vm_region;
++#ifdef CONFIG_XTENSA_NOMMU_FORK
++		if (region && !(vma->vm_flags & VM_SHARED) &&
++		    (vma->vm_flags & VM_MAPPED_COPY))
++			private_ram += region->vm_top - region->vm_start;
++#endif
+ 		if (region) {
+ 			size = kobjsize(region);
+ 			size += region->vm_end - region->vm_start;
+@@ -69,6 +80,10 @@ void task_mem(struct seq_file *m, struct mm_struct *mm)
+ 
+ 	bytes += kobjsize(current); /* includes kernel stack */
+ 
++#ifdef CONFIG_XTENSA_NOMMU_FORK
++	seq_printf(m, "ForkShadow:\t%8lu kB\n", nommu_bank_pages(mm) << (PAGE_SHIFT - 10));
++	seq_printf(m, "PrivateRAM:\t%8lu kB\n", private_ram >> 10);
++#endif
+ 	mmap_read_unlock(mm);
+ 
+ 	seq_printf(m,
+@@ -293,4 +308,3 @@ const struct file_operations proc_pid_maps_operations = {
+ 	.llseek		= seq_lseek,
+ 	.release	= map_release,
+ };
+-
+diff --git a/include/linux/nommu-bank.h b/include/linux/nommu-bank.h
+index 35890a7e56868..6388c85f1c802 100644
+--- a/include/linux/nommu-bank.h
++++ b/include/linux/nommu-bank.h
+@@ -1,8 +1,12 @@
+ /* SPDX-License-Identifier: GPL-2.0-only */
+ #ifndef _LINUX_NOMMU_BANK_H
+ #define _LINUX_NOMMU_BANK_H
++#include <linux/atomic.h>
++extern atomic_long_t nommu_bank_shadow_pages;
++extern atomic_long_t nommu_bank_recovered_pages;
+ struct mm_struct;
+ struct vm_area_struct;
+ void nommu_bank_switch(struct mm_struct *mm);
++unsigned long nommu_bank_pages(struct mm_struct *mm);
+ int nommu_bank_dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm);
+ #endif
+diff --git a/mm/nommu-bank.inc b/mm/nommu-bank.inc
+index ba324b1ff5ad5..553ea25ef4cb9 100644
 --- a/mm/nommu-bank.inc
 +++ b/mm/nommu-bank.inc
 @@ -1,20 +1,36 @@
@@ -38,7 +133,7 @@
  	kfree(bank);
  }
  
-@@ -27,6 +43,7 @@
+@@ -27,6 +43,7 @@ static struct nommu_bank *bank_alloc(struct vm_region *region)
  	if (!bank)
  		return NULL;
  	INIT_LIST_HEAD(&bank->link);
@@ -46,7 +141,7 @@
  	bank->region = region;
  	for (i = 0; i < count; i++) {
  		bank->pages[i] = (void *)__get_free_page(BANK_GFP);
-@@ -35,6 +52,7 @@
+@@ -35,6 +52,7 @@ static struct nommu_bank *bank_alloc(struct vm_region *region)
  			return NULL;
  		}
  		bank->count++;
@@ -54,7 +149,7 @@
  	}
  	return bank;
  }
-@@ -80,9 +98,27 @@
+@@ -80,9 +98,27 @@ static void bank_detach(struct vm_area_struct *vma)
  	if (!bank)
  		return;
  	local_irq_save(flags);
@@ -83,7 +178,7 @@
  	vma->nommu_bank = NULL;
  	local_irq_restore(flags);
  	bank_free(bank);
-@@ -91,20 +127,25 @@
+@@ -91,20 +127,25 @@ static void bank_detach(struct vm_area_struct *vma)
  static int bank_clone(struct vm_area_struct *dst, struct vm_area_struct *src)
  {
  	struct vm_region *region = src->vm_region;
@@ -118,7 +213,7 @@
  	}
  	local_irq_save(flags);
  	if (fresh) {
-@@ -115,11 +156,25 @@
+@@ -115,11 +156,25 @@ static int bank_clone(struct vm_area_struct *dst, struct vm_area_struct *src)
  	/* The calling process is resident, even if allocation scheduled. */
  	bank_copy(child, true);
  	dst->nommu_bank = child;
@@ -144,7 +239,7 @@
  int nommu_bank_dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
  {
  	VMA_ITERATOR(src_iter, oldmm, 0);
-@@ -128,9 +183,26 @@
+@@ -128,9 +183,26 @@ int nommu_bank_dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
  	unsigned long bytes = 0, addr;
  	int ret;
  
@@ -174,90 +269,3 @@
  	for_each_vma(src_iter, src) {
  		if (src->vm_flags & VM_SHARED)
  			continue;
---- a/include/linux/nommu-bank.h
-+++ b/include/linux/nommu-bank.h
-@@ -1,8 +1,12 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
- #ifndef _LINUX_NOMMU_BANK_H
- #define _LINUX_NOMMU_BANK_H
-+#include <linux/atomic.h>
-+extern atomic_long_t nommu_bank_shadow_pages;
-+extern atomic_long_t nommu_bank_recovered_pages;
- struct mm_struct;
- struct vm_area_struct;
- void nommu_bank_switch(struct mm_struct *mm);
-+unsigned long nommu_bank_pages(struct mm_struct *mm);
- int nommu_bank_dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm);
- #endif
---- a/fs/proc/meminfo.c
-+++ b/fs/proc/meminfo.c
-@@ -14,6 +14,9 @@
- #include <linux/vmstat.h>
- #include <linux/atomic.h>
- #include <linux/vmalloc.h>
-+#ifdef CONFIG_XTENSA_NOMMU_FORK
-+#include <linux/nommu-bank.h>
-+#endif
- #ifdef CONFIG_CMA
- #include <linux/cma.h>
- #endif
-@@ -60,6 +63,10 @@
- 	show_val_kb(m, "MemTotal:       ", i.totalram);
- 	show_val_kb(m, "MemFree:        ", i.freeram);
- 	show_val_kb(m, "MemAvailable:   ", available);
-+#ifdef CONFIG_XTENSA_NOMMU_FORK
-+	show_val_kb(m, "ForkShadow:     ", atomic_long_read(&nommu_bank_shadow_pages));
-+	show_val_kb(m, "ForkRecovered:  ", atomic_long_read(&nommu_bank_recovered_pages));
-+#endif
- 	show_val_kb(m, "Buffers:        ", i.bufferram);
- 	show_val_kb(m, "Cached:         ", cached);
- 	show_val_kb(m, "SwapCached:     ", total_swapcache_pages());
---- a/fs/proc/task_nommu.c
-+++ b/fs/proc/task_nommu.c
-@@ -9,6 +9,9 @@
- #include <linux/slab.h>
- #include <linux/seq_file.h>
- #include <linux/sched/mm.h>
-+#ifdef CONFIG_XTENSA_NOMMU_FORK
-+#include <linux/nommu-bank.h>
-+#endif
- 
- #include "internal.h"
- 
-@@ -24,12 +27,20 @@
- 	struct vm_area_struct *vma;
- 	struct vm_region *region;
- 	unsigned long bytes = 0, sbytes = 0, slack = 0, size;
-+#ifdef CONFIG_XTENSA_NOMMU_FORK
-+	unsigned long private_ram = 0;
-+#endif
- 
- 	mmap_read_lock(mm);
- 	for_each_vma(vmi, vma) {
- 		bytes += kobjsize(vma);
- 
- 		region = vma->vm_region;
-+#ifdef CONFIG_XTENSA_NOMMU_FORK
-+		if (region && !(vma->vm_flags & VM_SHARED) &&
-+		    (vma->vm_flags & VM_MAPPED_COPY))
-+			private_ram += region->vm_top - region->vm_start;
-+#endif
- 		if (region) {
- 			size = kobjsize(region);
- 			size += region->vm_end - region->vm_start;
-@@ -69,6 +80,10 @@
- 
- 	bytes += kobjsize(current); /* includes kernel stack */
- 
-+#ifdef CONFIG_XTENSA_NOMMU_FORK
-+	seq_printf(m, "ForkShadow:\t%8lu kB\n", nommu_bank_pages(mm) << (PAGE_SHIFT - 10));
-+	seq_printf(m, "PrivateRAM:\t%8lu kB\n", private_ram >> 10);
-+#endif
- 	mmap_read_unlock(mm);
- 
- 	seq_printf(m,
-@@ -293,4 +308,3 @@
- 	.llseek		= seq_lseek,
- 	.release	= map_release,
- };
--
