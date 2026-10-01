@@ -224,7 +224,7 @@ try:
     record('installed-kernel-and-rootfs-hashes', verify_installed)
     checks = [
         ('boot', 'uname -a && id && mount && free && dmesg',
-         ('6.11.0-forkbank', 'Mounted root (cramfs filesystem) readonly')),
+         ('7.2.4-forkbank', 'Mounted root (cramfs filesystem) readonly')),
         # The self-test no longer runs on every boot (esp32s3_rsa.selftest=1
         # brings it back). What matters is that the driver came up and
         # registered, which is what the crypto API reports.
