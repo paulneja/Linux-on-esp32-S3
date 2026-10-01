@@ -156,7 +156,6 @@ static const struct file_operations esp_ble_prov_fops = {
 	.read		= esp_ble_prov_read,
 	.write		= esp_ble_prov_write,
 	.poll		= esp_ble_prov_poll,
-	.llseek		= no_llseek,
 };
 
 static struct miscdevice esp_ble_prov_misc = {
