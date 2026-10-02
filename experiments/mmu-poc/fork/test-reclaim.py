@@ -45,9 +45,11 @@ typedef long atomic_long_t;
 static unsigned irq_depth;
 #define local_irq_save(f) do { (f)=irq_depth++; } while (0)
 #define local_irq_restore(f) do { irq_depth=(f); } while (0)
+#define preempt_disable() ((void)0)
+#define preempt_enable() ((void)0)
 /* The Xtensa cycle counter has no host equivalent. Advance it by 240 cycles
  * per read -- one microsecond at the board's nominal clock -- so the switch
- * timing around local_irq_save is exercised here rather than only on target.
+ * timing around the exchange is exercised here rather than only on target.
  */
 static unsigned long fake_ccount __attribute__((unused));
 #define get_ccount() (fake_ccount += 240)
