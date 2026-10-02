@@ -55,7 +55,7 @@ if 'write_flash' in sys.argv and os.environ.get('FAIL_WRITE') == '1':
         self.env.pop('TARGET', None)
 
     def use_8m(self):
-        # 8 MB image set, no home partition, table built from the CSV
+        # 8 MB image set with a 256 KiB persistent /home partition
         self.env['TARGET'] = 'esp32s3_8m'
         table = b''
         for row in csv.reader((self.root / TABLE_8M).read_text().splitlines()):
@@ -63,7 +63,8 @@ if 'write_flash' in sys.argv and os.environ.get('FAIL_WRITE') == '1':
                 table += struct.pack('<HBBII16sI', 0x50AA, 1, 0, int(row[3], 0),
                                      int(row[4], 0), row[0].strip().encode(), 0)
         (self.images / 'partition-table.bin').write_bytes(table + b'\xff' * 32)
-        (self.images / 'home.jffs2').unlink()
+        with (self.images / 'home.jffs2').open('wb') as stream:
+            stream.truncate(0x40000)
         with (self.images / 'linux-esp32s3-native-full.bin').open('r+b') as stream:
             stream.truncate(0x800000)
 
@@ -99,13 +100,13 @@ if 'write_flash' in sys.argv and os.environ.get('FAIL_WRITE') == '1':
         self.env['TARGET'] = 'esp32s3_8m'
         self.reject('--erase')
 
-    def test_8m_parts_without_home(self):
+    def test_8m_parts_with_home(self):
         self.use_8m()
         result, calls = self.run_flash('--parts', '--erase')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(calls), 2)
         self.assertIn(str(self.images / 'rootfs.cramfs'), calls[1])
-        self.assertNotIn(str(self.images / 'home.jffs2'), calls[1])
+        self.assertIn(str(self.images / 'home.jffs2'), calls[1])
         self.assertNotIn('left erased', result.stdout)
 
     def test_saved_target_is_used(self):
