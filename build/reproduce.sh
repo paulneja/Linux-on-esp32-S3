@@ -35,6 +35,7 @@ fi
 mkdir -p build-output
 work=$(mktemp -d "$repo/build-output/reproduce.XXXXXX")
 printf '%s\n' "${TARGET:-esp32s3_16m}" > "$work/target"
+printf '%s\n' "${N8_PROFILE:-}" > "$work/n8-profile"
 mkdir -p "$work/Linux-on-esp32-S3" "$work/logs"
 git archive HEAD | tar -x --exclude=images -C "$work/Linux-on-esp32-S3"
 git rev-parse HEAD > "$work/source-commit.txt"
@@ -76,5 +77,6 @@ docker run --network host --name "esp32-reproduce-$(basename "$work")" --rm \
     ${cache_mounts[@]+"${cache_mounts[@]}"} \
     --env JOBS="${JOBS:-8}" \
     --env TARGET="${TARGET:-esp32s3_16m}" \
+    --env N8_PROFILE="${N8_PROFILE:-}" \
     "$image" 2>&1 | tee >(head -c "$LOG_CAP_BYTES" > "$work/logs/build.log")
 printf 'Complete local build: %s/artifacts\nNo board access or push was performed.\n' "$work"

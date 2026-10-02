@@ -10,9 +10,26 @@ set +a
 export JOBS=${JOBS:-8}
 
 TARGET="${TARGET:-esp32s3_16m}"
+N8_PROFILE="${N8_PROFILE:-}"
 source "$repo/build/load-target.sh"
 
-export TARGET PROFILE USB_CONSOLE_GETTY
+case "$TARGET" in
+    esp32s3_8m|xiao_esp32s3_8m|xiao_esp32s3_8m_sd)
+        case "$N8_PROFILE" in
+            server|client)
+                ;;
+            *)
+                echo "error: N8_PROFILE must be server or client for $TARGET" >&2
+                exit 1
+                ;;
+        esac
+        ;;
+    *)
+        N8_PROFILE=""
+        ;;
+esac
+
+export TARGET PROFILE USB_CONSOLE_GETTY N8_PROFILE
 export KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=esp32-repro
 export KBUILD_BUILD_TIMESTAMP='Sat Sep 5 00:00:00 UTC 2026' KBUILD_BUILD_VERSION=1
 export SOURCE_DATE_EPOCH=1788566400
@@ -135,6 +152,25 @@ rootfs_base() {
     cd "$driver"
     ./apply-local-changes.sh buildroot
     make -C "$base/buildroot" O="$br" "${PROFILE}_defconfig"
+        case "$N8_PROFILE" in
+        server)
+            echo "N8 userspace profile: server (Dropbear SSH/SCP)"
+            "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_DROPBEAR
+            "$base/buildroot/utils/config" --file "$br/.config" --set-str PACKAGE_DROPBEAR_LOCALOPTIONS_FILE "board/espressif/esp32s3/dropbear-localoptions.h"
+            "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_MBEDTLS
+            "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_LIBCURL
+            "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_LIBCURL_CURL
+            "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_LIBCURL_MBEDTLS
+            ;;
+        client)
+            echo "N8 userspace profile: client (curl + HTTPS/TLS)"
+            "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_DROPBEAR
+            "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_MBEDTLS
+            "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_LIBCURL
+            "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_LIBCURL_CURL
+            "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_LIBCURL_MBEDTLS
+            ;;
+    esac
     if [ -d /cache/ccache ]; then
         "$base/buildroot/utils/config" --file "$br/.config" --enable CCACHE
     fi

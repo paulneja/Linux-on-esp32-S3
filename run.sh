@@ -16,6 +16,8 @@ QUIET=0
 ACTION=""
 LOGDIR=${LOGDIR:-$(dirname "$REPO")}
 TARGET_FILE="$REPO/.target"
+N8_PROFILE_FILE="$REPO/.n8-profile"
+N8_PROFILE=${N8_PROFILE:-}
 BOARD_ID_HINT="usb-1a86"
 
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
@@ -100,6 +102,98 @@ ensure_target() {
 		TARGET=""
 	fi
 	select_target
+}
+
+is_n8_target() {
+	case "${TARGET:-}" in
+		esp32s3_8m|xiao_esp32s3_8m|xiao_esp32s3_8m_sd)
+			return 0
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+select_n8_profile() {
+	local reply
+
+	bold "Select N8 userspace profile:"
+	echo
+	printf '  Common:\n'
+	printf '    BusyBox Linux tools\n'
+	printf '    Wi-Fi / DHCP\n'
+	printf '    HTTP server (httpd + CGI)\n'
+	printf '    wget\n'
+	printf '    vi\n'
+	printf '    filesystem / network tools\n'
+	echo
+	printf '  1) Server\n'
+	printf '     + Dropbear SSH/SCP\n'
+	echo
+	printf '  2) Client\n'
+	printf '     + curl + HTTPS/TLS (mbedTLS)\n'
+	echo
+
+	while true; do
+		printf 'Profile [1-2]: '
+		read_reply reply || die "could not read N8 profile selection"
+
+		case "$reply" in
+			1)
+				N8_PROFILE=server
+				;;
+			2)
+				N8_PROFILE=client
+				;;
+			*)
+				warn "enter 1 or 2"
+				continue
+				;;
+		esac
+
+		export N8_PROFILE
+		printf '%s\n' "$N8_PROFILE" > "$N8_PROFILE_FILE"
+		info "N8 profile: $N8_PROFILE"
+		echo
+		return 0
+	done
+}
+
+ensure_n8_profile() {
+	if ! is_n8_target; then
+		N8_PROFILE=""
+		export N8_PROFILE
+		return 0
+	fi
+
+	case "${N8_PROFILE:-}" in
+		server|client)
+			export N8_PROFILE
+			return 0
+			;;
+		"")
+			;;
+		*)
+			die "N8_PROFILE must be server or client (got: $N8_PROFILE)"
+			;;
+	esac
+
+	if [ -f "$N8_PROFILE_FILE" ]; then
+		N8_PROFILE=$(head -n1 "$N8_PROFILE_FILE")
+		case "$N8_PROFILE" in
+			server|client)
+				export N8_PROFILE
+				return 0
+				;;
+			*)
+				warn "saved N8 profile '$N8_PROFILE' is invalid, pick again"
+				N8_PROFILE=""
+				;;
+		esac
+	fi
+
+	select_n8_profile
 }
 
 select_cache() {
@@ -622,10 +716,14 @@ do_all() {
 
 menu() {
 	ensure_target
+	ensure_n8_profile
 	while true; do
 		echo
 		bold "=== Linux on ESP32-S3 ==="
 		info "target: $TARGET"
+		if is_n8_target; then
+			info "profile: $N8_PROFILE"
+		fi
 		cat <<'EOF'
   1) Check the environment
   2) Change the target
@@ -644,7 +742,7 @@ EOF
 		read_reply choice || { echo; return 0; }
 		case "$choice" in
 			1) check_env ;;
-			2) select_target ;;
+			2) select_target && ensure_n8_profile ;;
 			3) ensure_target && do_build ;;
 			4) do_verify ;;
 			5) do_flash ;;
@@ -680,6 +778,7 @@ fi
 case "$ACTION" in
 	build|all|repro)
 		ensure_target
+		ensure_n8_profile
 		;;
 esac
 
