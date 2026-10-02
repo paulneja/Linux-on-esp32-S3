@@ -273,6 +273,50 @@ package_buildroot() {
     )
 
     cp "$repo/build/sources.lock" "$work/artifacts/sources.lock"
+
+    mkdir -p "$work/artifacts/configs"
+    cp "$br/.config" "$work/artifacts/configs/buildroot.config"
+
+    python3 - "$work" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+work = Path(sys.argv[1])
+out = work / 'artifacts'
+
+def sha(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+artifact_names = [
+    'bootloader.bin',
+    'partition-table.bin',
+    'network_adapter.bin',
+    'xipImage',
+    'rootfs.cramfs',
+    'etc.jffs2',
+    'home.jffs2',
+    'linux-esp32s3-native-full.bin',
+]
+
+checksums = {name: sha(out / name) for name in artifact_names}
+
+config = out / 'configs/buildroot.config'
+
+inventory = {
+    'source_commit': (work / 'source-commit.txt').read_text().strip(),
+    'container_image_id': (work / 'container-image-id.txt').read_text().strip(),
+    'sha256': checksums,
+    'configuration_sha256': {
+        'buildroot.config': sha(config),
+    },
+}
+
+(out / 'build-manifest.json').write_text(
+    json.dumps(inventory, indent=2) + '\n'
+)
+PY
 }
 
 export XTENSA_GNU_CONFIG="$base/xtensa-dynconfig/esp32s3.so"
