@@ -9,6 +9,26 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      target:
+        description: Build target
+        required: true
+        default: esp32s3_16m
+        type: choice
+        options:
+          - esp32s3_16m
+          - esp32s3_8m
+          - xiao_esp32s3_8m
+          - xiao_esp32s3_8m_sd
+
+      n8_profile:
+        description: N8 userspace profile
+        required: true
+        default: server
+        type: choice
+        options:
+          - server
+          - client
 
 permissions:
   contents: read
@@ -210,6 +230,9 @@ jobs:
           test -n "$(git config user.email)"
 
       - name: Build everything from pinned sources
+        env:
+          TARGET: ${{ inputs.target }}
+          N8_PROFILE: ${{ inputs.n8_profile }}
         run: JOBS=$(nproc) bash build/reproduce.sh
 
       - name: Report the disk left

@@ -34,8 +34,13 @@ fi
 
 mkdir -p build-output
 work=$(mktemp -d "$repo/build-output/reproduce.XXXXXX")
-printf '%s\n' "${TARGET:-esp32s3_16m}" > "$work/target"
-printf '%s\n' "${N8_PROFILE:-}" > "$work/n8-profile"
+build_target="${TARGET:-esp32s3_16m}"
+printf '%s\n' "$build_target" > "$work/target"
+case "$build_target" in
+    esp32s3_8m|xiao_esp32s3_8m|xiao_esp32s3_8m_sd)
+        printf '%s\n' "${N8_PROFILE:-}" > "$work/n8-profile"
+        ;;
+esac
 mkdir -p "$work/Linux-on-esp32-S3" "$work/logs"
 git archive HEAD | tar -x --exclude=images -C "$work/Linux-on-esp32-S3"
 git rev-parse HEAD > "$work/source-commit.txt"
