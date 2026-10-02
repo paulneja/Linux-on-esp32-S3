@@ -169,22 +169,29 @@ rootfs_base() {
             "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_LIBCURL
             "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_LIBCURL_CURL
             "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_LIBCURL_MBEDTLS
+            "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_LIBCURL_PROXY_SUPPORT
+            "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_LIBCURL_COOKIES_SUPPORT
+            "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_LIBCURL_EXTRA_PROTOCOLS_FEATURES
+
+            cat >> "$base/buildroot/package/mbedtls/mbedtls.mk" <<'EOF'
+
+# N8 client profile: replace the default Mbed TLS configuration with
+# the reduced HTTPS client-only configuration.
+define MBEDTLS_USE_N8_CLIENT_CONFIG
+	cp $(TOPDIR)/board/espressif/esp32s3/mbedtls-8m-client.h \
+		$(@D)/include/mbedtls/config.h
+endef
+MBEDTLS_PRE_CONFIGURE_HOOKS += MBEDTLS_USE_N8_CLIENT_CONFIG
+EOF
+
             cat >> "$base/buildroot/package/libcurl/libcurl.mk" <<'EOF'
 
-# N8 client profile: keep libcurl focused on HTTP/HTTPS to reduce flash use.
+# N8 client profile: disable protocols not covered by
+# BR2_PACKAGE_LIBCURL_EXTRA_PROTOCOLS_FEATURES.
 LIBCURL_CONF_OPTS += \
-	--disable-dict \
 	--disable-file \
 	--disable-ftp \
-	--disable-gopher \
-	--disable-imap \
-	--disable-mqtt \
-	--disable-pop3 \
-	--disable-rtsp \
-	--disable-smb \
-	--disable-smtp \
-	--disable-telnet \
-	--disable-tftp
+	--disable-mqtt
 EOF
             ;;
     esac
