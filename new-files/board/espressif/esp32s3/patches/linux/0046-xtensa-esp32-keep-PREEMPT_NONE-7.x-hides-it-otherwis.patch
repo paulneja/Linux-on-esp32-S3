@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: paulneja <207793167+paulneja@users.noreply.github.com>
+Date: Wed, 23 Sep 2026 16:12:45 -0300
+Subject: [PATCH 46/59] xtensa: esp32: keep PREEMPT_NONE, 7.x hides it
+ otherwise
+
+---
+ arch/xtensa/Kconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/xtensa/Kconfig b/arch/xtensa/Kconfig
+index 515eaca1eacc3..1ad0fb23eecac 100644
+--- a/arch/xtensa/Kconfig
++++ b/arch/xtensa/Kconfig
+@@ -404,6 +404,7 @@ choice
+ 
+ config XTENSA_PLATFORM_ESP32
+ 	bool "ESP32"
++	select ARCH_NO_PREEMPT
+ 	select ESP32_INTC
+ 	select PLATFORM_HAVE_XIP
+ 	select PLATFORM_WANT_DEFAULT_MEM

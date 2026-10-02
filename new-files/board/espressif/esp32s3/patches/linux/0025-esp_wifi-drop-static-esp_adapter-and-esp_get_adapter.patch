@@ -1,0 +1,347 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Thu, 29 Jun 2023 08:13:35 -0700
+Subject: [PATCH 25/59] esp_wifi: drop static esp_adapter and esp_get_adapter()
+
+Either pass the pointer to the adapter or extract it from the available
+data.
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit adf9b7cadf4320caea38f42bea8b6f3ce08a692e)
+---
+ .../net/wireless/espressif/esp32-ng/esp_api.h |   4 +-
+ .../espressif/esp32-ng/esp_cfg80211.c         |  12 +-
+ .../net/wireless/espressif/esp32-ng/esp_cmd.c |   7 +-
+ .../net/wireless/espressif/esp32-ng/esp_if.h  |   3 +
+ .../net/wireless/espressif/esp32-ng/main.c    | 123 +++++++-----------
+ 5 files changed, 61 insertions(+), 88 deletions(-)
+
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_api.h b/drivers/net/wireless/espressif/esp32-ng/esp_api.h
+index 737524b5e584d..b990327de87d3 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_api.h
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_api.h
+@@ -22,8 +22,8 @@
+ int esp_add_card(struct esp_adapter *adapter);
+ int esp_remove_card(struct esp_adapter *adapter);
+ void esp_process_new_packet_intr(struct esp_adapter *adapter);
+-struct esp_adapter *esp_get_adapter(void);
+-struct esp_wifi_device *get_priv_from_payload_header(struct esp_payload_header *header);
++struct esp_wifi_device *get_priv_from_payload_header(struct esp_adapter *adapter,
++						     struct esp_payload_header *header);
+ struct sk_buff *esp_alloc_skb(u32 len);
+ int esp_send_packet(struct esp_adapter *adapter, struct sk_buff *skb);
+ u8 esp_is_bt_supported_over_sdio(u32 cap);
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c b/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c
+index feeb9921a198d..ad8551ecb8ae2 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c
+@@ -500,7 +500,8 @@ static int esp_cfg80211_set_tx_power(struct wiphy *wiphy,
+ 				     struct wireless_dev *wdev,
+ 				     enum nl80211_tx_power_setting type, int mbm)
+ {
+-	struct esp_adapter *adapter = esp_get_adapter();
++	struct esp_device *esp_dev = wiphy_priv(wiphy);
++	struct esp_adapter *adapter = esp_dev->adapter;
+ 	struct esp_wifi_device *priv = NULL;
+ 
+ 	if (!wiphy || !adapter) {
+@@ -626,24 +627,23 @@ static void esp_reg_notifier(struct wiphy *wiphy,
+ {
+ 	struct esp_wifi_device *priv = NULL;
+ 	struct esp_device *esp_dev = NULL;
+-	struct esp_adapter *adapter = esp_get_adapter();
+ 
+ 	if (!wiphy || !request) {
+ 		esp_info("%u invalid input\n", __LINE__);
+ 		return;
+ 	}
+ 
+-	if (!test_bit(ESP_INIT_DONE, &adapter->state_flags)) {
++	esp_dev = wiphy_priv(wiphy);
++
++	if (!test_bit(ESP_INIT_DONE, &esp_dev->adapter->state_flags)) {
+ 		esp_info("Driver init is ongoing\n");
+ 		return;
+ 	}
+-	if (test_bit(ESP_CLEANUP_IN_PROGRESS, &adapter->state_flags)) {
++	if (test_bit(ESP_CLEANUP_IN_PROGRESS, &esp_dev->adapter->state_flags)) {
+ 		esp_info("Driver cleanup is ongoing\n");
+ 		return;
+ 	}
+ 
+-	esp_dev = wiphy_priv(wiphy);
+-
+ 	if (!esp_dev || !esp_dev->adapter) {
+ 		esp_info("%u esp_dev not initialized yet \n", __LINE__);
+ 		return;
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c b/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c
+index 0c0ab968ef66b..529201ccf3c1b 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c
+@@ -316,14 +316,9 @@ static void esp_cmd_work(struct work_struct *work)
+ {
+ 	int ret;
+ 	struct command_node *cmd_node = NULL;
+-	struct esp_adapter *adapter = NULL;
++	struct esp_adapter *adapter = container_of(work, struct esp_adapter, cmd_work);
+ 	struct esp_payload_header *payload_header = NULL;
+ 
+-	adapter = esp_get_adapter();
+-
+-	if (!adapter)
+-		return;
+-
+ 	if (!test_bit(ESP_DRIVER_ACTIVE, &adapter->state_flags))
+ 		return;
+ 
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_if.h b/drivers/net/wireless/espressif/esp32-ng/esp_if.h
+index 78cb457b146a6..2439db896ecb4 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_if.h
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_if.h
+@@ -20,4 +20,7 @@ struct esp_if_ops {
+ int esp_init_interface_layer(struct esp_adapter *adapter, u32 speed);
+ void esp_deinit_interface_layer(void);
+ 
++int esp_wifi_init(struct esp_adapter *adapter);
++void esp_wifi_deinit(struct esp_adapter *adapter);
++
+ #endif
+diff --git a/drivers/net/wireless/espressif/esp32-ng/main.c b/drivers/net/wireless/espressif/esp32-ng/main.c
+index 99ea3f4d259e3..e00123aae5de0 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/main.c
++++ b/drivers/net/wireless/espressif/esp32-ng/main.c
+@@ -39,18 +39,11 @@ MODULE_PARM_DESC(clockspeed, "Hosts clock speed in MHz");
+ module_param(raw_tp_mode, uint, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+ MODULE_PARM_DESC(raw_tp_mode, "Mode choosed to test raw throughput");
+ 
+-static void deinit_adapter(void);
+-
++static void deinit_adapter(struct esp_adapter *adapter);
+ 
+ struct multicast_list mcast_list = {0};
+-struct esp_adapter adapter;
+ /*struct esp_device esp_dev;*/
+ 
+-struct esp_adapter *esp_get_adapter(void)
+-{
+-	return &adapter;
+-}
+-
+ void esp_process_new_packet_intr(struct esp_adapter *adapter)
+ {
+ 	if (adapter)
+@@ -148,7 +141,7 @@ static int process_tx_packet(struct sk_buff *skb)
+ 	payload_header->offset = cpu_to_le16(pad_len);
+ 	payload_header->packet_type = PACKET_TYPE_DATA;
+ 
+-	if (adapter.capabilities & ESP_CHECKSUM_ENABLED)
++	if (priv->adapter->capabilities & ESP_CHECKSUM_ENABLED)
+ 		payload_header->checksum = cpu_to_le16(compute_checksum(skb->data, (len + pad_len)));
+ 
+ 	if (!priv->stop_data) {
+@@ -402,8 +395,8 @@ static void esp_set_rx_mode(struct net_device *ndev)
+ 
+ 	if (priv->port_open) {
+ 		/*esp_info("Set Multicast list\n");*/
+-		if (adapter.mac_filter_wq)
+-			queue_work(adapter.mac_filter_wq, &adapter.mac_flter_work);
++		if (priv->adapter->mac_filter_wq)
++			queue_work(priv->adapter->mac_filter_wq, &priv->adapter->mac_flter_work);
+ 	}
+ #if 0
+ 	cmd_set_mcast_mac_list(priv, &mcast_list);
+@@ -597,8 +590,9 @@ int esp_remove_card(struct esp_adapter *adapter)
+ 	return 0;
+ }
+ 
+-struct esp_wifi_device *get_priv_from_payload_header(
+-		struct esp_payload_header *header)
++struct esp_wifi_device *
++get_priv_from_payload_header(struct esp_adapter *adapter,
++			     struct esp_payload_header *header)
+ {
+ 	struct esp_wifi_device *priv = NULL;
+ 	u8 i = 0;
+@@ -607,7 +601,7 @@ struct esp_wifi_device *get_priv_from_payload_header(
+ 		return NULL;
+ 
+ 	for (i = 0; i < ESP_MAX_INTERFACE; i++) {
+-		priv = adapter.priv[i];
++		priv = adapter->priv[i];
+ 
+ 		if (!priv)
+ 			continue;
+@@ -707,7 +701,7 @@ static void process_rx_packet(struct esp_adapter *adapter, struct sk_buff *skb)
+ 	if (payload_header->if_type == ESP_STA_IF || payload_header->if_type == ESP_AP_IF) {
+ 
+ 		/* retrieve priv based on payload header contents */
+-		priv = get_priv_from_payload_header(payload_header);
++		priv = get_priv_from_payload_header(adapter, payload_header);
+ 
+ 		if (!priv) {
+ 			esp_err("Empty priv\n");
+@@ -876,8 +870,9 @@ int esp_send_packet(struct esp_adapter *adapter, struct sk_buff *skb)
+ 
+ static void esp_if_rx_work(struct work_struct *work)
+ {
+-	/* read inbound packet and forward it to network/serial interface */
+-	esp_get_packets(&adapter);
++	struct esp_adapter *adapter = container_of(work, struct esp_adapter,
++						   if_rx_work);
++	esp_get_packets(adapter);
+ }
+ 
+ static void update_mac_filter(struct work_struct *work)
+@@ -887,64 +882,66 @@ static void update_mac_filter(struct work_struct *work)
+ 
+ static void esp_events_work(struct work_struct *work)
+ {
++	struct esp_adapter *adapter = container_of(work, struct esp_adapter,
++						   events_work);
+ 	struct sk_buff *skb = NULL;
+ 
+-	skb = skb_dequeue(&adapter.events_skb_q);
++	skb = skb_dequeue(&adapter->events_skb_q);
+ 	if (!skb)
+ 		return;
+ 
+-	process_internal_event(&adapter, skb);
++	process_internal_event(adapter, skb);
+ 	dev_kfree_skb_any(skb);
+ }
+ 
+-static struct esp_adapter *init_adapter(void)
++static int init_adapter(struct esp_adapter *adapter)
+ {
+-	memset(&adapter, 0, sizeof(adapter));
++	memset(adapter, 0, sizeof(*adapter));
+ 
+ 	/* Prepare interface RX work */
+-	adapter.if_rx_workqueue = alloc_workqueue("ESP_IF_RX_WORK_QUEUE", 0, 0);
++	adapter->if_rx_workqueue = alloc_workqueue("ESP_IF_RX_WORK_QUEUE", 0, 0);
+ 
+-	if (!adapter.if_rx_workqueue) {
+-		deinit_adapter();
+-		return NULL;
++	if (!adapter->if_rx_workqueue) {
++		deinit_adapter(adapter);
++		return -ENOMEM;
+ 	}
+ 
+-	INIT_WORK(&adapter.if_rx_work, esp_if_rx_work);
++	INIT_WORK(&adapter->if_rx_work, esp_if_rx_work);
+ 
+-	skb_queue_head_init(&adapter.events_skb_q);
++	skb_queue_head_init(&adapter->events_skb_q);
+ 
+-	adapter.events_wq = alloc_workqueue("ESP_EVENTS_WORKQUEUE", WQ_HIGHPRI, 0);
++	adapter->events_wq = alloc_workqueue("ESP_EVENTS_WORKQUEUE", WQ_HIGHPRI, 0);
+ 
+-	if (!adapter.events_wq) {
+-		deinit_adapter();
+-		return NULL;
++	if (!adapter->events_wq) {
++		deinit_adapter(adapter);
++		return -ENOMEM;
+ 	}
+ 
+-	INIT_WORK(&adapter.events_work, esp_events_work);
++	INIT_WORK(&adapter->events_work, esp_events_work);
+ 
+-	adapter.mac_filter_wq = alloc_workqueue("MAC_FILTER", 0, 0);
+-	if (!adapter.mac_filter_wq) {
+-		deinit_adapter();
+-		return NULL;
++	adapter->mac_filter_wq = alloc_workqueue("MAC_FILTER", 0, 0);
++	if (!adapter->mac_filter_wq) {
++		deinit_adapter(adapter);
++		return -ENOMEM;
+ 	}
+ 
+-	INIT_WORK(&adapter.mac_flter_work, update_mac_filter);
++	INIT_WORK(&adapter->mac_flter_work, update_mac_filter);
+ 
+-	return &adapter;
++	return 0;
+ }
+ 
+-static void deinit_adapter(void)
++static void deinit_adapter(struct esp_adapter *adapter)
+ {
+-	skb_queue_purge(&adapter.events_skb_q);
++	skb_queue_purge(&adapter->events_skb_q);
+ 
+-	if (adapter.events_wq)
+-		destroy_workqueue(adapter.events_wq);
++	if (adapter->events_wq)
++		destroy_workqueue(adapter->events_wq);
+ 
+-	if (adapter.if_rx_workqueue)
+-		destroy_workqueue(adapter.if_rx_workqueue);
++	if (adapter->if_rx_workqueue)
++		destroy_workqueue(adapter->if_rx_workqueue);
+ 
+-	if (adapter.mac_filter_wq)
+-		destroy_workqueue(adapter.mac_filter_wq);
++	if (adapter->mac_filter_wq)
++		destroy_workqueue(adapter->mac_filter_wq);
+ }
+ 
+ static void esp_reset(void)
+@@ -973,31 +970,12 @@ static void esp_reset(void)
+ }
+ 
+ 
+-static int __init esp_init(void)
++int esp_wifi_init(struct esp_adapter *adapter)
+ {
+-	int ret = 0;
+-	struct esp_adapter *adapter = NULL;
+-
+-	/* Reset ESP, Clean start ESP */
+-	esp_reset();
+-	msleep(200);
+-
+-	adapter = init_adapter();
+-
+-	if (!adapter)
+-		return -EFAULT;
+-
+-	/* Init transport layer */
+-	ret = esp_init_interface_layer(adapter, clockspeed);
+-
+-	if (ret != 0) {
+-		deinit_adapter();
+-	}
+-
+-	return ret;
++	return init_adapter(adapter);
+ }
+ 
+-static void __exit esp_exit(void)
++void esp_wifi_deinit(struct esp_adapter *adapter)
+ {
+ 	uint8_t iface_idx = 0;
+ #if TEST_RAW_TP
+@@ -1006,12 +984,11 @@ static void __exit esp_exit(void)
+ 	}
+ #endif
+ 	for (iface_idx = 0; iface_idx < ESP_MAX_INTERFACE; iface_idx++) {
+-		cmd_deinit_interface(adapter.priv[iface_idx]);
++		cmd_deinit_interface(adapter->priv[iface_idx]);
+ 	}
+-	clear_bit(ESP_DRIVER_ACTIVE, &adapter.state_flags);
++	clear_bit(ESP_DRIVER_ACTIVE, &adapter->state_flags);
+ 
+-	esp_deinit_interface_layer();
+-	deinit_adapter();
++	deinit_adapter(adapter);
+ 
+ 	if (resetpin != HOST_GPIO_PIN_INVALID) {
+ 		gpio_free(resetpin);
+@@ -1023,5 +1000,3 @@ MODULE_AUTHOR("Mangesh Malusare <mangesh.malusare@espressif.com>");
+ MODULE_AUTHOR("Yogesh Mantri <yogesh.mantri@espressif.com>");
+ MODULE_DESCRIPTION("Wifi driver for ESP-Hosted solution");
+ MODULE_VERSION(RELEASE_VERSION);
+-module_init(esp_init);
+-module_exit(esp_exit);

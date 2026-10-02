@@ -1,0 +1,1164 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Sun, 15 Dec 2019 11:25:58 -0800
+Subject: [PATCH 39/59] xtensa: esp32: add platform
+
+Add platform directory, defconfig, device tree and entry in platforms
+selector in Kconfig.
+
+Generic dts part contains devices with fixed address properties,
+config-specific contains stuff that moves depending on other
+configuration parameters, like IDF version used for the bootloader.
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit 19349c511b79479abd2f44d490a26b555a50fb0b)
+---
+ arch/xtensa/Kconfig                           |  12 +
+ arch/xtensa/Makefile                          |   1 +
+ arch/xtensa/boot/Makefile                     |   1 +
+ arch/xtensa/boot/dts/esp32-wrover-dev.dts     |  69 ++++
+ arch/xtensa/boot/dts/esp32.dtsi               | 249 ++++++++++++++
+ arch/xtensa/boot/dts/esp32s3-devkit-c1.dts    |  83 +++++
+ arch/xtensa/boot/dts/esp32s3.dtsi             | 313 ++++++++++++++++++
+ arch/xtensa/boot/dts/gpio-esp32.h             |  70 ++++
+ .../xtensa/configs/esp32_wrover_dev_defconfig |  92 +++++
+ .../configs/esp32s3_devkit_c1_defconfig       | 149 +++++++++
+ .../platforms/esp32/include/platform/serial.h |   8 +
+ 11 files changed, 1047 insertions(+)
+ create mode 100644 arch/xtensa/boot/dts/esp32-wrover-dev.dts
+ create mode 100644 arch/xtensa/boot/dts/esp32.dtsi
+ create mode 100644 arch/xtensa/boot/dts/esp32s3-devkit-c1.dts
+ create mode 100644 arch/xtensa/boot/dts/esp32s3.dtsi
+ create mode 100644 arch/xtensa/boot/dts/gpio-esp32.h
+ create mode 100644 arch/xtensa/configs/esp32_wrover_dev_defconfig
+ create mode 100644 arch/xtensa/configs/esp32s3_devkit_c1_defconfig
+ create mode 100644 arch/xtensa/platforms/esp32/include/platform/serial.h
+
+diff --git a/arch/xtensa/Kconfig b/arch/xtensa/Kconfig
+index 87a4e6035b392..40ad120315e05 100644
+--- a/arch/xtensa/Kconfig
++++ b/arch/xtensa/Kconfig
+@@ -401,6 +401,18 @@ choice
+ 	prompt "Xtensa System Type"
+ 	default XTENSA_PLATFORM_ISS
+ 
++config XTENSA_PLATFORM_ESP32
++	bool "ESP32"
++	select ESP32_INTC
++	select PLATFORM_HAVE_XIP
++	select PLATFORM_WANT_DEFAULT_MEM
++	select XIP_KERNEL
++	select XTENSA_CALIBRATE_CCOUNT
++	select XTENSA_LOAD_STORE
++	help
++	  ESP32 is a dual-core Xtensa-based IoT MCU from Espressif.
++	  Configured with FLASH and PSRAM it is capable of running noMMU Linux.
++
+ config XTENSA_PLATFORM_ISS
+ 	bool "ISS"
+ 	select XTENSA_CALIBRATE_CCOUNT
+diff --git a/arch/xtensa/Makefile b/arch/xtensa/Makefile
+index 8c8fa2ec7e057..f79ea949da959 100644
+--- a/arch/xtensa/Makefile
++++ b/arch/xtensa/Makefile
+@@ -26,6 +26,7 @@ endif
+ 
+ # Platform configuration
+ 
++platform-$(CONFIG_XTENSA_PLATFORM_ESP32)	:= esp32
+ platform-$(CONFIG_XTENSA_PLATFORM_XT2000)	:= xt2000
+ platform-$(CONFIG_XTENSA_PLATFORM_ISS)		:= iss
+ platform-$(CONFIG_XTENSA_PLATFORM_XTFPGA)	:= xtfpga
+diff --git a/arch/xtensa/boot/Makefile b/arch/xtensa/boot/Makefile
+index d8b0fadf429a9..8dc3e20ee428d 100644
+--- a/arch/xtensa/boot/Makefile
++++ b/arch/xtensa/boot/Makefile
+@@ -20,6 +20,7 @@ targets		+= uImage xipImage
+ boot-$(CONFIG_XTENSA_PLATFORM_ISS)    += Image
+ boot-$(CONFIG_XTENSA_PLATFORM_XT2000) += Image zImage uImage
+ boot-$(CONFIG_XTENSA_PLATFORM_XTFPGA) += Image zImage uImage
++boot-$(CONFIG_XTENSA_PLATFORM_ESP32)  += xipImage
+ 
+ all: $(boot-y)
+ Image: boot-elf
+diff --git a/arch/xtensa/boot/dts/esp32-wrover-dev.dts b/arch/xtensa/boot/dts/esp32-wrover-dev.dts
+new file mode 100644
+index 0000000000000..e23a49f45bc3f
+--- /dev/null
++++ b/arch/xtensa/boot/dts/esp32-wrover-dev.dts
+@@ -0,0 +1,69 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++/dts-v1/;
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/interrupt-controller/irq.h>
++#include "gpio-esp32.h"
++#include "esp32.dtsi"
++
++/ {
++	memory@0 {
++		device_type = "memory";
++		reg = <0x3f800000 0x00400000>;
++	};
++
++	soc {
++		flash: flash@40400000 {
++			#address-cells = <1>;
++			#size-cells = <1>;
++			compatible = "mtd-rom";
++			reg = <0x40400000 0x00400000>;
++			bank-width = <2>;
++			device-width = <2>;
++			partition@40000 {
++				label = "linux";
++				reg = <0x00040000 0x001c0000>;
++			};
++			partition@200000 {
++				label = "rootfs";
++				reg = <0x00200000 0x00200000>;
++			};
++		};
++	};
++
++	i2c0 {
++		#address-cells = <1>;
++		#size-cells = <0>;
++		compatible = "i2c-gpio";
++
++		sda-gpios = <&gpio0 26 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
++		scl-gpios = <&gpio0 27 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
++
++		pinctrl-0 = <&i2c0_pins>;
++		pinctrl-names = "default";
++	};
++};
++
++&iomux {
++	status = "ok";
++
++	uart0_pins: uart0_pins {
++		pinctrl-single,pins = <
++			PIN(IOMUX_U0TXD) FUN0_20MA		/* U0TXD */
++			PIN(IOMUX_U0RXD) FUN0_20MA_IE_WPU>;	/* U0RXD */
++	};
++	i2c0_pins: i2c0_pins {
++		pinctrl-single,pins = <
++			PIN(IOMUX_GPIO26) FUN0_20MA_IE_WPU	/* SDA */
++			PIN(IOMUX_GPIO27) FUN0_20MA_IE_WPU>;	/* SCL */
++	};
++};
++
++&uart0 {
++	pinctrl-0 = <&uart0_pins>;
++	pinctrl-names = "default";
++	status = "ok";
++};
++
++&gpio0 {
++	status = "ok";
++};
+diff --git a/arch/xtensa/boot/dts/esp32.dtsi b/arch/xtensa/boot/dts/esp32.dtsi
+new file mode 100644
+index 0000000000000..04140cb788b80
+--- /dev/null
++++ b/arch/xtensa/boot/dts/esp32.dtsi
+@@ -0,0 +1,249 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++/dts-v1/;
++
++/ {
++	compatible = "esp32";
++	#address-cells = <1>;
++	#size-cells = <1>;
++	interrupt-parent = <&pic>;
++
++	chosen {
++		bootargs = "earlycon=esp32uart,mmio32,0x3ff40000,115200n8 console=ttyS0,115200n8 debug rw root=mtd:rootfs no_hash_pointers ";
++	};
++
++	aliases {
++		serial0 = "/soc/serial@3ff40000";
++		serial1 = "/soc/serial@3ff50000";
++		serial2 = "/soc/serial@3ff6e000";
++	};
++
++	memory@0 {
++		device_type = "memory";
++		reg = <0x3f800000 0x00400000>;
++	};
++
++	cpus {
++		#address-cells = <1>;
++		#size-cells = <0>;
++		cpu@0 {
++			compatible = "cdns,xtensa-cpu";
++			reg = <0>;
++			clocks = <&clk 0>;
++		};
++	};
++
++	clocks {
++		compatible = "simple-bus";
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		xtl_clk: clk80m {
++			#clock-cells = <0>;
++			compatible = "fixed-clock";
++			clock-frequency = <80000000>;
++		};
++		rc_fast_clk: clk8m5 {
++			#clock-cells = <0>;
++			compatible = "fixed-clock";
++			clock-frequency = <8500000>;
++		};
++		apll_clk: clk128m {
++			#clock-cells = <0>;
++			compatible = "fixed-clock";
++			clock-frequency = <128000000>;
++		};
++
++		uart0_clk: uart0_clk {
++			#clock-cells = <0>;
++			compatible = "gpio-gate-clock";
++			clocks = <&clk 1>;
++			enable-gpios = <&clk_gpio0 2 0>;
++		};
++		uart1_clk: uart1_clk {
++			#clock-cells = <0>;
++			compatible = "gpio-gate-clock";
++			clocks = <&clk 1>;
++			enable-gpios = <&clk_gpio0 5 0>;
++		};
++		uart2_clk: uart2_clk {
++			#clock-cells = <0>;
++			compatible = "gpio-gate-clock";
++			clocks = <&clk 1>;
++			enable-gpios = <&clk_gpio0 23 0>;
++		};
++		spi2_clk: spi2_clk {
++			#clock-cells = <0>;
++			compatible = "gpio-gate-clock";
++			clocks = <&clk 1>;
++			enable-gpios = <&clk_gpio0 6 0>;
++		};
++		spi3_clk: spi3_clk {
++			#clock-cells = <0>;
++			compatible = "gpio-gate-clock";
++			clocks = <&clk 1>;
++			enable-gpios = <&clk_gpio0 16 0>;
++		};
++	};
++
++	pic: pic {
++		compatible = "cdns,xtensa-pic";
++		/* one cell: internal irq number,
++		 * two cells: second cell == 0: internal irq number
++		 *            second cell == 1: external irq number
++		 */
++		#interrupt-cells = <2>;
++		interrupt-controller;
++	};
++
++	soc {
++		#address-cells = <1>;
++		#size-cells = <1>;
++		compatible = "simple-bus";
++		interrupt-parent = <&intc>;
++		ranges;
++
++		clk_gpio0: clk_gpio@3ff000c0 {
++			#gpio-cells = <2>;
++			compatible = "esp,esp32-clk-gpio";
++			reg = <0x3ff000c0 4>;
++			reg-names = "dat";
++		};
++
++		reset: reset@3ff000c4 {
++			#reset-cells = <1>;
++			compatible = "esp,esp32-reset";
++			reg = <0x3ff000c4 4>;
++		};
++
++		intc: intc@3ff00104 {
++			compatible = "esp,esp32-intc";
++			reg = <0x3ff00104 0x114>;
++			/* first cell: interrupt matrix row
++			 * second cell: internal xtensa core IRQ number to connect to
++			 */
++			#interrupt-cells = <2>;
++			interrupt-controller;
++			interrupt-parent = <&pic>;
++		};
++
++		uart0: serial@3ff40000 {
++			compatible = "esp,esp32-uart";
++			reg = <0x3ff40000 0x80>;
++			interrupts = <34 1>; /* UART0, external IRQ1 */
++			clocks = <&uart0_clk>;
++			resets = <&reset 2>;
++			reset-names = "reset";
++			status = "disabled";
++		};
++
++		gpio0: gpio@3ff44000 {
++			#gpio-cells = <2>;
++			compatible = "esp,esp32-gpio";
++			reg = <0x3ff44000 0x128>;
++			interrupts = <22 8>; /* GPIO, external IRQ8 */
++			interrupt-controller;
++			#interrupt-cells = <2>;
++			status = "disabled";
++		};
++
++		gpio_in_mux: gpio_in_mux@3ff44130 {
++			compatible = "pinctrl-single";
++			reg = <0x3ff44130 0x400>;
++			#pinctrl-cells = <1>;
++			pinctrl-single,register-width = <32>;
++			pinctrl-single,function-mask = <0xff>;
++			status = "disabled";
++		};
++
++		gpio_out_mux: gpio_out_mux@3ff44530 {
++			compatible = "pinctrl-single";
++			reg = <0x3ff44530 0xa0>;
++			#pinctrl-cells = <1>;
++			pinctrl-single,register-width = <32>;
++			pinctrl-single,function-mask = <0xfff>;
++			status = "disabled";
++		};
++
++		lpm: lpm@3ff48000 {
++			compatible = "syscon";
++			reg = <0x3ff48000 0x1000>;
++		};
++
++		syscon@3ff48000 {
++			compatible = "syscon-reboot";
++			regmap = <&lpm>;
++			offset = <0>;
++			value = <0x80000000>;
++			mask = <0x80000000>;
++		};
++
++		clk: clk@3ff48070 {
++			compatible = "esp,esp32-core-clock";
++			reg = <0x3ff48070 4
++			       0x3ff0003c 4
++			       0x3ff66000 4>;
++			clocks = <&xtl_clk>, <&rc_fast_clk>, <&apll_clk>;
++			clock-names = "xtl", "rc_fast", "apll";
++			#clock-cells = <1>;
++			/* clock-output-names = "cpu_clk", "apb_clk"; */
++		};
++
++		iomux: pinctrl@3ff49000 {
++			compatible = "pinctrl-single";
++			reg = <0x3ff49004 0x90>;
++			#pinctrl-cells = <1>;
++			pinctrl-single,register-width = <32>;
++			pinctrl-single,function-mask = <0xffff>;
++			status = "disabled";
++		};
++
++		uart1: serial@3ff50000 {
++			compatible = "esp,esp32-uart";
++			reg = <0x3ff40000 0x80>;
++			interrupts = <35 2>; /* UART1, external IRQ2 */
++			clocks = <&uart1_clk>;
++			resets = <&reset 5>;
++			reset-names = "reset";
++			status = "disabled";
++		};
++
++		spi2: spi@3ff64000 {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			compatible = "esp,esp32-spi";
++			reg = <0x60024000 0x100>;
++			interrupts = <30 4>; /* SPI2, external IRQ4 */
++			clocks = <&spi2_clk>;
++			resets = <&reset 6>;
++			reset-names = "reset";
++			status = "disabled";
++		};
++
++		spi3: spi@3ff65000 {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			compatible = "esp,esp32-spi";
++			reg = <0x60025000 0x100>;
++			interrupts = <31 5>; /* SPI3, external IRQ5 */
++			clocks = <&spi3_clk>;
++			resets = <&reset 16>;
++			reset-names = "reset";
++			status = "disabled";
++		};
++
++		uart2: serial@3ff6e000 {
++			compatible = "esp,esp32-uart";
++			reg = <0x3ff40000 0x80>;
++			interrupts = <36 3>; /* UART2, external IRQ3 */
++			clocks = <&uart2_clk>;
++			resets = <&reset 23>;
++			reset-names = "reset";
++			status = "disabled";
++		};
++
++		trng@3ff75144 {
++			compatible = "esp,esp32-trng";
++			reg = <0x3ff75144 0x4>;
++		};
++	};
++};
+diff --git a/arch/xtensa/boot/dts/esp32s3-devkit-c1.dts b/arch/xtensa/boot/dts/esp32s3-devkit-c1.dts
+new file mode 100644
+index 0000000000000..d83dd32adf568
+--- /dev/null
++++ b/arch/xtensa/boot/dts/esp32s3-devkit-c1.dts
+@@ -0,0 +1,83 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++/dts-v1/;
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/interrupt-controller/irq.h>
++#include "gpio-esp32.h"
++#include "esp32s3.dtsi"
++
++/ {
++	memory@0 {
++		device_type = "memory";
++		reg = <0x3d800000 0x00800000>;
++	};
++
++	i2c0 {
++		#address-cells = <1>;
++		#size-cells = <0>;
++		compatible = "i2c-gpio";
++
++		sda-gpios = <&gpio0 6 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
++		scl-gpios = <&gpio0 7 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
++
++		pinctrl-0 = <&i2c0_pins>;
++		pinctrl-names = "default";
++	};
++};
++
++&iomux {
++	status = "ok";
++
++	i2c0_pins: i2c0_pins {
++		pinctrl-single,pins = <
++			PIN(6) FUN0_20MA_IE_WPU			/* SDA */
++			PIN(7) FUN0_20MA_IE_WPU>;		/* SCL */
++	};
++	spi2_pins: spi2_pins {
++		pinctrl-single,pins = <
++			PIN(10) (FUN_SEL(4) | FUN_DRV_20MA)	/* CS0 */
++			PIN(11) (FUN_SEL(4) | FUN_DRV_40MA)	/* MOSI */
++			PIN(12) (FUN_SEL(4) | FUN_DRV_40MA)	/* SCK */
++			PIN(13) (FUN_SEL(4) | FUN0_20MA_IE_WPU)>;/* MISO */
++	};
++	uart0_pins: uart0_pins {
++		pinctrl-single,pins = <
++			PIN(43) FUN0_20MA			/* U0TXD */
++			PIN(44) FUN0_20MA_IE_WPU>;		/* U0RXD */
++	};
++};
++
++&gpio0 {
++	status = "ok";
++};
++
++&uart0 {
++	pinctrl-0 = <&uart0_pins>;
++	pinctrl-names = "default";
++	status = "ok";
++};
++
++&spi2 {
++	pinctrl-0 = <&spi2_pins>;
++	pinctrl-names = "default";
++	status = "ok";
++
++	mmc_spi@0 {
++		compatible = "mmc-spi-slot";
++		reg = <0>;
++	};
++};
++
++&acm {
++	status = "ok";
++};
++
++&ipc {
++	wifi@1 {
++		compatible = "esp,esp32-wifi-shmem";
++		reg = <1>;
++	};
++};
++
++&intc {
++	reg = <0x600c2800 0x800>;
++};
+diff --git a/arch/xtensa/boot/dts/esp32s3.dtsi b/arch/xtensa/boot/dts/esp32s3.dtsi
+new file mode 100644
+index 0000000000000..4ba15e78d9427
+--- /dev/null
++++ b/arch/xtensa/boot/dts/esp32s3.dtsi
+@@ -0,0 +1,313 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++/dts-v1/;
++
++/ {
++	compatible = "esp32s3";
++	#address-cells = <1>;
++	#size-cells = <1>;
++	interrupt-parent = <&pic>;
++
++	chosen {
++		bootargs = "earlycon=esp32s3uart,mmio32,0x60000000,115200n8,40000000 console=ttyS0,115200n8 debug rw root=mtd:rootfs no_hash_pointers ";
++	};
++
++	aliases {
++		serial0 = "/soc/serial@60000000";
++		serial1 = "/soc/serial@60010000";
++		serial2 = "/soc/serial@6002e000";
++		serial3 = "/soc/acm@60038000";
++	};
++
++	cpus {
++		#address-cells = <1>;
++		#size-cells = <0>;
++		cpu@0 {
++			compatible = "cdns,xtensa-cpu";
++			reg = <0>;
++			clocks = <&clk 1>;
++		};
++	};
++
++	clocks {
++		compatible = "simple-bus";
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		uart0_clk: uart0_clk {
++			#clock-cells = <0>;
++			compatible = "gpio-gate-clock";
++			clocks = <&clk 0>;
++			enable-gpios = <&clk_gpio0 2 0>;
++		};
++		uart1_clk: uart1_clk {
++			#clock-cells = <0>;
++			compatible = "gpio-gate-clock";
++			clocks = <&clk 0>;
++			enable-gpios = <&clk_gpio0 5 0>;
++		};
++		uart2_clk: uart2_clk {
++			#clock-cells = <0>;
++			compatible = "gpio-gate-clock";
++			clocks = <&clk 0>;
++			enable-gpios = <&clk_gpio1 9 0>;
++		};
++
++		spi2_clk: spi2_clk {
++			#clock-cells = <0>;
++			compatible = "gpio-gate-clock";
++			clocks = <&clk 2>;
++			enable-gpios = <&clk_gpio0 6 0>;
++		};
++		spi3_clk: spi3_clk {
++			#clock-cells = <0>;
++			compatible = "gpio-gate-clock";
++			clocks = <&clk 2>;
++			enable-gpios = <&clk_gpio0 16 0>;
++		};
++
++		usb_clk: usb_clk {
++			#clock-cells = <0>;
++			compatible = "gpio-gate-clock";
++			clocks = <&clk 2>;
++			enable-gpios = <&clk_gpio0 23 0>;
++		};
++	};
++
++	pic: pic {
++		compatible = "cdns,xtensa-pic";
++		/* one cell: internal irq number,
++		 * two cells: second cell == 0: internal irq number
++		 *            second cell == 1: external irq number
++		 */
++		#interrupt-cells = <2>;
++		interrupt-controller;
++	};
++
++	soc {
++		#address-cells = <1>;
++		#size-cells = <1>;
++		compatible = "simple-bus";
++		interrupt-parent = <&intc>;
++		ranges;
++
++		flash@42000000 {
++			#address-cells = <1>;
++			#size-cells = <1>;
++			compatible = "mtd-rom";
++			reg = <0x42000000 0x01000000>;
++			bank-width = <2>;
++			device-width = <2>;
++			erase-size = <0x10000>;
++			controller = <&flash_controller>;
++			partitions {
++				compatible = "esp,esp32-partition-table";
++			};
++		};
++
++		uart0: serial@60000000 {
++			compatible = "esp,esp32s3-uart";
++			reg = <0x60000000 0x80>;
++			interrupts = <27 1 0>; /* UART0, external IRQ1, CPU0 */
++			clocks = <&uart0_clk>;
++			resets = <&reset 2>;
++			reset-names = "reset";
++			status = "disabled";
++		};
++
++		gpio0: gpio@60004000 {
++			#gpio-cells = <2>;
++			compatible = "esp,esp32s3-gpio";
++			reg = <0x60004000 0x138>;
++			interrupts = <16 8 0>; /* GPIO, external IRQ8, CPU0 */
++			interrupt-controller;
++			#interrupt-cells = <2>;
++			status = "disabled";
++		};
++
++		gpio_in_mux: gpio_in_mux@60004154 {
++			compatible = "pinctrl-single";
++			reg = <0x60004154 0x400>;
++			#pinctrl-cells = <1>;
++			pinctrl-single,register-width = <32>;
++			pinctrl-single,function-mask = <0xff>;
++			status = "disabled";
++		};
++
++		gpio_out_mux: gpio_out_mux@60004554 {
++			compatible = "pinctrl-single";
++			reg = <0x60004554 0xc4>;
++			#pinctrl-cells = <1>;
++			pinctrl-single,register-width = <32>;
++			pinctrl-single,function-mask = <0xfff>;
++			status = "disabled";
++		};
++
++		lpm: lpm@60008000 {
++			compatible = "syscon";
++			reg = <0x60008000 0x400>;
++		};
++
++		syscon@60008000 {
++			compatible = "syscon-reboot";
++			regmap = <&lpm>;
++			offset = <0>;
++			value = <0x80000000>;
++			mask = <0x80000000>;
++		};
++
++		usb_phy: usb_phy@60008120 {
++			compatible = "esp,esp32s3-usb-phy";
++			reg = <0x60008120 4
++			       0x60039000 4>;
++			#phy-cells = <0>;
++			status = "disabled";
++		};
++
++		rtc_iomux: pinctrl@60008484 {
++			compatible = "pinctrl-single";
++			reg = <0x60008484 0x58>;
++			#pinctrl-cells = <1>;
++			pinctrl-single,register-width = <32>;
++			pinctrl-single,function-mask = <0xfffff000>;
++			status = "disabled";
++		};
++
++		iomux: pinctrl@60009000 {
++			compatible = "pinctrl-single";
++			reg = <0x60009004 0xc4>;
++			#pinctrl-cells = <1>;
++			pinctrl-single,register-width = <32>;
++			pinctrl-single,function-mask = <0xffff>;
++			status = "disabled";
++		};
++
++		uart1: serial@60010000 {
++			compatible = "esp,esp32s3-uart";
++			reg = <0x60010000 0x80>;
++			interrupts = <28 4 0>; /* UART1, external IRQ4, CPU0 */
++			clocks = <&uart1_clk>;
++			resets = <&reset 5>;
++			reset-names = "reset";
++			status = "disabled";
++		};
++
++		spi2: spi@60024000 {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			compatible = "esp,esp32s3-spi";
++			reg = <0x60024000 0x100>;
++			interrupts = <21 9 0>; /* SPI2, external IRQ9, CPU0 */
++			clocks = <&spi2_clk>;
++			resets = <&reset 6>;
++			reset-names = "reset";
++			spi-num-chipselects = <6>;
++			status = "disabled";
++		};
++
++		spi3: spi@60025000 {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			compatible = "esp,esp32s3-spi";
++			reg = <0x60025000 0x100>;
++			interrupts = <22 12 0>; /* SPI3, external IRQ12, CPU0 */
++			clocks = <&spi3_clk>;
++			resets = <&reset 16>;
++			reset-names = "reset";
++			spi-num-chipselects = <3>;
++			status = "disabled";
++		};
++
++		uart2: serial@6002e000 {
++			compatible = "esp,esp32s3-uart";
++			reg = <0x6002e000 0x80>;
++			interrupts = <29 5 0>; /* UART2, external IRQ5, CPU0 */
++			clocks = <&uart2_clk>;
++			resets = <&reset 41>;
++			reset-names = "reset";
++			status = "disabled";
++		};
++
++		trng@6003507c {
++			compatible = "esp,esp32-trng";
++			reg = <0x6003507c 0x4>;
++		};
++
++		acm: acm@60038000 {
++			compatible = "esp,esp32s3-acm";
++			reg = <0x60038000 0x1000>;
++			interrupts = <96 3 0>; /* USB device, external IRQ3, CPU0 */
++			resets = <&reset 42>;
++			reset-names = "reset";
++			status = "disabled";
++		};
++
++		usb: usb@60080000 {
++			compatible = "esp,esp32s3-usb", "snps,dwc2";
++			reg = <0x60080000 0x40000>;
++			interrupts = <38 13 0>; /* USB, external IRQ13, CPU0 */
++			clocks = <&usb_clk>;
++			clock-names = "otg";
++			resets = <&reset 23>;
++			reset-names = "dwc2";
++			phys = <&usb_phy>;
++			phy-names = "usb2-phy";
++
++			g-rx-fifo-size = <64>;
++			g-np-tx-fifo-size = <16>;
++			g-tx-fifo-size = <64 16 16 16>;
++			status = "disabled";
++		};
++
++		ipc: ipc@600c0004 {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			compatible = "esp,esp32-ipc";
++			reg = <0x600c0004 4  /* queues address */
++			       0x600c0038 8  /* incoming and outgoing IRQ registers */
++			       >;
++			interrupts = <81 2 0>; /* CPU_INTR_FROM_CPU_2, IRQ 2, CPU0 */
++
++			flash_controller: flash@2 {
++				compatible = "esp,esp32-ipc-flash";
++				reg = <2>;
++			};
++		};
++
++		clk: clk@600c0010 {
++			compatible = "esp,esp32s3-core-clock";
++			reg = <0x600c0010 4
++			       0x600c0060 4>;
++			#clock-cells = <1>;
++			/* clock-output-names = "xtal_clk", "cpu_clk", "apb_clk"; */
++		};
++		clk_gpio0: clk_gpio@600c0018 {
++			#gpio-cells = <2>;
++			compatible = "esp,esp32-clk-gpio";
++			reg = <0x600c0018 4>;
++			reg-names = "dat";
++		};
++		clk_gpio1: clk_gpio@600c001c {
++			#gpio-cells = <2>;
++			compatible = "esp,esp32-clk-gpio";
++			reg = <0x600c001c 4>;
++			reg-names = "dat";
++		};
++		reset: reset@600c0020 {
++			#reset-cells = <1>;
++			compatible = "esp,esp32-reset";
++			reg = <0x600c0020 8>;
++		};
++
++		intc: intc@600c2000 {
++			compatible = "esp,esp32-intc";
++			reg = <0x600c2000 0x800>;
++			/* first cell: interrupt matrix row
++			 * second cell: internal xtensa core IRQ number to connect to
++			 * third cell: target CPU
++			 */
++			#interrupt-cells = <3>;
++			interrupt-controller;
++			interrupt-parent = <&pic>;
++		};
++	};
++};
+diff --git a/arch/xtensa/boot/dts/gpio-esp32.h b/arch/xtensa/boot/dts/gpio-esp32.h
+new file mode 100644
+index 0000000000000..bca0a46167257
+--- /dev/null
++++ b/arch/xtensa/boot/dts/gpio-esp32.h
+@@ -0,0 +1,70 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++
++#ifndef _GPIO_ESP32_H
++#define _GPIO_ESP32_H
++
++/* peri is Signal No. for desired Input signal
++ * from table 6-2 Peripheral Signals via GPIO Matrix from esp32s3 TRM
++ */
++#define GPIO_FUNC_IN_SEL(peri)	((peri) * 4)
++#define GPIO_FUNC_OUT_SEL(pin)	((pin) * 4)
++
++#define PIN(pin)		((pin) * 4)
++
++#define MUX_SLP_SEL		0x0002
++#define FUN_WPD			0x0080
++#define FUN_WPU			0x0100
++#define FUN_IE			0x0200
++#define FUN_DRV_5MA		0x0000
++#define FUN_DRV_10MA		0x0400
++#define FUN_DRV_20MA		0x0800
++#define FUN_DRV_40MA		0x0c00
++#define FUN_SEL(fn)		(((fn) & 0x7) << 12)
++#define FILTER_EN		0x8000
++
++#define FUN0_20MA		(FUN_SEL(0) | FUN_DRV_20MA)
++#define FUN0_20MA_IE		(FUN_SEL(0) | FUN_DRV_20MA | FUN_IE)
++#define FUN0_20MA_IE_WPU	(FUN_SEL(0) | FUN_DRV_20MA | FUN_IE | FUN_WPU)
++
++#define RTC_MUX_SEL		0x00080000
++
++/* esp32 IO MUX indices */
++
++#define IOMUX_GPIO36		0
++#define IOMUX_GPIO37		1
++#define IOMUX_GPIO38		2
++#define IOMUX_GPIO39		3
++#define IOMUX_GPIO34		4
++#define IOMUX_GPIO35		5
++#define IOMUX_GPIO32		6
++#define IOMUX_GPIO33		7
++#define IOMUX_GPIO25		8
++#define IOMUX_GPIO26		9
++#define IOMUX_GPIO27		10
++#define IOMUX_MTMS		11
++#define IOMUX_MTDI		12
++#define IOMUX_MTCK		13
++#define IOMUX_MTDO		14
++#define IOMUX_GPIO2		15
++#define IOMUX_GPIO0		16
++#define IOMUX_GPIO4		17
++#define IOMUX_GPIO16		18
++#define IOMUX_GPIO17		19
++#define IOMUX_SD_DATA2		20
++#define IOMUX_SD_DATA3		21
++#define IOMUX_SD_CMD		22
++#define IOMUX_SD_CLK		23
++#define IOMUX_SD_DATA0		24
++#define IOMUX_SD_DATA1		25
++#define IOMUX_GPIO5		26
++#define IOMUX_GPIO18		27
++#define IOMUX_GPIO19		28
++#define IOMUX_GPIO20		29
++#define IOMUX_GPIO21		30
++#define IOMUX_GPIO22		31
++#define IOMUX_U0RXD		32
++#define IOMUX_U0TXD		33
++#define IOMUX_GPIO23		34
++#define IOMUX_GPIO24		35
++
++#endif
+diff --git a/arch/xtensa/configs/esp32_wrover_dev_defconfig b/arch/xtensa/configs/esp32_wrover_dev_defconfig
+new file mode 100644
+index 0000000000000..eb8f053f6e792
+--- /dev/null
++++ b/arch/xtensa/configs/esp32_wrover_dev_defconfig
+@@ -0,0 +1,92 @@
++CONFIG_NO_HZ_IDLE=y
++CONFIG_HIGH_RES_TIMERS=y
++CONFIG_PREEMPT=y
++# CONFIG_INITRAMFS_PRESERVE_MTIME is not set
++CONFIG_CC_OPTIMIZE_FOR_SIZE=y
++CONFIG_EXPERT=y
++# CONFIG_MULTIUSER is not set
++# CONFIG_FHANDLE is not set
++# CONFIG_BASE_FULL is not set
++# CONFIG_EPOLL is not set
++# CONFIG_SIGNALFD is not set
++# CONFIG_TIMERFD is not set
++# CONFIG_EVENTFD is not set
++# CONFIG_AIO is not set
++# CONFIG_IO_URING is not set
++# CONFIG_ADVISE_SYSCALLS is not set
++# CONFIG_MEMBARRIER is not set
++# CONFIG_KALLSYMS is not set
++CONFIG_XTENSA_VARIANT_CUSTOM=y
++CONFIG_XTENSA_VARIANT_CUSTOM_NAME="esp32"
++# CONFIG_XTENSA_VARIANT_MMU is not set
++CONFIG_USER_ABI_CALL0_ONLY=y
++CONFIG_XTENSA_PLATFORM_ESP32=y
++CONFIG_USE_OF=y
++CONFIG_BUILTIN_DTB_NAME="esp32-wrover-dev"
++# CONFIG_PARSE_BOOTPARAM is not set
++CONFIG_MEMMAP_CACHEATTR=0xfffff22f
++CONFIG_KERNEL_LOAD_ADDRESS=0x40440000
++CONFIG_XTENSA_VECTORS_SEPARATE=y
++CONFIG_VECTORS_ADDR=0x40087000
++CONFIG_XIP_DATA_ADDR=0x3f800000
++CONFIG_DEFAULT_MEM_START=0x3f800000
++# CONFIG_SECCOMP is not set
++# CONFIG_STACKPROTECTOR is not set
++# CONFIG_BLOCK is not set
++# CONFIG_COREDUMP is not set
++CONFIG_MMAP_ALLOW_UNINITIALIZED=y
++# CONFIG_VM_EVENT_COUNTERS is not set
++CONFIG_DEVTMPFS=y
++CONFIG_DEVTMPFS_MOUNT=y
++# CONFIG_STANDALONE is not set
++# CONFIG_PREVENT_FIRMWARE_BUILD is not set
++# CONFIG_ALLOW_DEV_COREDUMP is not set
++CONFIG_MTD=y
++CONFIG_MTD_CFI=y
++CONFIG_MTD_CFI_INTELEXT=y
++CONFIG_MTD_ROM=y
++CONFIG_MTD_PHYSMAP=y
++CONFIG_MTD_PHYSMAP_OF=y
++# CONFIG_INPUT is not set
++# CONFIG_SERIO is not set
++# CONFIG_VT is not set
++CONFIG_SERIAL_ESP32=y
++CONFIG_HW_RANDOM_ESP32=y
++CONFIG_I2C=y
++CONFIG_I2C_CHARDEV=y
++CONFIG_I2C_GPIO=y
++CONFIG_PINCTRL=y
++CONFIG_PINCTRL_SINGLE=y
++CONFIG_GPIOLIB=y
++CONFIG_GPIO_SYSFS=y
++# CONFIG_GPIO_CDEV_V1 is not set
++CONFIG_GPIO_ESP32=y
++CONFIG_GPIO_GENERIC_PLATFORM=y
++CONFIG_POWER_RESET=y
++CONFIG_POWER_RESET_SYSCON=y
++# CONFIG_HWMON is not set
++# CONFIG_USB_SUPPORT is not set
++# CONFIG_VIRTIO_MENU is not set
++# CONFIG_VHOST_MENU is not set
++CONFIG_COMMON_CLK_ESP32=y
++CONFIG_RESET_CONTROLLER=y
++CONFIG_RESET_SIMPLE=y
++# CONFIG_NVMEM is not set
++# CONFIG_FILE_LOCKING is not set
++# CONFIG_DNOTIFY is not set
++# CONFIG_INOTIFY_USER is not set
++CONFIG_CRAMFS=y
++CONFIG_LSM="yama,loadpin,safesetid,integrity"
++CONFIG_INIT_STACK_NONE=y
++CONFIG_PRINTK_TIME=y
++# CONFIG_SYMBOLIC_ERRNAME is not set
++# CONFIG_DEBUG_MISC is not set
++CONFIG_FRAME_WARN=1024
++CONFIG_MAGIC_SYSRQ=y
++# CONFIG_SLUB_DEBUG is not set
++CONFIG_STACKTRACE=y
++# CONFIG_RCU_TRACE is not set
++# CONFIG_FTRACE is not set
++# CONFIG_LD_NO_RELAX is not set
++# CONFIG_S32C1I_SELFTEST is not set
++# CONFIG_RUNTIME_TESTING_MENU is not set
+diff --git a/arch/xtensa/configs/esp32s3_devkit_c1_defconfig b/arch/xtensa/configs/esp32s3_devkit_c1_defconfig
+new file mode 100644
+index 0000000000000..c42177f1ca63f
+--- /dev/null
++++ b/arch/xtensa/configs/esp32s3_devkit_c1_defconfig
+@@ -0,0 +1,149 @@
++CONFIG_NO_HZ_IDLE=y
++CONFIG_HIGH_RES_TIMERS=y
++CONFIG_PREEMPT=y
++CONFIG_VIRT_CPU_ACCOUNTING_GEN=y
++# CONFIG_INITRAMFS_PRESERVE_MTIME is not set
++CONFIG_CC_OPTIMIZE_FOR_SIZE=y
++CONFIG_EXPERT=y
++# CONFIG_FHANDLE is not set
++# CONFIG_BASE_FULL is not set
++# CONFIG_EPOLL is not set
++# CONFIG_SIGNALFD is not set
++# CONFIG_TIMERFD is not set
++# CONFIG_AIO is not set
++# CONFIG_IO_URING is not set
++# CONFIG_ADVISE_SYSCALLS is not set
++# CONFIG_MEMBARRIER is not set
++CONFIG_PROFILING=y
++CONFIG_XTENSA_VARIANT_CUSTOM=y
++CONFIG_XTENSA_VARIANT_CUSTOM_NAME="esp32s3"
++# CONFIG_XTENSA_VARIANT_MMU is not set
++CONFIG_XTENSA_VARIANT_HAVE_PERF_EVENTS=y
++CONFIG_XTENSA_UNALIGNED_USER=y
++CONFIG_USER_ABI_CALL0_ONLY=y
++CONFIG_XTENSA_PLATFORM_ESP32=y
++CONFIG_USE_OF=y
++CONFIG_BUILTIN_DTB_NAME="esp32s3-devkit-c1"
++CONFIG_MEMMAP_CACHEATTR=0xffff222f
++CONFIG_KERNEL_LOAD_ADDRESS=0x42120000
++CONFIG_VECTORS_ADDR=0x4037c000
++CONFIG_XIP_DATA_ADDR=0x3d800000
++CONFIG_DEFAULT_MEM_START=0x3d800000
++# CONFIG_SECCOMP is not set
++# CONFIG_STACKPROTECTOR is not set
++# CONFIG_IOSCHED_BFQ is not set
++# CONFIG_COREDUMP is not set
++CONFIG_MMAP_ALLOW_UNINITIALIZED=y
++# CONFIG_VM_EVENT_COUNTERS is not set
++CONFIG_NET=y
++CONFIG_PACKET=y
++CONFIG_PACKET_DIAG=y
++CONFIG_UNIX=y
++CONFIG_UNIX_DIAG=y
++CONFIG_INET=y
++CONFIG_CFG80211=y
++# CONFIG_CFG80211_DEFAULT_PS is not set
++# CONFIG_CFG80211_CRDA_SUPPORT is not set
++CONFIG_RFKILL=y
++CONFIG_DEVTMPFS=y
++CONFIG_DEVTMPFS_MOUNT=y
++# CONFIG_STANDALONE is not set
++# CONFIG_PREVENT_FIRMWARE_BUILD is not set
++CONFIG_FW_LOADER_USER_HELPER=y
++# CONFIG_ALLOW_DEV_COREDUMP is not set
++CONFIG_MTD=y
++CONFIG_MTD_BLOCK=y
++CONFIG_MTD_ESP32=y
++CONFIG_MTD_PHYSMAP=y
++CONFIG_MTD_PHYSMAP_OF=y
++CONFIG_NETDEVICES=y
++# CONFIG_NET_CORE is not set
++# CONFIG_ETHERNET is not set
++# CONFIG_WLAN_VENDOR_ADMTEK is not set
++# CONFIG_WLAN_VENDOR_ATH is not set
++# CONFIG_WLAN_VENDOR_ATMEL is not set
++# CONFIG_WLAN_VENDOR_BROADCOM is not set
++# CONFIG_WLAN_VENDOR_CISCO is not set
++CONFIG_ESP32_WIFI=y
++# CONFIG_WLAN_VENDOR_INTEL is not set
++# CONFIG_WLAN_VENDOR_INTERSIL is not set
++# CONFIG_WLAN_VENDOR_MARVELL is not set
++# CONFIG_WLAN_VENDOR_MEDIATEK is not set
++# CONFIG_WLAN_VENDOR_MICROCHIP is not set
++# CONFIG_WLAN_VENDOR_PURELIFI is not set
++# CONFIG_WLAN_VENDOR_RALINK is not set
++# CONFIG_WLAN_VENDOR_REALTEK is not set
++# CONFIG_WLAN_VENDOR_RSI is not set
++# CONFIG_WLAN_VENDOR_SILABS is not set
++# CONFIG_WLAN_VENDOR_ST is not set
++# CONFIG_WLAN_VENDOR_TI is not set
++# CONFIG_WLAN_VENDOR_ZYDAS is not set
++# CONFIG_WLAN_VENDOR_QUANTENNA is not set
++# CONFIG_INPUT is not set
++# CONFIG_SERIO is not set
++# CONFIG_VT is not set
++CONFIG_SERIAL_ESP32=y
++CONFIG_SERIAL_ESP32_ACM=y
++CONFIG_HW_RANDOM_ESP32=y
++CONFIG_I2C=y
++CONFIG_I2C_CHARDEV=y
++CONFIG_I2C_GPIO=y
++CONFIG_SPI=y
++CONFIG_SPI_ESP32=y
++CONFIG_SPI_GPIO=y
++CONFIG_PINCTRL=y
++CONFIG_PINCTRL_SINGLE=y
++CONFIG_GPIOLIB=y
++CONFIG_GPIO_SYSFS=y
++# CONFIG_GPIO_CDEV_V1 is not set
++CONFIG_GPIO_ESP32=y
++CONFIG_GPIO_GENERIC_PLATFORM=y
++CONFIG_POWER_RESET=y
++CONFIG_POWER_RESET_SYSCON=y
++# CONFIG_HWMON is not set
++# CONFIG_USB_SUPPORT is not set
++CONFIG_MMC=y
++# CONFIG_PWRSEQ_EMMC is not set
++# CONFIG_PWRSEQ_SIMPLE is not set
++CONFIG_MMC_SPI=y
++# CONFIG_VIRTIO_MENU is not set
++# CONFIG_VHOST_MENU is not set
++CONFIG_IIO=y
++CONFIG_INV_MPU6050_I2C=y
++CONFIG_RESET_CONTROLLER=y
++CONFIG_RESET_SIMPLE=y
++# CONFIG_NVMEM is not set
++# CONFIG_DNOTIFY is not set
++# CONFIG_INOTIFY_USER is not set
++CONFIG_VFAT_FS=y
++CONFIG_FAT_DEFAULT_UTF8=y
++CONFIG_EXFAT_FS=y
++CONFIG_JFFS2_FS=y
++CONFIG_JFFS2_COMPRESSION_OPTIONS=y
++CONFIG_JFFS2_CMODE_NONE=y
++CONFIG_CRAMFS=y
++CONFIG_CRAMFS_MTD=y
++CONFIG_NFS_FS=y
++CONFIG_NFS_V4=y
++# CONFIG_RPCSEC_GSS_KRB5 is not set
++CONFIG_NLS_CODEPAGE_437=y
++CONFIG_NLS_ISO8859_1=y
++CONFIG_NLS_UTF8=y
++CONFIG_LSM="yama,loadpin,safesetid,integrity"
++CONFIG_INIT_STACK_NONE=y
++# CONFIG_CRYPTO_AES is not set
++CONFIG_PRINTK_TIME=y
++# CONFIG_SYMBOLIC_ERRNAME is not set
++# CONFIG_DEBUG_MISC is not set
++CONFIG_FRAME_WARN=1024
++CONFIG_MAGIC_SYSRQ=y
++CONFIG_DEBUG_FS=y
++# CONFIG_SLUB_DEBUG is not set
++# CONFIG_SCHED_DEBUG is not set
++CONFIG_STACKTRACE=y
++# CONFIG_RCU_TRACE is not set
++# CONFIG_FTRACE is not set
++# CONFIG_LD_NO_RELAX is not set
++# CONFIG_S32C1I_SELFTEST is not set
++CONFIG_PRINT_USER_CODE_ON_UNHANDLED_EXCEPTION=y
++# CONFIG_RUNTIME_TESTING_MENU is not set
+diff --git a/arch/xtensa/platforms/esp32/include/platform/serial.h b/arch/xtensa/platforms/esp32/include/platform/serial.h
+new file mode 100644
+index 0000000000000..92be65541a3f0
+--- /dev/null
++++ b/arch/xtensa/platforms/esp32/include/platform/serial.h
+@@ -0,0 +1,8 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++#ifndef __ASM_XTENSA_ESP32_SERIAL_H
++#define __ASM_XTENSA_ESP32_SERIAL_H
++
++#define BASE_BAUD 115200
++
++#endif /* __ASM_XTENSA_ESP32_SERIAL_H */

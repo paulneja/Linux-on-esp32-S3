@@ -1,0 +1,119 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Sat, 8 Jul 2023 23:28:52 -0700
+Subject: [PATCH 28/59] esp_wifi: make BT support separately configurable
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit 43b26938bab789b155f4820a497f5d27348e6d57)
+---
+ drivers/net/wireless/espressif/esp32-ng/Kconfig |  9 ++++++++-
+ .../net/wireless/espressif/esp32-ng/Makefile    |  3 ++-
+ drivers/net/wireless/espressif/esp32-ng/main.c  | 17 ++++++++++++++---
+ 3 files changed, 24 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/net/wireless/espressif/esp32-ng/Kconfig b/drivers/net/wireless/espressif/esp32-ng/Kconfig
+index a54cf71a12216..bd25f93116757 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/Kconfig
++++ b/drivers/net/wireless/espressif/esp32-ng/Kconfig
+@@ -9,7 +9,14 @@ config ESP32_WIFI
+ 	select WEXT_SPY
+ 	select WEXT_PRIV
+ 	help
+-	  This is the standard Linux driver to support esp32 family of devices.
++	  This is the standard Linux driver to support wifi on esp32 device
++	  family.
++
++config ESP32_BT
++	bool "Support BT on esp32/esp32sx/esp32cx devices"
++	depends on ESP32_WIFI && BT
++	help
++	  Also support Bluetooth on esp32 device family.
+ 
+ config ESP32_WIFI_SPI
+ 	def_bool y
+diff --git a/drivers/net/wireless/espressif/esp32-ng/Makefile b/drivers/net/wireless/espressif/esp32-ng/Makefile
+index 14667bf6d5916..61f68e64cb4e7 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/Makefile
++++ b/drivers/net/wireless/espressif/esp32-ng/Makefile
+@@ -1,5 +1,6 @@
+ obj-$(CONFIG_ESP32_WIFI)		+= esp32-wifi.o
+-esp32-wifi-objs				+= main.o esp_bt.o esp_cmd.o esp_cfg80211.o esp_stats.o esp_utils.o
++esp32-wifi-objs				+= main.o esp_cmd.o esp_cfg80211.o esp_stats.o esp_utils.o
++esp32-wifi-$(CONFIG_ESP32_BT)		+= esp_bt.o
+ esp32-wifi-$(CONFIG_ESP32_WIFI_SPI)	+= esp_spi.o
+ esp32-wifi-$(CONFIG_ESP32_WIFI_SDIO)	+= esp_sdio.o
+ esp32-wifi-objs				+= $(esp32-wifi-m)
+diff --git a/drivers/net/wireless/espressif/esp32-ng/main.c b/drivers/net/wireless/espressif/esp32-ng/main.c
+index f3dfc1233678b..d74a23b302c40 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/main.c
++++ b/drivers/net/wireless/espressif/esp32-ng/main.c
+@@ -202,13 +202,14 @@ void print_capabilities(u32 cap)
+ 
+ void init_bt(struct esp_adapter *adapter)
+ {
+-
++#ifdef CONFIG_ESP32_BT
+ 	if ((adapter->capabilities & ESP_BT_SPI_SUPPORT) ||
+ 		(adapter->capabilities & ESP_BT_SDIO_SUPPORT)) {
+ 		msleep(200);
+ 		esp_info("ESP Bluetooth init\n");
+ 		esp_init_bt(adapter);
+ 	}
++#endif
+ }
+ 
+ static int check_esp_version(struct fw_version *ver)
+@@ -576,8 +577,10 @@ int esp_remove_card(struct esp_adapter *adapter)
+ 	}
+ 
+ 	esp_stop_network_ifaces(adapter);
++#ifdef CONFIG_ESP32_BT
+ 	/* BT may have been initialized after fw bootup event, deinit it */
+ 	esp_deinit_bt(adapter);
++#endif
+ 	esp_commands_teardown(adapter);
+ 	esp_remove_network_ifaces(adapter);
+ 	esp_remove_wiphy(adapter);
+@@ -660,8 +663,6 @@ static void process_rx_packet(struct esp_adapter *adapter, struct sk_buff *skb)
+ 	struct esp_payload_header *payload_header = NULL;
+ 	u16 len = 0, offset = 0;
+ 	u16 rx_checksum = 0, checksum = 0;
+-	struct hci_dev *hdev = adapter->hcidev;
+-	u8 *type = NULL;
+ 	struct sk_buff *eap_skb = NULL;
+ 	struct ethhdr *eth = NULL;
+ 
+@@ -747,7 +748,11 @@ static void process_rx_packet(struct esp_adapter *adapter, struct sk_buff *skb)
+ 		}
+ 
+ 	} else if (payload_header->if_type == ESP_HCI_IF) {
++#ifdef CONFIG_ESP32_BT
++		struct hci_dev *hdev = adapter->hcidev;
++
+ 		if (hdev) {
++			u8 *type = NULL;
+ 
+ 			type = skb->data;
+ 			hci_skb_pkt_type(skb) = *type;
+@@ -763,6 +768,10 @@ static void process_rx_packet(struct esp_adapter *adapter, struct sk_buff *skb)
+ 				esp_hci_update_rx_counter(hdev, *type, skb->len);
+ 			}
+ 		}
++#else
++		pr_err("%s: got ESP_HCI_IF packet\n", __func__);
++		dev_kfree_skb_any(skb);
++#endif
+ 	} else if (payload_header->if_type == ESP_INTERNAL_IF) {
+ 
+ 		/* Queue event skb for processing in events workqueue */
+@@ -960,8 +969,10 @@ void esp_wifi_deinit(struct esp_adapter *adapter)
+ 	clear_bit(ESP_DRIVER_ACTIVE, &adapter->state_flags);
+ 
+ 	esp_remove_card(adapter);
++#ifdef CONFIG_ESP32_BT
+ 	if (adapter->hcidev)
+ 		esp_deinit_bt(adapter);
++#endif
+ 	deinit_adapter(adapter);
+ }
+ MODULE_LICENSE("GPL");

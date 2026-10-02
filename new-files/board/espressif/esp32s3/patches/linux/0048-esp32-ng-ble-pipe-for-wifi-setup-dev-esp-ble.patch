@@ -1,0 +1,285 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: paulneja <207793167+paulneja@users.noreply.github.com>
+Date: Sun, 26 Jul 2026 15:06:04 -0300
+Subject: [PATCH 48/59] esp32-ng: ble pipe for wifi setup, /dev/esp-ble
+
+---
+ .../net/wireless/espressif/esp32-ng/Makefile  |   2 +-
+ .../net/wireless/espressif/esp32-ng/adapter.h |   1 +
+ .../net/wireless/espressif/esp32-ng/esp_api.h |   4 +
+ .../espressif/esp32-ng/esp_ble_prov.c         | 196 ++++++++++++++++++
+ .../net/wireless/espressif/esp32-ng/main.c    |   6 +
+ 5 files changed, 208 insertions(+), 1 deletion(-)
+ create mode 100644 drivers/net/wireless/espressif/esp32-ng/esp_ble_prov.c
+
+diff --git a/drivers/net/wireless/espressif/esp32-ng/Makefile b/drivers/net/wireless/espressif/esp32-ng/Makefile
+index 4d8688d45a1c6..86185da4b9169 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/Makefile
++++ b/drivers/net/wireless/espressif/esp32-ng/Makefile
+@@ -1,5 +1,5 @@
+ obj-$(CONFIG_ESP32_WIFI)		+= esp32-wifi.o
+-esp32-wifi-objs				+= main.o esp_cmd.o esp_cfg80211.o esp_stats.o esp_utils.o
++esp32-wifi-objs				+= main.o esp_cmd.o esp_cfg80211.o esp_stats.o esp_utils.o esp_ble_prov.o
+ esp32-wifi-$(CONFIG_ESP32_BT)		+= esp_bt.o
+ esp32-wifi-$(CONFIG_ESP32_WIFI_SPI)	+= esp_spi.o
+ esp32-wifi-$(CONFIG_ESP32_WIFI_SDIO)	+= esp_sdio.o
+diff --git a/drivers/net/wireless/espressif/esp32-ng/adapter.h b/drivers/net/wireless/espressif/esp32-ng/adapter.h
+index 783d08bd71f97..803859f6e8703 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/adapter.h
++++ b/drivers/net/wireless/espressif/esp32-ng/adapter.h
+@@ -54,6 +54,7 @@ enum ESP_INTERFACE_TYPE {
+ 	ESP_HCI_IF,
+ 	ESP_INTERNAL_IF,
+ 	ESP_TEST_IF,
++	ESP_BLE_PROV_IF,
+ 	ESP_MAX_IF,
+ };
+ 
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_api.h b/drivers/net/wireless/espressif/esp32-ng/esp_api.h
+index b990327de87d3..7788093c99fe8 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_api.h
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_api.h
+@@ -26,6 +26,10 @@ struct esp_wifi_device *get_priv_from_payload_header(struct esp_adapter *adapter
+ 						     struct esp_payload_header *header);
+ struct sk_buff *esp_alloc_skb(u32 len);
+ int esp_send_packet(struct esp_adapter *adapter, struct sk_buff *skb);
++
++int esp_ble_prov_init(struct esp_adapter *adapter);
++void esp_ble_prov_deinit(void);
++void esp_ble_prov_rx(struct sk_buff *skb);
+ u8 esp_is_bt_supported_over_sdio(u32 cap);
+ void esp_tx_pause(struct esp_wifi_device *priv);
+ void esp_tx_resume(struct esp_wifi_device *priv);
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_ble_prov.c b/drivers/net/wireless/espressif/esp32-ng/esp_ble_prov.c
+new file mode 100644
+index 0000000000000..31fdced4dc370
+--- /dev/null
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_ble_prov.c
+@@ -0,0 +1,196 @@
++// SPDX-License-Identifier: GPL-2.0-only
++
++#include <linux/module.h>
++#include <linux/miscdevice.h>
++#include <linux/fs.h>
++#include <linux/poll.h>
++#include <linux/uaccess.h>
++#include <linux/skbuff.h>
++#include <linux/sched.h>
++
++#include "esp.h"
++#include "utils.h"
++#include "esp_api.h"
++
++#define ESP_BLE_PROV_DEV_NAME	"esp-ble"
++#define ESP_BLE_PROV_MAX_WRITE	512
++#define ESP_BLE_PROV_MAX_QUEUE	32
++
++static struct esp_adapter *ble_adapter;
++static struct sk_buff_head rx_q;
++static wait_queue_head_t rx_wait;
++static atomic_t is_open = ATOMIC_INIT(0);
++
++void esp_ble_prov_rx(struct sk_buff *skb)
++{
++	if (!skb)
++		return;
++
++	if (!atomic_read(&is_open) ||
++	    skb_queue_len(&rx_q) >= ESP_BLE_PROV_MAX_QUEUE) {
++		dev_kfree_skb_any(skb);
++		return;
++	}
++
++	skb_queue_tail(&rx_q, skb);
++	wake_up_interruptible(&rx_wait);
++}
++
++static int esp_ble_prov_open(struct inode *inode, struct file *file)
++{
++	if (atomic_xchg(&is_open, 1))
++		return -EBUSY;
++
++	skb_queue_purge(&rx_q);
++	return 0;
++}
++
++static int esp_ble_prov_release(struct inode *inode, struct file *file)
++{
++	atomic_set(&is_open, 0);
++	skb_queue_purge(&rx_q);
++	return 0;
++}
++
++static ssize_t esp_ble_prov_read(struct file *file, char __user *buf,
++				 size_t count, loff_t *ppos)
++{
++	struct sk_buff *skb;
++	size_t len;
++	int ret;
++
++	skb = skb_dequeue(&rx_q);
++	while (!skb) {
++		if (file->f_flags & O_NONBLOCK)
++			return -EAGAIN;
++
++		ret = wait_event_interruptible(rx_wait,
++					       !skb_queue_empty(&rx_q));
++		if (ret)
++			return ret;
++
++		skb = skb_dequeue(&rx_q);
++	}
++
++	len = min(count, (size_t)skb->len);
++	if (copy_to_user(buf, skb->data, len)) {
++		dev_kfree_skb_any(skb);
++		return -EFAULT;
++	}
++
++	if (len < skb->len) {
++		skb_pull(skb, len);
++		skb_queue_head(&rx_q, skb);
++	} else {
++		dev_kfree_skb_any(skb);
++	}
++
++	return len;
++}
++
++static ssize_t esp_ble_prov_write(struct file *file, const char __user *buf,
++				  size_t count, loff_t *ppos)
++{
++	struct esp_payload_header *hdr;
++	struct sk_buff *skb;
++	u16 pad_len, total_len;
++	u8 *pos;
++	int ret;
++
++	if (!ble_adapter)
++		return -ENODEV;
++	if (!count)
++		return 0;
++	if (count > ESP_BLE_PROV_MAX_WRITE)
++		count = ESP_BLE_PROV_MAX_WRITE;
++
++	pad_len = sizeof(struct esp_payload_header);
++	total_len = count + pad_len;
++	pad_len += SKB_DATA_ADDR_ALIGNMENT - (total_len % SKB_DATA_ADDR_ALIGNMENT);
++
++	skb = esp_alloc_skb(count + pad_len);
++	if (!skb)
++		return -ENOMEM;
++
++	skb_put(skb, count + pad_len);
++	pos = skb->data;
++
++	hdr = (struct esp_payload_header *)pos;
++	memset(hdr, 0, sizeof(*hdr));
++	hdr->if_type = ESP_BLE_PROV_IF;
++	hdr->if_num = 0;
++	hdr->len = cpu_to_le16(count);
++	hdr->offset = cpu_to_le16(pad_len);
++
++	if (copy_from_user(pos + pad_len, buf, count)) {
++		dev_kfree_skb_any(skb);
++		return -EFAULT;
++	}
++
++	if (ble_adapter->capabilities & ESP_CHECKSUM_ENABLED)
++		hdr->checksum = cpu_to_le16(compute_checksum(skb->data,
++							     count + pad_len));
++
++	ret = esp_send_packet(ble_adapter, skb);
++	if (ret)
++		return ret;
++
++	return count;
++}
++
++static __poll_t esp_ble_prov_poll(struct file *file, poll_table *wait)
++{
++	__poll_t mask = EPOLLOUT | EPOLLWRNORM;
++
++	poll_wait(file, &rx_wait, wait);
++	if (!skb_queue_empty(&rx_q))
++		mask |= EPOLLIN | EPOLLRDNORM;
++
++	return mask;
++}
++
++static const struct file_operations esp_ble_prov_fops = {
++	.owner		= THIS_MODULE,
++	.open		= esp_ble_prov_open,
++	.release	= esp_ble_prov_release,
++	.read		= esp_ble_prov_read,
++	.write		= esp_ble_prov_write,
++	.poll		= esp_ble_prov_poll,
++};
++
++static struct miscdevice esp_ble_prov_misc = {
++	.minor	= MISC_DYNAMIC_MINOR,
++	.name	= ESP_BLE_PROV_DEV_NAME,
++	.fops	= &esp_ble_prov_fops,
++	.mode	= 0600,
++};
++
++int esp_ble_prov_init(struct esp_adapter *adapter)
++{
++	int ret;
++
++	ble_adapter = adapter;
++	skb_queue_head_init(&rx_q);
++	init_waitqueue_head(&rx_wait);
++
++	ret = misc_register(&esp_ble_prov_misc);
++	if (ret) {
++		esp_err("Failed to register /dev/%s: %d\n",
++			ESP_BLE_PROV_DEV_NAME, ret);
++		ble_adapter = NULL;
++		return ret;
++	}
++
++	esp_info("BLE provisioning pipe at /dev/%s\n", ESP_BLE_PROV_DEV_NAME);
++	return 0;
++}
++
++void esp_ble_prov_deinit(void)
++{
++	if (!ble_adapter)
++		return;
++
++	misc_deregister(&esp_ble_prov_misc);
++	skb_queue_purge(&rx_q);
++	ble_adapter = NULL;
++}
+diff --git a/drivers/net/wireless/espressif/esp32-ng/main.c b/drivers/net/wireless/espressif/esp32-ng/main.c
+index f05a2b1483d15..56355d9533be1 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/main.c
++++ b/drivers/net/wireless/espressif/esp32-ng/main.c
+@@ -488,6 +488,8 @@ int esp_add_card(struct esp_adapter *adapter)
+ 	RET_ON_FAIL(esp_add_wiphy(adapter));
+ 	RET_ON_FAIL(esp_add_network_ifaces(adapter));
+ 
++	esp_ble_prov_init(adapter);
++
+ 	return 0;
+ }
+ 
+@@ -579,6 +581,7 @@ int esp_remove_card(struct esp_adapter *adapter)
+ 	esp_stop_network_ifaces(adapter);
+ #ifdef CONFIG_ESP32_BT
+ 	/* BT may have been initialized after fw bootup event, deinit it */
++	esp_ble_prov_deinit();
+ 	esp_deinit_bt(adapter);
+ #endif
+ 	esp_commands_teardown(adapter);
+@@ -789,6 +792,9 @@ static void process_rx_packet(struct esp_adapter *adapter, struct sk_buff *skb)
+ 			dev_kfree_skb_any(skb);
+ 		}
+ 
++	} else if (payload_header->if_type == ESP_BLE_PROV_IF) {
++		esp_ble_prov_rx(skb);
++		return;
+ 	} else if (payload_header->if_type == ESP_TEST_IF) {
+ #if TEST_RAW_TP
+ 		if (raw_tp_mode != 0) {

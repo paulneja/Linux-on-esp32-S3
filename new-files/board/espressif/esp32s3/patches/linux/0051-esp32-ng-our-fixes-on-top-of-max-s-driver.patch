@@ -1,0 +1,564 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: paulneja <207793167+paulneja@users.noreply.github.com>
+Date: Sat, 12 Sep 2026 01:09:18 -0300
+Subject: [PATCH 51/59] esp32-ng: our fixes on top of max's driver
+
+---
+ .../net/wireless/espressif/esp32-ng/Kconfig   |  5 --
+ .../espressif/esp32-ng/esp_cfg80211.c         | 39 +++++++----
+ .../net/wireless/espressif/esp32-ng/esp_cmd.c | 69 ++++++++++++-------
+ .../net/wireless/espressif/esp32-ng/esp_cmd.h | 12 +++-
+ .../wireless/espressif/esp32-ng/esp_shmem.c   | 55 +++++++++++----
+ .../net/wireless/espressif/esp32-ng/main.c    | 32 ++++++---
+ 6 files changed, 149 insertions(+), 63 deletions(-)
+
+diff --git a/drivers/net/wireless/espressif/esp32-ng/Kconfig b/drivers/net/wireless/espressif/esp32-ng/Kconfig
+index efcb624f877bc..a88105094ef42 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/Kconfig
++++ b/drivers/net/wireless/espressif/esp32-ng/Kconfig
+@@ -3,11 +3,6 @@
+ config ESP32_WIFI
+ 	tristate "Espressif esp32/esp32sx/esp32cx devices"
+ 	depends on CFG80211
+-	select WIRELESS_EXT
+-	select CRYPTO
+-	select CRYPTO_SKCIPHER
+-	select WEXT_SPY
+-	select WEXT_PRIV
+ 	help
+ 	  This is the standard Linux driver to support wifi on esp32 device
+ 	  family.
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c b/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c
+index 58bc0ef20f78b..c95324e034d5e 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c
+@@ -97,11 +97,11 @@ static struct ieee80211_supported_band esp_wifi_bands = {
+ 
+ /* Supported crypto cipher suits to be advertised to cfg80211 */
+ static const u32 esp_cipher_suites[] = {
+-	WLAN_CIPHER_SUITE_WEP40,
+-	WLAN_CIPHER_SUITE_WEP104,
+-	WLAN_CIPHER_SUITE_TKIP,
++	/* WEP40, WEP104, TKIP and SMS4 were advertised here. This board joins
++	 * WPA2 networks; offering ciphers broken for a decade only gives a
++	 * hostile AP a downgrade to ask for.
++	 */
+ 	WLAN_CIPHER_SUITE_CCMP,
+-	WLAN_CIPHER_SUITE_SMS4,
+ 	WLAN_CIPHER_SUITE_AES_CMAC,
+ };
+ 
+@@ -117,14 +117,20 @@ static int esp_inetaddr_event(struct notifier_block *nb,
+ 	unsigned long event, void *data)
+ {
+ 	struct in_ifaddr *ifa = data;
+-	struct net_device *netdev = ifa->ifa_dev ? ifa->ifa_dev->dev : NULL;
+-	struct esp_wifi_device *priv = netdev_priv(netdev);
++	struct net_device *netdev = ifa && ifa->ifa_dev ? ifa->ifa_dev->dev : NULL;
++	struct esp_wifi_device *priv;
+ 
+-	/*esp_info("------- IP event -------: %d\n", priv->if_type);*/
++	/* This notifier is global: it fires for lo and for every other netdev
++	 * in the system, and ifa_dev can be NULL. netdev_priv(NULL) was being
++	 * computed before anything checked.
++	 */
++	if (!netdev)
++		return NOTIFY_DONE;
+ 
+-	if (!strstr(netdev->name, "espsta")) {
+-		return 0;
+-	}
++	if (!strstr(netdev->name, "espsta"))
++		return NOTIFY_DONE;
++
++	priv = netdev_priv(netdev);
+ 
+ 	switch (event) {
+ 
+@@ -229,11 +235,20 @@ struct wireless_dev *esp_cfg80211_add_iface(struct wiphy *wiphy,
+ 	return &esp_wdev->wdev;
+ 
+ free_and_return:
++	/* esp_wdev is netdev_priv(ndev): it lives inside the net_device, so it
++	 * is gone the moment free_netdev() returns and the two stores that used
++	 * to follow were writes to freed memory. adapter->priv[] was left
++	 * pointing at it too, and get_priv_from_payload_header() would walk it
++	 * on the next packet. This path is taken when cmd_init_interface() or
++	 * cmd_get_mac() time out, which is exactly when core 0 is slow or
++	 * wedged at boot.
++	 */
+ 	clear_bit(ESP_DRIVER_ACTIVE, &esp_wdev->adapter->state_flags);
+-	dev_net_set(ndev, NULL);
+-	free_netdev(ndev);
++	esp_wdev->adapter->priv[esp_nw_if_num] = NULL;
+ 	esp_wdev->ndev = NULL;
+ 	esp_wdev->wdev.netdev = NULL;
++	dev_net_set(ndev, NULL);
++	free_netdev(ndev);
+ 	ndev = NULL;
+ 	return NULL;
+ }
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c b/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c
+index 529201ccf3c1b..9bb2ef526245b 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_cmd.c
+@@ -49,6 +49,16 @@ static struct command_node *get_free_cmd_node(struct esp_adapter *adapter)
+ 	cmd_node->cmd_skb = esp_alloc_skb(ESP_SIZE_OF_CMD_NODE);
+ 	if (!cmd_node->cmd_skb) {
+ 		esp_err("No free cmd node skb found\n");
++		/* Put it back. Returning a node with no skb leaked it: every
++		 * caller checks cmd_skb and gives up without recycling, so a
++		 * run of allocation failures emptied the pool permanently and
++		 * every later scan or association failed with "No free cmd
++		 * node found" until reboot.
++		 */
++		spin_lock_bh(&adapter->cmd_free_queue_lock);
++		list_add_tail(&cmd_node->list, &adapter->cmd_free_queue);
++		spin_unlock_bh(&adapter->cmd_free_queue_lock);
++		return NULL;
+ 	}
+ 
+ 	return cmd_node;
+@@ -72,9 +82,9 @@ static void queue_cmd_node(struct esp_adapter *adapter,
+ 	spin_lock_bh(&adapter->cmd_pending_queue_lock);
+ 
+ 	if (flag_high_prio)
+-		list_add_rcu(&cmd_node->list, &adapter->cmd_pending_queue);
++		list_add(&cmd_node->list, &adapter->cmd_pending_queue);
+ 	else
+-		list_add_tail_rcu(&cmd_node->list, &adapter->cmd_pending_queue);
++		list_add_tail(&cmd_node->list, &adapter->cmd_pending_queue);
+ 
+ 	spin_unlock_bh(&adapter->cmd_pending_queue_lock);
+ }
+@@ -322,7 +332,6 @@ static void esp_cmd_work(struct work_struct *work)
+ 	if (!test_bit(ESP_DRIVER_ACTIVE, &adapter->state_flags))
+ 		return;
+ 
+-	synchronize_rcu();
+ 	spin_lock_bh(&adapter->cmd_lock);
+ 	if (adapter->cur_cmd) {
+ 		/* Busy in another command */
+@@ -357,6 +366,7 @@ static void esp_cmd_work(struct work_struct *work)
+ 		esp_dbg("cmd_node->cmd_skb NULL\n");
+ 		spin_unlock_bh(&adapter->cmd_pending_queue_lock);
+ 		spin_unlock_bh(&adapter->cmd_lock);
++		recycle_cmd_node(adapter, cmd_node);
+ 		return;
+ 	}
+ 
+@@ -404,13 +414,12 @@ static int create_cmd_wq(struct esp_adapter *adapter)
+ static void destroy_cmd_wq(struct esp_adapter *adapter)
+ {
+ 	if (adapter->cmd_wq) {
+-		flush_scheduled_work();
+ 		destroy_workqueue(adapter->cmd_wq);
+ 		adapter->cmd_wq = NULL;
+ 	}
+ }
+ 
+-struct command_node *prepare_command_request(struct esp_adapter *adapter, u8 cmd_code, u16 len)
++struct command_node *prepare_command_request(struct esp_adapter *adapter, u8 cmd_code, size_t len)
+ {
+ 	struct command_header *cmd;
+ 	struct esp_payload_header *payload_header;
+@@ -430,6 +439,19 @@ struct command_node *prepare_command_request(struct esp_adapter *adapter, u8 cmd
+ 		return NULL;
+ 	}
+ 
++	/* skb_put() past the tail is skb_over_panic(), and the association
++	 * command carries information elements whose length the peer
++	 * influences, so refuse rather than panic. The bound is what the
++	 * transport will actually send: write_packet() drops anything over
++	 * SHMEM_BUF_SIZE minus the header, so a node that fits but exceeds
++	 * that would be built, queued and then silently discarded.
++	 */
++	if (len > ESP_MAX_CMD_PAYLOAD) {
++		esp_err("command 0x%X payload %zu exceeds the %u byte limit\n",
++			cmd_code, len, (unsigned int)ESP_MAX_CMD_PAYLOAD);
++		return NULL;
++	}
++
+ 	node = get_free_cmd_node(adapter);
+ 
+ 	if (!node || !node->cmd_skb) {
+@@ -786,7 +808,7 @@ int cmd_disconnect_request(struct esp_wifi_device *priv, u16 reason_code)
+ int cmd_connect_request(struct esp_wifi_device *priv,
+ 		struct cfg80211_connect_params *params)
+ {
+-	u16 cmd_len;
++	size_t cmd_len;
+ 	struct command_node *cmd_node = NULL;
+ 	struct cmd_sta_connect *cmd;
+ 	struct ieee80211_channel *chan;
+@@ -879,7 +901,7 @@ int cmd_assoc_request(struct esp_wifi_device *priv,
+ 	struct cmd_sta_assoc *cmd;
+ 	struct cfg80211_bss *bss;
+ 	struct esp_adapter *adapter = NULL;
+-	u16 cmd_len;
++	size_t cmd_len;
+ 
+ 	if (!priv || !req || !req->bss || !priv->adapter) {
+ 		esp_err("Invalid argument\n");
+@@ -914,10 +936,11 @@ int cmd_assoc_request(struct esp_wifi_device *priv,
+ 		priv->assoc_req_ie = NULL;
+ 	}
+ 
+-	priv->assoc_req_ie = kmemdup(req->ie, req->ie_len, GFP_ATOMIC);
++	priv->assoc_req_ie = kmemdup(req->ie, req->ie_len, GFP_KERNEL);
+ 
+ 	if (!priv->assoc_req_ie) {
+ 		esp_err("Failed to allocate buffer for assoc request IEs\n");
++		recycle_cmd_node(adapter, cmd_node);
+ 		return -ENOMEM;
+ 	}
+ 
+@@ -942,7 +965,7 @@ int cmd_auth_request(struct esp_wifi_device *priv,
+ 	struct cfg80211_bss *bss;
+ 	/*struct cfg80211_bss *bss1;*/
+ 	struct esp_adapter *adapter = NULL;
+-	u16 cmd_len;
++	size_t cmd_len;
+ 	/* u8 retry = 2; */
+ 
+ 	if (!priv || !req || !req->bss || !priv->adapter) {
+@@ -1009,7 +1032,7 @@ int cmd_auth_request(struct esp_wifi_device *priv,
+ 
+ int cmd_set_default_key(struct esp_wifi_device *priv, u8 key_index)
+ {
+-	u16 cmd_len;
++	size_t cmd_len;
+ 	struct command_node *cmd_node = NULL;
+ 	struct cmd_key_operation *cmd;
+ 	struct wifi_sec_key *key = NULL;
+@@ -1059,7 +1082,7 @@ int cmd_set_default_key(struct esp_wifi_device *priv, u8 key_index)
+ int cmd_del_key(struct esp_wifi_device *priv, u8 key_index, bool pairwise,
+ 		const u8 *mac_addr)
+ {
+-	u16 cmd_len;
++	size_t cmd_len;
+ 	struct command_node *cmd_node = NULL;
+ 	struct cmd_key_operation *cmd;
+ 	struct wifi_sec_key *key = NULL;
+@@ -1115,7 +1138,7 @@ int cmd_del_key(struct esp_wifi_device *priv, u8 key_index, bool pairwise,
+ int cmd_add_key(struct esp_wifi_device *priv, u8 key_index, bool pairwise,
+ 		const u8 *mac_addr, struct key_params *params)
+ {
+-	u16 cmd_len;
++	size_t cmd_len;
+ 	struct command_node *cmd_node = NULL;
+ 	struct cmd_key_operation *cmd;
+ 	struct wifi_sec_key *key = NULL;
+@@ -1224,7 +1247,7 @@ int cmd_add_key(struct esp_wifi_device *priv, u8 key_index, bool pairwise,
+ 
+ int cmd_init_interface(struct esp_wifi_device *priv)
+ {
+-	u16 cmd_len;
++	size_t cmd_len;
+ 	struct command_node *cmd_node = NULL;
+ 
+ 	if (!priv || !priv->adapter) {
+@@ -1251,7 +1274,7 @@ int cmd_init_interface(struct esp_wifi_device *priv)
+ 
+ int cmd_deinit_interface(struct esp_wifi_device *priv)
+ {
+-	u16 cmd_len;
++	size_t cmd_len;
+ 	struct command_node *cmd_node = NULL;
+ 
+ 	if (!priv || !priv->adapter)
+@@ -1283,7 +1306,7 @@ int internal_scan_request(struct esp_wifi_device *priv, char *ssid,
+ 		uint8_t channel, uint8_t is_blocking)
+ {
+ 	int ret = 0;
+-	u16 cmd_len;
++	size_t cmd_len;
+ 	struct command_node *cmd_node = NULL;
+ 	struct scan_request *scan_req;
+ 
+@@ -1342,7 +1365,7 @@ int internal_scan_request(struct esp_wifi_device *priv, char *ssid,
+ 
+ int cmd_scan_request(struct esp_wifi_device *priv, struct cfg80211_scan_request *request)
+ {
+-	u16 cmd_len;
++	size_t cmd_len;
+ 	struct command_node *cmd_node = NULL;
+ 	struct scan_request *scan_req;
+ 
+@@ -1405,7 +1428,7 @@ int cmd_scan_request(struct esp_wifi_device *priv, struct cfg80211_scan_request
+ 
+ int cmd_init_raw_tp_task_timer(struct esp_wifi_device *priv)
+ {
+-	u16 cmd_len;
++	size_t cmd_len;
+ 	struct command_node *cmd_node = NULL;
+ 
+ 	if (!priv || !priv->adapter) {
+@@ -1436,7 +1459,7 @@ int cmd_init_raw_tp_task_timer(struct esp_wifi_device *priv)
+ 
+ int cmd_get_mac(struct esp_wifi_device *priv)
+ {
+-	u16 cmd_len;
++	size_t cmd_len;
+ 	struct command_node *cmd_node = NULL;
+ 
+ 	if (!priv || !priv->adapter) {
+@@ -1463,7 +1486,7 @@ int cmd_get_mac(struct esp_wifi_device *priv)
+ 
+ int cmd_set_mac(struct esp_wifi_device *priv, uint8_t *mac_addr)
+ {
+-	u16 cmd_len;
++	size_t cmd_len;
+ 	struct command_node *cmd_node = NULL;
+ 	struct cmd_config_mac_address *cmd;;
+ 
+@@ -1534,7 +1557,7 @@ int esp_commands_setup(struct esp_adapter *adapter)
+ 
+ int cmd_set_tx_power(struct esp_wifi_device *priv, int power)
+ {
+-	u16 cmd_len;
++	size_t cmd_len;
+ 	struct command_node *cmd_node = NULL;
+ 	struct cmd_set_get_val *val;;
+ 
+@@ -1567,7 +1590,7 @@ int cmd_set_tx_power(struct esp_wifi_device *priv, int power)
+ 
+ int cmd_get_tx_power(struct esp_wifi_device *priv)
+ {
+-	u16 cmd_len;
++	size_t cmd_len;
+ 	struct command_node *cmd_node = NULL;
+ 
+ 	if (!priv || !priv->adapter) {
+@@ -1594,7 +1617,7 @@ int cmd_get_tx_power(struct esp_wifi_device *priv)
+ 
+ int cmd_get_reg_domain(struct esp_wifi_device *priv)
+ {
+-	u16 cmd_len;
++	size_t cmd_len;
+ 	struct command_node *cmd_node = NULL;
+ 
+ 	if (!priv || !priv->adapter) {
+@@ -1621,7 +1644,7 @@ int cmd_get_reg_domain(struct esp_wifi_device *priv)
+ 
+ int cmd_set_reg_domain(struct esp_wifi_device *priv)
+ {
+-	u16 cmd_len;
++	size_t cmd_len;
+ 	struct command_node *cmd_node = NULL;
+ 	struct cmd_reg_domain *cmd;
+ 
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_cmd.h b/drivers/net/wireless/espressif/esp32-ng/esp_cmd.h
+index 393c13b300232..73fd99dfbeff9 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_cmd.h
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_cmd.h
+@@ -11,7 +11,17 @@
+ #include "esp.h"
+ 
+ #define ESP_NUM_OF_CMD_NODES 20
+-#define ESP_SIZE_OF_CMD_NODE 2048
++/* The shmem transport caps a packet at SHMEM_BUF_SIZE, so a command node
++ * larger than that could never be sent: write_packet() drops it. 2048 landed
++ * every command in the kmalloc-4096 slab; 1600 fits kmalloc-2048 and still
++ * holds anything the transport can carry.
++ */
++#define ESP_SIZE_OF_CMD_NODE 1600
++/* Largest command payload the shmem transport will carry: its packet cap
++ * (SHMEM_BUF_SIZE, 1600) less the payload header, and the node holds a
++ * header of its own on top of that.
++ */
++#define ESP_MAX_CMD_PAYLOAD (ESP_SIZE_OF_CMD_NODE - 2 * sizeof(struct esp_payload_header))
+ 
+ #define ESP_CMD_HIGH_PRIO    1
+ #define ESP_CMD_DFLT_PRIO    0
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_shmem.c b/drivers/net/wireless/espressif/esp32-ng/esp_shmem.c
+index b27a976b3fc05..7cf13c7297a5c 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_shmem.c
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_shmem.c
+@@ -118,6 +118,7 @@ static int process_rx_buf(struct esp_wifi_shmem *hw, struct sk_buff *skb)
+ 	struct esp_payload_header *header;
+ 	u16 len = 0;
+ 	u16 offset = 0;
++	u32 total;
+ 
+ 	if (!skb)
+ 		return -EINVAL;
+@@ -143,15 +144,19 @@ static int process_rx_buf(struct esp_wifi_shmem *hw, struct sk_buff *skb)
+ 		return -EINVAL;
+ 	}
+ 
+-	len += sizeof(struct esp_payload_header);
++	/* In u32: len is u16 and adding the header to it wrapped, so a length
++	 * near 65535 passed the test below and left an 11 byte packet of
++	 * whatever happened to be in the buffer.
++	 */
++	total = (u32)len + sizeof(struct esp_payload_header);
+ 
+-	if (len > SHMEM_BUF_SIZE) {
+-		pr_err("%s: bad len %d\n", __func__, len);
++	if (total > SHMEM_BUF_SIZE) {
++		pr_err("%s: bad len %u\n", __func__, total);
+ 		return -EINVAL;
+ 	}
+ 
+ 	/* Trim SKB to actual size */
+-	skb_trim(skb, len);
++	skb_trim(skb, total);
+ 
+ 	/* enqueue skb for read_packet to pick it */
+ 	if (header->if_type == ESP_INTERNAL_IF)
+@@ -166,15 +171,30 @@ static int process_rx_buf(struct esp_wifi_shmem *hw, struct sk_buff *skb)
+ 
+ static bool esp_wifi_shmem_handle_rx(struct esp_wifi_shmem *hw, void *p)
+ {
+-	struct sk_buff *rx_skb = esp_alloc_skb(SHMEM_BUF_SIZE);
++	const struct esp_payload_header *src = p;
++	struct sk_buff *rx_skb;
++	u32 total;
+ 	u8 *rx_buf;
+ 	int ret;
+ 
++	/* Read the header first and copy only what the packet says it is. The
++	 * firmware allocates exactly payload plus header -- as little as 12
++	 * bytes for a short command response -- so copying a fixed
++	 * SHMEM_BUF_SIZE read past the end of core 0's allocation, and paid
++	 * for 1600 bytes on every packet besides.
++	 */
++	total = (u32)le16_to_cpu(src->len) + le16_to_cpu(src->offset);
++	if (total < sizeof(*src) || total > SHMEM_BUF_SIZE) {
++		pr_err("%s: bad length %u\n", __func__, total);
++		return false;
++	}
++
++	rx_skb = esp_alloc_skb(total);
+ 	if (!rx_skb)
+ 		return false;
+ 
+-	rx_buf = skb_put(rx_skb, SHMEM_BUF_SIZE);
+-	memcpy(rx_buf, p, SHMEM_BUF_SIZE);
++	rx_buf = skb_put(rx_skb, total);
++	memcpy(rx_buf, p, total);
+ 
+ 	ret = process_rx_buf(hw, rx_skb);
+ 	if (ret)
+@@ -213,6 +233,10 @@ static void esp_wifi_shmem_rx_batch(void *dev, u32 tag)
+ 	struct esp_wifi_shmem *hw = dev;
+ 
+ 	esp_process_new_packet_intr(&hw->adapter);
++	/* Transmit completion must not depend on a receive having succeeded:
++	 * this is the only caller of handle_tx, which is the only place skbs
++	 * leave tx_q and the only place esp_tx_resume() wakes the queue.
++	 */
+ 	esp_wifi_shmem_handle_tx(hw, tag);
+ }
+ 
+@@ -235,15 +259,22 @@ static int esp_wifi_shmem_probe(struct platform_device *pdev)
+ 	if (ret < 0)
+ 		return ret;
+ 
+-	ret = esp32_ipc_register_rx(hw->ipc, hw->ipc_addr, hw,
+-				  esp_wifi_shmem_rx_handler,
+-				  esp_wifi_shmem_rx_batch);
++	/* Bring the adapter up before core 0 can deliver anything to it:
++	 * there is no way to unregister an IPC receiver, so registering first
++	 * and then failing esp_wifi_init() left core 0 a callback into a
++	 * half-initialised, devm-freed object.
++	 */
++	ret = esp_wifi_init(&hw->adapter, &if_ops);
+ 	if (ret < 0)
+ 		return ret;
+ 
+-	ret = esp_wifi_init(&hw->adapter, &if_ops);
+-	if (ret < 0)
++	ret = esp32_ipc_register_rx(hw->ipc, hw->ipc_addr, hw,
++				  esp_wifi_shmem_rx_handler,
++				  esp_wifi_shmem_rx_batch);
++	if (ret < 0) {
++		esp_wifi_deinit(&hw->adapter);
+ 		return ret;
++	}
+ 
+ 	esp32_ipc_tx(hw->ipc, hw->ipc_addr, NULL, NULL);
+ 
+diff --git a/drivers/net/wireless/espressif/esp32-ng/main.c b/drivers/net/wireless/espressif/esp32-ng/main.c
+index 56355d9533be1..87f483412ee92 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/main.c
++++ b/drivers/net/wireless/espressif/esp32-ng/main.c
+@@ -55,10 +55,8 @@ static int process_tx_packet(struct sk_buff *skb)
+ 	u8 pad_len = 0, realloc_skb = 0;
+ 	u16 len = 0;
+ 	u16 total_len = 0;
+-	static u8 c;
+ 	u8 *pos = NULL;
+ 
+-	c++;
+ 	/* Get the priv */
+ 	cb = (struct esp_skb_cb *) skb->cb;
+ 	priv = cb->priv;
+@@ -279,8 +277,20 @@ int process_event_esp_bootup(struct esp_adapter *adapter, u8 *evt_buf, u8 len)
+ 	pos = evt_buf;
+ 
+ 	while (len_left > 0) {
++		if (len_left < 2)
++			break;
+ 		tag_len = *(pos + 1);
+ 
++		/* tag_len arrives from the firmware and was used both to
++		 * advance pos and to size process_fw_data()'s read, with
++		 * nothing checking it against what is left of the event.
++		 */
++		if (tag_len + 2 > len_left) {
++			esp_err("bootup event tag %x claims %d bytes, %d left\n",
++				*pos, tag_len, len_left);
++			break;
++		}
++
+ 		esp_info("Bootup Event tag: %d\n", *pos);
+ 
+ 		switch (*pos) {
+@@ -678,10 +688,6 @@ static void process_rx_packet(struct esp_adapter *adapter, struct sk_buff *skb)
+ 	len = le16_to_cpu(payload_header->len);
+ 	offset = le16_to_cpu(payload_header->offset);
+ 
+-	if (payload_header->reserved2 == 0xFF) {
+-		print_hex_dump(KERN_INFO, "Wake up packet: ", DUMP_PREFIX_ADDRESS, 16, 1, skb->data, len+offset, 1);
+-	}
+-
+ 	if (adapter->capabilities & ESP_CHECKSUM_ENABLED) {
+ 		rx_checksum = le16_to_cpu(payload_header->checksum);
+ 		payload_header->checksum = 0;
+@@ -850,8 +856,12 @@ struct sk_buff *esp_alloc_skb(u32 len)
+ 		/* Align SKB data pointer */
+ 		offset = ((unsigned long)skb->data) & (SKB_DATA_ADDR_ALIGNMENT - 1);
+ 
+-		if (offset)
+-			skb_reserve(skb, INTERFACE_HEADER_PADDING - offset);
++		/* Unconditional: the term is zero when the pointer is already
++		 * aligned, which is the usual case, and skipping the reserve
++		 * there left no headroom at all -- forcing process_tx_packet()
++		 * to allocate a second skb and copy every outgoing frame.
++		 */
++		skb_reserve(skb, INTERFACE_HEADER_PADDING - offset);
+ 	}
+ 
+ 	return skb;
+@@ -910,6 +920,10 @@ static int init_adapter(struct esp_adapter *adapter, const struct esp_if_ops *if
+ 	memset(adapter, 0, sizeof(*adapter));
+ 
+ 	adapter->if_ops = if_ops;
++	/* deinit_adapter() purges this queue on every error path below, so
++	 * it has to exist before the first allocation that can fail.
++	 */
++	skb_queue_head_init(&adapter->events_skb_q);
+ 
+ 	/* Prepare interface RX work */
+ 	adapter->if_rx_workqueue = alloc_workqueue("ESP_IF_RX_WORK_QUEUE", 0, 0);
+@@ -921,8 +935,6 @@ static int init_adapter(struct esp_adapter *adapter, const struct esp_if_ops *if
+ 
+ 	INIT_WORK(&adapter->if_rx_work, esp_if_rx_work);
+ 
+-	skb_queue_head_init(&adapter->events_skb_q);
+-
+ 	adapter->events_wq = alloc_workqueue("ESP_EVENTS_WORKQUEUE", WQ_HIGHPRI, 0);
+ 
+ 	if (!adapter->events_wq) {

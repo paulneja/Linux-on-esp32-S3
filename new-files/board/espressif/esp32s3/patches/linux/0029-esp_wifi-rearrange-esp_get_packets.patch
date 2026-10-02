@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Sun, 9 Jul 2023 13:13:09 -0700
+Subject: [PATCH 29/59] esp_wifi: rearrange esp_get_packets
+
+esp_get_packets is called from a workqueue function that is queued on
+every received packet. Queuing may fail when multiple packets are
+received before the workqueue had a chance to process the work, so
+instead of handling single packet handle all packets received up to this
+point.
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit 9a8ce440381e25f9cb026ca257a9746181a0ae9c)
+---
+ drivers/net/wireless/espressif/esp32-ng/main.c | 16 +++++-----------
+ 1 file changed, 5 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/net/wireless/espressif/esp32-ng/main.c b/drivers/net/wireless/espressif/esp32-ng/main.c
+index d74a23b302c40..a89e5a138519d 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/main.c
++++ b/drivers/net/wireless/espressif/esp32-ng/main.c
+@@ -845,21 +845,15 @@ struct sk_buff *esp_alloc_skb(u32 len)
+ }
+ 
+ 
+-static int esp_get_packets(struct esp_adapter *adapter)
++static void esp_get_packets(struct esp_adapter *adapter)
+ {
+-	struct sk_buff *skb = NULL;
++	struct sk_buff *skb;
+ 
+ 	if (!adapter || !adapter->if_ops || !adapter->if_ops->read)
+-		return -EINVAL;
+-
+-	skb = adapter->if_ops->read(adapter);
+-
+-	if (!skb)
+-		return -EFAULT;
+-
+-	process_rx_packet(adapter, skb);
++		return;
+ 
+-	return 0;
++	while ((skb = adapter->if_ops->read(adapter)))
++	       process_rx_packet(adapter, skb);
+ }
+ 
+ int esp_send_packet(struct esp_adapter *adapter, struct sk_buff *skb)

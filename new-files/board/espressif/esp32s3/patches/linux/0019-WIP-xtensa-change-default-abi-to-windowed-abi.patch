@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Fri, 16 Jun 2023 16:33:24 -0700
+Subject: [PATCH 19/59] WIP: xtensa: change default abi to windowed abi
+
+Turns out with windowed core configured for call0 abi there's no way to
+build windowed kernel.
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit ae435cf52d07063eca3719f8eeaf839c3274b522)
+---
+ arch/xtensa/Makefile | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/arch/xtensa/Makefile b/arch/xtensa/Makefile
+index 4c14a02179eba..8c8fa2ec7e057 100644
+--- a/arch/xtensa/Makefile
++++ b/arch/xtensa/Makefile
+@@ -37,9 +37,15 @@ KBUILD_CFLAGS += $(call cc-option,-mforce-no-pic,)
+ KBUILD_CFLAGS += $(call cc-option,-mno-serialize-volatile,)
+ KBUILD_CFLAGS += $(call cc-option,-mno-fdpic,)
+ ifneq ($(CONFIG_KERNEL_ABI_CALL0),)
++KBUILD_CPPFLAGS += -mabi=call0
+ KBUILD_CFLAGS += -mabi=call0
+ KBUILD_AFLAGS += -mabi=call0
+ endif
++ifneq ($(CONFIG_KERNEL_ABI_DEFAULT),)
++KBUILD_CPPFLAGS += -mabi=windowed
++KBUILD_CFLAGS += -mabi=windowed
++KBUILD_AFLAGS += -mabi=windowed
++endif
+ 
+ KBUILD_AFLAGS += -mlongcalls -mtext-section-literals
+ KBUILD_AFLAGS += $(call cc-option,-mno-fdpic,)
