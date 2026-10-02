@@ -163,12 +163,29 @@ rootfs_base() {
             "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_LIBCURL_MBEDTLS
             ;;
         client)
-            echo "N8 userspace profile: client (curl + HTTPS/TLS)"
+            echo "N8 userspace profile: client (curl + HTTP/HTTPS only)"
             "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_DROPBEAR
             "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_MBEDTLS
             "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_LIBCURL
             "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_LIBCURL_CURL
             "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_LIBCURL_MBEDTLS
+            cat >> "$base/buildroot/package/libcurl/libcurl.mk" <<'EOF'
+
+# N8 client profile: keep libcurl focused on HTTP/HTTPS to reduce flash use.
+LIBCURL_CONF_OPTS += \
+	--disable-dict \
+	--disable-file \
+	--disable-ftp \
+	--disable-gopher \
+	--disable-imap \
+	--disable-mqtt \
+	--disable-pop3 \
+	--disable-rtsp \
+	--disable-smb \
+	--disable-smtp \
+	--disable-telnet \
+	--disable-tftp
+EOF
             ;;
     esac
     if [ -d /cache/ccache ]; then
