@@ -267,6 +267,7 @@ package_buildroot() {
             xipImage \
             rootfs.cramfs \
             etc.jffs2 \
+            home.jffs2 \
             linux-esp32s3-native-full.bin \
             > SHA256SUMS
     )
