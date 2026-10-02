@@ -42,6 +42,7 @@
 
 /* Hashes */
 #define MBEDTLS_MD_C
+#define MBEDTLS_MD5_C
 #define MBEDTLS_SHA256_C
 #define MBEDTLS_SHA512_C
 
