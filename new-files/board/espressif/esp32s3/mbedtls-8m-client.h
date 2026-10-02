@@ -57,6 +57,7 @@
 #define MBEDTLS_RSA_C
 #define MBEDTLS_PK_C
 #define MBEDTLS_PK_PARSE_C
+#define MBEDTLS_PK_WRITE_C
 #define MBEDTLS_PKCS1_V15
 #define MBEDTLS_PKCS1_V21
 
