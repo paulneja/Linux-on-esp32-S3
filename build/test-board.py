@@ -71,7 +71,7 @@ def verify_installed():
         device = re.search(r'(?m)^mtd([0-9]+):[^\n]*"' + label + r'"$', table)
         assert device, (label, table)
         size = (args.artifacts / filename).stat().st_size
-        output = command(f'head -c {size} /dev/mtdblock{device.group(1)} | sha256sum', 180)
+        output = command(f'head -c {size} /dev/mtd{device.group(1)} | sha256sum', 180)
         assert re.search(r'(?m)^' + manifest['sha256'][filename] + r'\s', output), filename
 
 def external(name):
