@@ -194,6 +194,8 @@ jobs:
 
       - name: Kept-configuration tests
         run: python3 build/test-keepconfig.py
+      - name: WiFi script tests
+        run: python3 build/test-wifi-script.py
 
   build:
     name: Full image ${{ matrix.run }}

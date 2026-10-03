@@ -37,11 +37,12 @@ def planned_counts(target):
     base = 36
     if target == 'esp32s3_16m':
         return base, 0, 5
-    # The 8 MB run keeps the same named checks in results.json, records the
-    # unsupported N16R8 checks as skipped, and adds target-specific storage,
-    # persistence and USB-console checks.
+
+    # 8 MB targets add persistence, USB-console and target-aware /home checks.
+    # One /home timing check is always skipped:
+    # SD timing when flash /home is active, or JFFS2 timing when SD is mounted.
     extra = 4
-    return base + extra, len(N16_ONLY_TESTS), 5
+    return base + extra, len(N16_ONLY_TESTS) + 1, 5
 
 if args.plan_target:
     total, skipped, minutes = planned_counts(args.plan_target)
@@ -239,15 +240,20 @@ def jffs2_write_timing():
     minutes when blocks had to be reclaimed. Nothing has watched the number
     since; this puts it in results.json every run.
     """
-    output = command('time_start=$(cut -d. -f1 /proc/uptime); '
-                     'dd if=/dev/zero of=/home/.write-probe bs=4096 count=64 2>/dev/null; '
-                     'sync; time_end=$(cut -d. -f1 /proc/uptime); '
-                     'rm -f /home/.write-probe; '
-                     'echo WRITE_SECONDS=$((time_end - time_start))', 300, 'WRITE_SECONDS=')
-    seconds = int(re.search(r'WRITE_SECONDS=(\d+)', output).group(1))
-    results['jffs2_write_256k_seconds'] = seconds
-    print('  256 KiB to /home took {} s'.format(seconds), flush=True)
+    count = 64 if target == 'esp32s3_16m' else 16
+    kib = count * 4
 
+    output = command(
+        'time_start=$(cut -d. -f1 /proc/uptime); '
+        'dd if=/dev/zero of=/home/.write-probe bs=4096 count={} 2>/dev/null; '
+        'sync; time_end=$(cut -d. -f1 /proc/uptime); '
+        'rm -f /home/.write-probe; '
+        'echo WRITE_SECONDS=$((time_end - time_start))'.format(count),
+        300, 'WRITE_SECONDS=')
+
+    seconds = int(re.search(r'WRITE_SECONDS=(\d+)', output).group(1))
+    results['jffs2_write_{}k_seconds'.format(kib)] = seconds
+    print('  {} KiB to /home took {} s'.format(kib, seconds), flush=True)
 
 def wait_for_login(seconds=240):
     data = b''
@@ -299,14 +305,38 @@ def sd_home():
     command('cat /home/.board-test-persist', 60, token)
     command('rm -f /home/.board-test-persist && sync')
 
+def home_filesystem():
+    output = command(
+        "awk '$2==\"/home\" {print $1, $3}' /proc/mounts",
+        60, '/home')
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) >= 2 and fields[0] == '/dev/mmcblk0p1' and fields[1] == 'ext2':
+            return 'sd'
+        if len(fields) >= 2 and fields[1] == 'jffs2':
+            return 'flash'
+    raise AssertionError('unexpected /home mount: {}'.format(output))
 
-def no_writable_home():
-    output = command("if touch /home/.board-test-write 2>/dev/null; then rm -f /home/.board-test-write; echo HOME_WRITABLE; else echo HOME_NOT_WRITABLE; fi", 60,
-                     'HOME_NOT_WRITABLE')
-    assert 'HOME_WRITABLE' not in output
-    command('test ! -e /home/README.txt && echo HOME_INIT_NOT_PRESENT', 60,
-            'HOME_INIT_NOT_PRESENT')
+def flash_home():
+    output = command(
+        "awk '$2==\"/home\" {print $1, $2, $3, $4}' /proc/mounts",
+        60, '/home jffs2')
+    line = next(line for line in output.splitlines() if '/home jffs2' in line)
+    fields = line.split()
+    assert 'rw' in fields[3].split(','), line
 
+    token = 'flash-home-persist-{}'.format(int(time.time()))
+    command(
+        f"printf '%s\\n' {token} > /home/.board-test-persist && "
+        "sync && cat /home/.board-test-persist",
+        60, token)
+
+    console.port.write(b'sync; reboot\n')
+    wait_for_login()
+    console.login()
+
+    command('cat /home/.board-test-persist', 60, token)
+    command('rm -f /home/.board-test-persist && sync')
 
 def home_write_timing():
     output = command('time_start=$(cut -d. -f1 /proc/uptime); '
@@ -388,20 +418,23 @@ try:
     else:
         skip('benchmarks-lightweight-launcher', 'dash/benchmark suite is not in the reduced 8MB image')
         skip('fork-exec-cycles', 'forkbank is not available on 8MB targets')
-        skip('jffs2-write-timing', '8MB targets have no JFFS2 /home partition')
-
     record('kernel-health', lambda: command('test "$(cat /proc/sys/kernel/tainted)" = 0 && ! dmesg | grep -E "Out of memory:|Kernel panic|BUG:|Oops:" && free'))
     record('memory-final', record_memory_after)
 
     if target in TARGETS_8M:
         record('etc-persistence-after-reboot', etc_persistence)
         record('usb-console-getty-state', usb_console_getty)
-        if target == SD_TARGET:
+
+        home_fs = home_filesystem()
+
+        if home_fs == 'sd':
+            skip('jffs2-write-timing', 'SD-backed /home is mounted over the flash JFFS2 /home')
             record('sd-home-ext2-rw-and-persistence', sd_home)
             record('sd-home-write-timing', home_write_timing)
         else:
-            record('home-not-writable', no_writable_home)
-            skip('sd-home-write-timing', 'no SD-backed /home on this target')
+            record('jffs2-write-timing', jffs2_write_timing)
+            record('flash-home-jffs2-rw-and-persistence', flash_home)
+            skip('sd-home-write-timing', 'SD is not mounted on /home')
 
     console.close()
     console = None
