@@ -10,6 +10,9 @@ applied() { patch -d "$kernel_dir" --force --dry-run -R -p1 < "$task_dir/$1" >/d
 # base patches' own checks below would fail on changed context before this
 # script ever reached the line that removes them. Strip them in reverse
 # order; the block near the end puts them back when FORK_SWAP_BANKS=1.
+if applied mmu-swap.patch; then
+    patch -d "$kernel_dir" --force --batch -R -p1 < "$task_dir/mmu-swap.patch"
+fi
 if applied switch-irqs-on.patch; then
     patch -d "$kernel_dir" --force --batch -R -p1 < "$task_dir/switch-irqs-on.patch"
 fi
@@ -41,6 +44,8 @@ if [ "${FORK_SWAP_BANKS:-1}" = 1 ]; then
     patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/switch-latency.patch"
     patch -d "$kernel_dir" --forward --batch --dry-run -p1 < "$task_dir/switch-irqs-on.patch"
     patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/switch-irqs-on.patch"
+    patch -d "$kernel_dir" --forward --batch --dry-run -p1 < "$task_dir/mmu-swap.patch"
+    patch -d "$kernel_dir" --forward --batch -p1 < "$task_dir/mmu-swap.patch"
 fi
 python3 "$task_dir/check-kernel-config.py" \
     "$repo_dir/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config" \
