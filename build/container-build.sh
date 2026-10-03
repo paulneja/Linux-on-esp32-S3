@@ -164,6 +164,8 @@ rootfs_base() {
             ;;
         client)
             echo "N8 userspace profile: client (curl + HTTP/HTTPS only)"
+            "$base/buildroot/utils/config" --file "$br/.config" \
+                --set-str PACKAGE_BUSYBOX_CONFIG "board/espressif/esp32s3/busybox-8m-client.config"
             "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_DROPBEAR
             "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_IW
             "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_MBEDTLS
