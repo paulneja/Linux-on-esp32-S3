@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Thu, 1 Feb 2024 04:32:55 -0800
-Subject: [PATCH 23/60] esp_wifi: disable TEST_RAW_TP
+Subject: [PATCH 23/61] esp_wifi: disable TEST_RAW_TP
 
 Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
 (cherry picked from commit 6e611c836117c1ffd537fb7f627ecb857a115407)

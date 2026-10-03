@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: paulneja <207793167+paulneja@users.noreply.github.com>
 Date: Wed, 30 Sep 2026 13:21:07 -0300
-Subject: [PATCH 59/60] esp32-ng: say WQ_PERCPU, 7.x warns w/o it
+Subject: [PATCH 59/61] esp32-ng: say WQ_PERCPU, 7.x warns w/o it
 
 ---
  drivers/net/wireless/espressif/esp32-ng/esp_cmd.c | 2 +-

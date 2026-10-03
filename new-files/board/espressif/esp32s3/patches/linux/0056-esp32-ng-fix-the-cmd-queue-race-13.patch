@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: paulneja <207793167+paulneja@users.noreply.github.com>
 Date: Tue, 22 Sep 2026 23:02:53 -0300
-Subject: [PATCH 56/60] esp32-ng: fix the cmd queue race, #13
+Subject: [PATCH 56/61] esp32-ng: fix the cmd queue race, #13
 
 ---
  drivers/net/wireless/espressif/esp32-ng/esp_cmd.c | 15 ++++++++++++++-

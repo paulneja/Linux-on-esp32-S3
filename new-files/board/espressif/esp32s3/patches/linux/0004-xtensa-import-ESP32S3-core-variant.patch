@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Sat, 6 May 2023 17:09:46 -0700
-Subject: [PATCH 04/60] xtensa: import ESP32S3 core variant
+Subject: [PATCH 04/61] xtensa: import ESP32S3 core variant
 
 Import processor configuration for the Xtensa core found in Espressif
 ESP32S3 SoC.

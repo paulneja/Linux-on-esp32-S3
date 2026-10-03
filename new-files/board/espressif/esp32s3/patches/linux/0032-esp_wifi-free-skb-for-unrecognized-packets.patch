@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Sun, 18 Feb 2024 17:25:21 -0800
-Subject: [PATCH 32/60] esp_wifi: free skb for unrecognized packets
+Subject: [PATCH 32/61] esp_wifi: free skb for unrecognized packets
 
 Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
 (cherry picked from commit 325543635c2eb63dacc2db549aa398e7bf8f71a2)

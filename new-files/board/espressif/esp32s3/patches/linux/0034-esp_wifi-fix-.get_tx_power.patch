@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Sat, 13 Sep 2025 01:45:43 -0700
-Subject: [PATCH 34/60] esp_wifi: fix .get_tx_power()
+Subject: [PATCH 34/61] esp_wifi: fix .get_tx_power()
 
 Fix get_tx_power prototype on rebase to v6.16
 

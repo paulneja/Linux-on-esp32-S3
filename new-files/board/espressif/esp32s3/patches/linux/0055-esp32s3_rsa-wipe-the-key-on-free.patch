@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: paulneja <207793167+paulneja@users.noreply.github.com>
 Date: Tue, 22 Sep 2026 21:27:29 -0300
-Subject: [PATCH 55/60] esp32s3_rsa: wipe the key on free
+Subject: [PATCH 55/61] esp32s3_rsa: wipe the key on free
 
 ---
  drivers/crypto/esp32s3_rsa.c | 5 +++++

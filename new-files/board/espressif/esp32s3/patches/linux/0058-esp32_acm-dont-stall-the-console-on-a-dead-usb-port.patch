@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: paulneja <207793167+paulneja@users.noreply.github.com>
 Date: Wed, 23 Sep 2026 11:11:30 -0300
-Subject: [PATCH 58/60] esp32_acm: dont stall the console on a dead usb port
+Subject: [PATCH 58/61] esp32_acm: dont stall the console on a dead usb port
 
 ---
  drivers/tty/serial/esp32_acm.c | 14 +++++++++++---

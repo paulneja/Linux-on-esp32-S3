@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Fri, 24 Nov 2023 23:22:31 -0800
-Subject: [PATCH 37/60] gpio: gpio-mmio: add support for esp,esp32-clk-gpio
+Subject: [PATCH 37/61] gpio: gpio-mmio: add support for esp,esp32-clk-gpio
 
 gpio-mmio can be used to drive gpio-style clock gates on esp32xx SoCs.
 Add esp32-clk-gpio OF id for that.

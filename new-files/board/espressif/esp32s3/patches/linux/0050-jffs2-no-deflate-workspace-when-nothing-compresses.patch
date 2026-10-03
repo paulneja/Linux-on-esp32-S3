@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: paulneja <207793167+paulneja@users.noreply.github.com>
 Date: Sat, 12 Sep 2026 00:53:51 -0300
-Subject: [PATCH 50/60] jffs2: no deflate workspace when nothing compresses
+Subject: [PATCH 50/61] jffs2: no deflate workspace when nothing compresses
 
 ---
  fs/jffs2/compr_zlib.c | 18 ++++++++++++++++++

@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Fri, 16 Jun 2023 16:33:24 -0700
-Subject: [PATCH 19/60] WIP: xtensa: change default abi to windowed abi
+Subject: [PATCH 19/61] WIP: xtensa: change default abi to windowed abi
 
 Turns out with windowed core configured for call0 abi there's no way to
 build windowed kernel.

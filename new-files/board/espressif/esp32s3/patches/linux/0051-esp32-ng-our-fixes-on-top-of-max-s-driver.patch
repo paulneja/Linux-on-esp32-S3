@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: paulneja <207793167+paulneja@users.noreply.github.com>
 Date: Sat, 12 Sep 2026 01:09:18 -0300
-Subject: [PATCH 51/60] esp32-ng: our fixes on top of max's driver
+Subject: [PATCH 51/61] esp32-ng: our fixes on top of max's driver
 
 ---
  .../net/wireless/espressif/esp32-ng/Kconfig   |  5 --

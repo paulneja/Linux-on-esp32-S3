@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Tue, 28 Nov 2023 03:06:16 -0800
-Subject: [PATCH 14/60] clk: add clock provider for the esp32s3 SoC
+Subject: [PATCH 14/61] clk: add clock provider for the esp32s3 SoC
 
 Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
 (cherry picked from commit cc830191925c4f4cdc323deaac9ccba5f3411fbd)

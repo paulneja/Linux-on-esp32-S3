@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Fri, 30 Jun 2023 11:33:32 -0700
-Subject: [PATCH 27/60] esp_wifi: drop esp_reset and related definitions
+Subject: [PATCH 27/61] esp_wifi: drop esp_reset and related definitions
 
 Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
 (cherry picked from commit dce45270a5a051914d5daee375b7af2e64d6a7c7)

@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Tue, 10 Oct 2023 17:02:39 -0700
-Subject: [PATCH 22/60] drivers/net/wireless/espressif/esp32-ng: update
+Subject: [PATCH 22/61] drivers/net/wireless/espressif/esp32-ng: update
 
 Update to upstream commit 6a25417fc880fd744b3b0d93c11659c3e7d86384
 

@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: paulneja <207793167+paulneja@users.noreply.github.com>
 Date: Fri, 2 Oct 2026 23:05:41 -0300
-Subject: [PATCH 60/60] esp32s3 dts: panic_console_replay, panic_print is
+Subject: [PATCH 60/61] esp32s3 dts: panic_console_replay, panic_print is
  deprecated in 7.x
 
 ---

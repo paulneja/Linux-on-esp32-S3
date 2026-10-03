@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Tue, 15 Aug 2023 11:24:43 -0700
-Subject: [PATCH 17/60] drivers/mtd: add esp32 MTD support
+Subject: [PATCH 17/61] drivers/mtd: add esp32 MTD support
 
 Add FLASH mapping driver that uses direct mapping and IPC interface to
 send erase/write commands to firmware.

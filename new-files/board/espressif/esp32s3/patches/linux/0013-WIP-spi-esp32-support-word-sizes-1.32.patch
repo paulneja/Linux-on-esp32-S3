@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Fri, 23 Aug 2024 22:11:10 -0700
-Subject: [PATCH 13/60] WIP: spi: esp32: support word sizes 1..32
+Subject: [PATCH 13/61] WIP: spi: esp32: support word sizes 1..32
 
 Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
 (cherry picked from commit 3e0186ad7829844dd203289ec33b141043e868be)

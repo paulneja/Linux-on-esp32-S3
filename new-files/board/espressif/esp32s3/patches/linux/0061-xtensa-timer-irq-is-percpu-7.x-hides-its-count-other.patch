@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: paulneja <207793167+paulneja@users.noreply.github.com>
+Date: Sat, 3 Oct 2026 15:54:26 -0300
+Subject: [PATCH 61/61] xtensa: timer irq is percpu, 7.x hides its count
+ otherwise
+
+---
+ arch/xtensa/kernel/time.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/xtensa/kernel/time.c b/arch/xtensa/kernel/time.c
+index 1c3dfea843ece..87fde33c948b0 100644
+--- a/arch/xtensa/kernel/time.c
++++ b/arch/xtensa/kernel/time.c
+@@ -193,7 +193,7 @@ void __init time_init(void)
+ 	clocksource_register_hz(&ccount_clocksource, ccount_freq);
+ 	local_timer_setup(0);
+ 	irq = this_cpu_ptr(&ccount_timer)->evt.irq;
+-	if (request_irq(irq, timer_interrupt, IRQF_TIMER, "timer", NULL))
++	if (request_irq(irq, timer_interrupt, IRQF_TIMER | IRQF_PERCPU, "timer", NULL))
+ 		pr_err("Failed to request irq %d (timer)\n", irq);
+ 	sched_clock_register(ccount_sched_clock_read, 32, ccount_freq);
+ 	timer_probe();
+-- 
+2.55.0
+

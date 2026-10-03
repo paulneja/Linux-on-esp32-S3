@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Mon, 7 Aug 2023 08:03:28 -0700
-Subject: [PATCH 41/60] WIP: mm/nommu: do_mmap: translate executable mappings
+Subject: [PATCH 41/61] WIP: mm/nommu: do_mmap: translate executable mappings
 
 When executable mapping is backed by regular RAM translate the address
 from the DRAM region to IRAM region. This is totally experimental, hacky

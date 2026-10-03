@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Wed, 20 Dec 2023 03:12:08 -0800
-Subject: [PATCH 11/60] gpio: esp32: add support for esp32
+Subject: [PATCH 11/61] gpio: esp32: add support for esp32
 
 Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
 (cherry picked from commit 42476b281d8bf0662d5a21f9ad7fcdcb24fa1ace)

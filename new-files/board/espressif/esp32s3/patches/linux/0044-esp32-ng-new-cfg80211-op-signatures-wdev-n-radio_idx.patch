@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: paulneja <207793167+paulneja@users.noreply.github.com>
 Date: Wed, 23 Sep 2026 14:41:52 -0300
-Subject: [PATCH 44/60] esp32-ng: new cfg80211 op signatures, wdev n radio_idx
+Subject: [PATCH 44/61] esp32-ng: new cfg80211 op signatures, wdev n radio_idx
 
 ---
  .../wireless/espressif/esp32-ng/esp_cfg80211.c  | 17 ++++++++++-------

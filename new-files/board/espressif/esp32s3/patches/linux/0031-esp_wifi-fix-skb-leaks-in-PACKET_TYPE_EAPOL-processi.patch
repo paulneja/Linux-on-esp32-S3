@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Sun, 18 Feb 2024 17:23:39 -0800
-Subject: [PATCH 31/60] esp_wifi: fix skb leaks in PACKET_TYPE_EAPOL processing
+Subject: [PATCH 31/61] esp_wifi: fix skb leaks in PACKET_TYPE_EAPOL processing
 
 Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
 (cherry picked from commit e21c33aa85cdee597b0a8ada17dba7fd9d4e6e5f)

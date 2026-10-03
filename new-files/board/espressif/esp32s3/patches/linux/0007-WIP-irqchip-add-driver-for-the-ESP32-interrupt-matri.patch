@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Sun, 23 Oct 2022 06:11:31 -0700
-Subject: [PATCH 07/60] WIP: irqchip: add driver for the ESP32 interrupt matrix
+Subject: [PATCH 07/61] WIP: irqchip: add driver for the ESP32 interrupt matrix
 
 TODO:
 - implement domain freeing

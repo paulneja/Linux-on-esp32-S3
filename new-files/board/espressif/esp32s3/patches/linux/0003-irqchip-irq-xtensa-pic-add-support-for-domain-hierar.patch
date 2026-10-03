@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Sun, 23 Oct 2022 06:06:32 -0700
-Subject: [PATCH 03/60] irqchip/irq-xtensa-pic: add support for domain
+Subject: [PATCH 03/61] irqchip/irq-xtensa-pic: add support for domain
  hierarchy
 
 Interrupt controllers on xtensa-powered chips are usually cascaded with
