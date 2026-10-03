@@ -150,21 +150,21 @@ def banner(c):
     for i, col in enumerate(('#ff5f57', '#febc2e', '#28c840')):
         out.append(f'<circle cx="{tx + 22 + i * 18}" cy="{ty - 16}" r="5.5" fill="{col}"/>')
     lines = [
-        ('#7ee787', 'root@esp32s3:~# ', '#e6edf3', 'uname -sr'),
-        (None, '', '#c9d1d9', 'Linux 7.2.4-forkbank'),
-        ('#7ee787', 'root@esp32s3:~# ', '#e6edf3', 'grep -E "MemTotal|MemAvailable" /proc/meminfo'),
-        (None, '', '#c9d1d9', 'MemTotal:           7852 kB'),
-        (None, '', '#c9d1d9', 'MemAvailable:       4204 kB'),
-        ('#7ee787', 'root@esp32s3:~# ', '#e6edf3', 'echo $(( $(bash -c "echo \\$BASHPID") != $$ ))'),
-        (None, '', '#c9d1d9', '1'),
+        ('# ', 'uname -a'),
+        ('', 'Linux buildroot 7.2.4-forkbank #1 Sat Sep 5 00:00:00 UTC 2026 xtensa GNU/Linux'),
+        ('# ', 'free'),
+        ('', '              total        used        free      shared  buff/cache   available'),
+        ('', 'Mem:           7852        2924        4500           0         428        4040'),
+        ('# ', "bash -c 'for i in 1 2 3; do (echo \"child $i is pid $BASHPID\") &amp; done; wait'"),
+        ('', 'child 1 is pid 162'),
+        ('', 'child 2 is pid 163'),
+        ('', 'child 3 is pid 164'),
     ]
-    for i, (pc, prompt, tc, body) in enumerate(lines):
-        y = ty + 18 + i * 25
-        if prompt:
-            out.append(f'<text x="{tx + 22}" y="{y}" font-family="{MONO}" font-size="15" xml:space="preserve">'
-                       f'<tspan fill="{pc}">{prompt}</tspan><tspan fill="{tc}">{body}</tspan></text>')
-        else:
-            out.append(text(tx + 22, y, body, 15, tc, mono=True))
+    for i, (prompt, body) in enumerate(lines):
+        y = ty + 12 + i * 21
+        color = '#e6edf3' if prompt else '#9da7b3'
+        out.append(f'<text x="{tx + 20}" y="{y}" font-family="{MONO}" font-size="12.5" xml:space="preserve">'
+                   f'<tspan fill="#7ee787">{prompt}</tspan><tspan fill="{color}">{body}</tspan></text>')
     out.append('</svg>')
     return '\n'.join(out)
 

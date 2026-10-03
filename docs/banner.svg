@@ -71,11 +71,13 @@
 <circle cx="542" cy="76" r="5.5" fill="#ff5f57"/>
 <circle cx="560" cy="76" r="5.5" fill="#febc2e"/>
 <circle cx="578" cy="76" r="5.5" fill="#28c840"/>
-<text x="542" y="110" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#7ee787">root@esp32s3:~# </tspan><tspan fill="#e6edf3">uname -sr</tspan></text>
-<text x="542" y="135" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#c9d1d9" text-anchor="start">Linux 7.2.4-forkbank</text>
-<text x="542" y="160" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#7ee787">root@esp32s3:~# </tspan><tspan fill="#e6edf3">grep -E "MemTotal|MemAvailable" /proc/meminfo</tspan></text>
-<text x="542" y="185" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#c9d1d9" text-anchor="start">MemTotal:           7852 kB</text>
-<text x="542" y="210" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#c9d1d9" text-anchor="start">MemAvailable:       4204 kB</text>
-<text x="542" y="235" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#7ee787">root@esp32s3:~# </tspan><tspan fill="#e6edf3">echo $(( $(bash -c "echo \$BASHPID") != $$ ))</tspan></text>
-<text x="542" y="260" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#c9d1d9" text-anchor="start">1</text>
+<text x="540" y="104" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" xml:space="preserve"><tspan fill="#7ee787"># </tspan><tspan fill="#e6edf3">uname -a</tspan></text>
+<text x="540" y="125" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" xml:space="preserve"><tspan fill="#7ee787"></tspan><tspan fill="#9da7b3">Linux buildroot 7.2.4-forkbank #1 Sat Sep 5 00:00:00 UTC 2026 xtensa GNU/Linux</tspan></text>
+<text x="540" y="146" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" xml:space="preserve"><tspan fill="#7ee787"># </tspan><tspan fill="#e6edf3">free</tspan></text>
+<text x="540" y="167" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" xml:space="preserve"><tspan fill="#7ee787"></tspan><tspan fill="#9da7b3">              total        used        free      shared  buff/cache   available</tspan></text>
+<text x="540" y="188" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" xml:space="preserve"><tspan fill="#7ee787"></tspan><tspan fill="#9da7b3">Mem:           7852        2924        4500           0         428        4040</tspan></text>
+<text x="540" y="209" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" xml:space="preserve"><tspan fill="#7ee787"># </tspan><tspan fill="#e6edf3">bash -c 'for i in 1 2 3; do (echo "child $i is pid $BASHPID") &amp; done; wait'</tspan></text>
+<text x="540" y="230" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" xml:space="preserve"><tspan fill="#7ee787"></tspan><tspan fill="#9da7b3">child 1 is pid 162</tspan></text>
+<text x="540" y="251" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" xml:space="preserve"><tspan fill="#7ee787"></tspan><tspan fill="#9da7b3">child 2 is pid 163</tspan></text>
+<text x="540" y="272" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" xml:space="preserve"><tspan fill="#7ee787"></tspan><tspan fill="#9da7b3">child 3 is pid 164</tspan></text>
 </svg>
