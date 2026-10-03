@@ -22,4 +22,13 @@ for key, value in values.items():
     text, count = re.subn(r'^' + key + r'=.*$', key + '=' + value, text, flags=re.M)
     if count != 1:
         raise SystemExit('Expected one toolchain setting: ' + key)
+patches = Path(__file__).resolve().parent.parent / 'new-files/toolchain-patches'
+for pattern, line in (
+        (r'^CT_UCLIBC_NG_PATCH_GLOBAL=y$', '# CT_UCLIBC_NG_PATCH_GLOBAL is not set'),
+        (r'^# CT_UCLIBC_NG_PATCH_BUNDLED_LOCAL is not set$', 'CT_UCLIBC_NG_PATCH_BUNDLED_LOCAL=y'),
+        (r'^CT_UCLIBC_NG_PATCH_ORDER=.*$', 'CT_UCLIBC_NG_PATCH_ORDER="bundled,local"')):
+    text, count = re.subn(pattern, line, text, flags=re.M)
+    if count != 1:
+        raise SystemExit('Expected one toolchain setting: ' + line)
+text += f'CT_PATCH_USE_LOCAL=y\nCT_LOCAL_PATCH_DIR="{patches}"\n'
 path.write_text(text)
