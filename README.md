@@ -5,7 +5,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.svg">
-  <img alt="An ESP32-S3 drawn as a chip with core 0 running ESP-IDF and core 1 running Linux, next to a terminal on the board showing uname, the free memory and a fork from Bash" src="docs/banner.svg">
+  <img alt="ESP32-S3 with core 0 on ESP-IDF and core 1 on Linux, next to uname, free and a fork from Bash on the board" src="docs/banner.svg">
 </picture>
 
 Linux 7.2.4 running **natively on the ESP32-S3's Xtensa cores**, with WiFi,
@@ -22,7 +22,7 @@ computer attached to keep it running.
 <p align="center">
   <img alt="A boot of Linux 7.2.4 on an ESP32-S3 N16R8, recorded from the serial console: the boot log, the login, then uname, free, a fork from Bash, MicroPython and a ping" src="docs/demo.svg" width="860">
 </p>
-<p align="center"><sub>Running on the board: a real boot and session, recorded from the serial console. Pauses longer than 1.6 s are cut short.</sub></p>
+<p align="center"><sub>Recorded from the board's serial console, boot to ping. Long pauses are cut to 1.6 s.</sub></p>
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
@@ -48,23 +48,24 @@ computer attached to keep it running.
 
 ## What's new in 0.9
 
-The kernel moved from 6.11, which stopped getting fixes in 2024, to 7.2.4,
-and it is now this project's own tree:
-[linux-esp32s3](https://github.com/paulneja/linux-esp32s3), the kernel.org
-release plus a series of 61 patches. The ESP32-S3 cache MMU now does most of
-the work in fork(), so in the same test the slowest switch between forked
-processes went from 22 ms with interrupts off to 5.6 ms with them on. A
-freshly flashed board listens on nothing until someone logs in on the console, sets a password and
-picks SSH or Telnet. A wrong WiFi password is reported as one instead of
-breaking the next scan (#20). The kernel is 563 KB smaller and about 500 kB
-more RAM is free than in 0.8.1.
+The kernel is now 7.2.4 (6.11 stopped getting fixes in 2024) and lives in
+its own repo, [linux-esp32s3](https://github.com/paulneja/linux-esp32s3):
+the kernel.org release plus 61 patches.
+
+fork() got a lot cheaper. Most of the work now goes through the chip's cache
+MMU, and the slowest switch in the same test dropped from 22 ms, with
+interrupts off, to 5.6 ms.
+
+A freshly flashed board doesn't listen on the network anymore until you log
+in on the console, change the password and pick SSH or Telnet. Also fixed #20,
+where a wrong WiFi password broke the next scan. The kernel is 563 KB smaller
+and there's about 500 kB more free RAM than in 0.8.1.
 
 ## Hardware
 
 You need an ESP32-S3 with 16 MB of flash and 8 MB of octal PSRAM, sold as
 N16R8, for example on an ESP32-S3-DevKitC-1, and a USB cable. Flashing and
 the console work through the board's UART adapter or the chip's own USB port.
-Nothing else is attached.
 
 ## Quick start
 
@@ -157,72 +158,6 @@ the time.
 
 </details>
 
-## How it works
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.svg">
-  <img alt="The ESP32-S3 split in two. Core 0 runs ESP-IDF and FreeRTOS, owns the WiFi radio and the NimBLE peripheral, writes the flash for Linux and starts it. Core 1 runs Linux 7.2.4 with the esp32-ng driver, fork by memory banks and the userland. The two talk over shared-memory IPC. Below, the 8 MB of PSRAM as 128 pages of 64 KiB behind the cache MMU, and the 16 MB flash: firmware 768 KB, etc 448 KB, linux 4 MB, rootfs 7.5 MB, home 3.25 MB" src="docs/architecture.svg">
-</picture>
-
-The ESP32-S3 has two cores and one WiFi radio, and Espressif only supports
-that radio through its own firmware. So the chip is shared: core 0 boots
-ESP-IDF, which drives WiFi and Bluetooth and then starts Linux on core 1. The
-two exchange network frames, Bluetooth bytes and flash commands over shared
-memory. The split comes from [Max Filippov](https://github.com/jcmvbkbc)'s
-port of Linux and esp-hosted to the ESP32-S3, which this project builds on.
-
-Linux runs without an MMU, so there are no per-process address spaces.
-Programs are FDPIC binaries that run from wherever they are loaded, and the
-kernel and the read-only root filesystem execute straight from flash, which
-leaves the 8 MB of PSRAM almost entirely for programs.
-
-fork() needs the child to see the parent's memory at the same addresses.
-Here parent and child share them, and the kernel swaps their private memory
-in and out on every context switch between them. The PSRAM sits behind the
-chip's cache MMU in 64 KiB pages, so for aligned 64 KiB chunks the kernel
-rewrites two MMU entries instead of copying 128 KiB, about 47 times faster.
-Small mappings are still copied. [ARCHITECTURE.md](ARCHITECTURE.md) and the
-[fork notes](experiments/mmu-poc/programs/USERSPACE-UPGRADE.md) go deeper.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/fork-remap-dark.svg">
-  <img alt="Animation of one switch between forked processes A and B, done two ways. Copying every page: each block of A's memory moves down to the saved copy while B's moves up, one after another. Through the cache MMU: the four 64 KiB pages stay in place and only their mapping lines change from A's PSRAM pages to B's, while the three small pages are still copied, so this side finishes first. Slowest switch measured with three busy Bash children on the 0.9 image: 29.1 ms copying, 5.7 ms through the MMU" src="docs/fork-remap.svg">
-</picture>
-
-## Results
-
-Free RAM, kernel size and the slowest switch between forked processes, measured
-on the board for each release:
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/releases-dark.svg">
-  <img alt="Three charts by release. Free RAM when the suite starts: 1340 kB on 0.7, 3744 on 0.8, 3708 on 0.8.1, 4204 on 0.9. Kernel image: 3.43 MB, 2.98, 2.98, 2.42. Slowest switch between forked processes: 21.9 ms on 0.8 and 21.8 ms on 0.8.1 with interrupts off, 5.6 ms on 0.9" src="docs/releases.svg">
-</picture>
-
-Every number here was read off the board; the records are in
-[`build/verification/`](build/verification/) and
-[`build/plot-releases.py`](build/plot-releases.py) draws the charts from them.
-The [changelog](CHANGELOG.md) has the details.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/fork-switch-dark.svg">
-  <img alt="Slowest context switch on the 0.9 image while each load runs. Three busy Bash children: 29.1 ms copying every page, 5.7 ms through the MMU. Four MicroPython processes with 192 KiB each: 33.6 ms copying, 9.4 ms through the MMU" src="docs/fork-switch.svg">
-</picture>
-
-### Tested on the board
-
-A build that succeeds proves nothing about the board, so every release is
-flashed and run, and every result names the image hash it ran on.
-
-| Release | Board suite | Extra checks | Cold boots | Also checked | Record |
-|---|---|---|---|---|---|
-| 0.9 | 35 of 35 | 10 of 10 | 20 of 20 | WiFi stress, SSH with a pty, BLE from a phone, update from 0.8.1, fork with the MMU on and off | [results](build/verification/2026-10-03-results.json), [soak](build/verification/2026-10-03-soak.json) |
-| 0.8.1 | 36 of 36 | 10 of 10 | 20 of 20 | the WiFi stress that used to panic the kernel, SSH with a pty | [release](build/verification/2026-09-23-release.md) |
-| 0.8 | 36 of 36 | 10 of 10 | 10 of 10 | 55 clean boots on the flash cache fix, against 10 faults in 17 before it | [release](build/verification/2026-09-14-release.md) |
-
-A boot only counts as clean when `dmesg` and the kernel taint flags read back
-clean, not when the console goes quiet.
-
 ## What runs on it
 
 | Feature | Status | Notes |
@@ -246,6 +181,71 @@ Things to try once logged in: `micropython /home/root/script.py`,
 `nohup command > /tmp/job.log 2>&1 &` for a job that outlives the console.
 The [userspace guide](experiments/mmu-poc/programs/USERSPACE-UPGRADE.md) has
 more programs, examples and measurements.
+
+## How it works
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.svg">
+  <img alt="Core 0 runs ESP-IDF (WiFi, BLE, flash writes), core 1 runs Linux, connected by shared-memory IPC. Below: 8 MB PSRAM as 128 pages of 64 KiB, and the 16 MB flash layout" src="docs/architecture.svg">
+</picture>
+
+The ESP32-S3 has two cores and one WiFi radio, and Espressif only supports
+that radio through its own firmware. So the chip is shared: core 0 boots
+ESP-IDF, which drives WiFi and Bluetooth and then starts Linux on core 1. The
+two exchange network frames, Bluetooth bytes and flash commands over shared
+memory. The split comes from [Max Filippov](https://github.com/jcmvbkbc)'s
+port of Linux and esp-hosted to the ESP32-S3, which this project builds on.
+
+Linux runs without an MMU, so there are no per-process address spaces.
+Programs are FDPIC binaries that run from wherever they are loaded, and the
+kernel and the read-only root filesystem execute straight from flash, which
+leaves the 8 MB of PSRAM almost entirely for programs.
+
+fork() needs the child to see the parent's memory at the same addresses, and
+without an MMU there is only one set of addresses. So parent and child take
+turns: on every switch between them the kernel swaps their private memory in
+and out. Since 0.9, aligned 64 KiB chunks are swapped by rewriting two cache
+MMU entries instead of copying 128 KiB, roughly 47x faster. Small mappings
+still get copied. [ARCHITECTURE.md](ARCHITECTURE.md) and the
+[fork notes](experiments/mmu-poc/programs/USERSPACE-UPGRADE.md) go deeper.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/fork-remap-dark.svg">
+  <img alt="Animation of a switch between two forked processes: copying every page, against remapping the 64 KiB pages through the cache MMU and copying only the small ones" src="docs/fork-remap.svg">
+</picture>
+
+## Results
+
+Free RAM, kernel size and the slowest switch between forked processes, measured
+on the board for each release:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/releases-dark.svg">
+  <img alt="Three charts by release. Free RAM when the suite starts: 1340 kB on 0.7, 3744 on 0.8, 3708 on 0.8.1, 4204 on 0.9. Kernel image: 3.43 MB, 2.98, 2.98, 2.42. Slowest switch between forked processes: 21.9 ms on 0.8 and 21.8 ms on 0.8.1 with interrupts off, 5.6 ms on 0.9" src="docs/releases.svg">
+</picture>
+
+All of it read off the board. The records are in
+[`build/verification/`](build/verification/), and
+[`build/plot-releases.py`](build/plot-releases.py) draws the charts from them.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/fork-switch-dark.svg">
+  <img alt="Slowest context switch on the 0.9 image while each load runs. Three busy Bash children: 29.1 ms copying every page, 5.7 ms through the MMU. Four MicroPython processes with 192 KiB each: 33.6 ms copying, 9.4 ms through the MMU" src="docs/fork-switch.svg">
+</picture>
+
+### Tested on the board
+
+Each release gets flashed and run on a real board before it's tagged. The
+records name the image hash they ran on.
+
+| Release | Board suite | Extra checks | Cold boots | Also checked | Record |
+|---|---|---|---|---|---|
+| 0.9 | 35 of 35 | 10 of 10 | 20 of 20 | WiFi stress, SSH with a pty, BLE from a phone, update from 0.8.1, fork with the MMU on and off | [results](build/verification/2026-10-03-results.json), [soak](build/verification/2026-10-03-soak.json) |
+| 0.8.1 | 36 of 36 | 10 of 10 | 20 of 20 | the WiFi stress that used to panic the kernel, SSH with a pty | [release](build/verification/2026-09-23-release.md) |
+| 0.8 | 36 of 36 | 10 of 10 | 10 of 10 | 55 clean boots on the flash cache fix, against 10 faults in 17 before it | [release](build/verification/2026-09-14-release.md) |
+
+A boot counts as clean only if `dmesg` and the taint flags are clean. 0.8
+found out the hard way that a quiet console isn't enough.
 
 ## Limits
 
