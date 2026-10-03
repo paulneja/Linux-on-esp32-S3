@@ -24,7 +24,7 @@ ESP32-S3 (single chip, two Xtensa LX7 cores)
 │   └── NimBLE peripheral — advertises as "Esp32-Linux" (Nordic UART
 │       Service). A byte pipe only: it never drives the WiFi radio itself.
 │
-└── Core 1 — Linux 6.11 (real, native Xtensa binary)
+└── Core 1 — Linux 7.2.4 (real, native Xtensa binary)
     ├── esp32-ng driver (drivers/net/wireless/espressif/esp32-ng/)
     │   ├── espsta0 — STA netdev, joins the home WiFi (wpa_supplicant).
     │   │             STA only: the AP side was removed (see below).
