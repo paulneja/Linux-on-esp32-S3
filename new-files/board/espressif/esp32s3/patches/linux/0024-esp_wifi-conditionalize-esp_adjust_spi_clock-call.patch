@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Thu, 1 Feb 2024 05:36:22 -0800
-Subject: [PATCH 24/59] esp_wifi: conditionalize esp_adjust_spi_clock call
+Subject: [PATCH 24/60] esp_wifi: conditionalize esp_adjust_spi_clock call
 
 Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
 (cherry picked from commit 06fb0e7cf7f6cabccdc1ae51e7e1b3a797c0a210)
@@ -23,3 +23,6 @@ index b30e81a3ec17f..99ea3f4d259e3 100644
  			break;
  		default:
  			esp_warn("Unsupported tag=%x in bootup event\n", *pos);
+-- 
+2.55.0
+

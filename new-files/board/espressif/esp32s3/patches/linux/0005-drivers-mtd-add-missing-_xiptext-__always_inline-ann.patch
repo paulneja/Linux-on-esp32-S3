@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Fri, 31 Jan 2020 16:38:02 -0800
-Subject: [PATCH 05/59] drivers/mtd: add missing _xiptext/__always_inline
+Subject: [PATCH 05/60] drivers/mtd: add missing _xiptext/__always_inline
  annotations
 
 Add _xiptext/__always_inline annotations to functions used in ??? to fix
@@ -87,3 +87,6 @@ index 75b0b2abc8806..d2e8edec4e7fe 100644
  {
  	map_word r;
  
+-- 
+2.55.0
+

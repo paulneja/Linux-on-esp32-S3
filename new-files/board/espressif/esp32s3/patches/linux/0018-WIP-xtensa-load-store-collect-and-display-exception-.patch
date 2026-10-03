@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Fri, 16 Jun 2023 16:31:55 -0700
-Subject: [PATCH 18/59] WIP: xtensa: load/store: collect and display exception
+Subject: [PATCH 18/60] WIP: xtensa: load/store: collect and display exception
  statistics
 
 Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
@@ -95,3 +95,6 @@ index f72e280363be1..421198c6e2528 100644
  
  	return 0;
  }
+-- 
+2.55.0
+

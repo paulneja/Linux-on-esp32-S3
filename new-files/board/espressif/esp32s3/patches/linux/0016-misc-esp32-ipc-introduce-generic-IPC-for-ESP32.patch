@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Fri, 11 Aug 2023 06:32:35 -0700
-Subject: [PATCH 16/59] misc/esp32-ipc: introduce generic IPC for ESP32
+Subject: [PATCH 16/60] misc/esp32-ipc: introduce generic IPC for ESP32
 
 Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
 (cherry picked from commit 033f057b3641228e9b342e736d4d9c99b36313fa)
@@ -335,3 +335,6 @@ index 0000000000000..469c8b66529bd
 +int esp32_ipc_tx(void *ipc, u32 addr, void *info, u32 *tag);
 +
 +#endif
+-- 
+2.55.0
+

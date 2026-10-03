@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: paulneja <207793167+paulneja@users.noreply.github.com>
 Date: Sun, 26 Jul 2026 15:06:04 -0300
-Subject: [PATCH 49/59] esp32s3 dts: quiet bootargs, cramfs root, panic=10
+Subject: [PATCH 49/60] esp32s3 dts: quiet bootargs, cramfs root, panic=10
 
 ---
  arch/xtensa/boot/dts/esp32s3.dtsi | 2 +-
@@ -20,3 +20,6 @@ index 4ba15e78d9427..e6452ca469b0c 100644
  	};
  
  	aliases {
+-- 
+2.55.0
+

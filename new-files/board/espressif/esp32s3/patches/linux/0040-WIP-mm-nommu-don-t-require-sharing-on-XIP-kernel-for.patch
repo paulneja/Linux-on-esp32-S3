@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Fri, 21 Jul 2023 09:26:04 -0700
-Subject: [PATCH 40/59] WIP: mm/nommu: don't require sharing on XIP kernel for
+Subject: [PATCH 40/60] WIP: mm/nommu: don't require sharing on XIP kernel for
  ptraced process
 
 This fixes an attempt to load executable code segment instead of
@@ -32,3 +32,6 @@ index ed3934bc2de48..7c4d1b7689e2a 100644
  			/*
  			 * R/O private file mapping which cannot be used to
  			 * modify memory, especially also not via active ptrace
+-- 
+2.55.0
+

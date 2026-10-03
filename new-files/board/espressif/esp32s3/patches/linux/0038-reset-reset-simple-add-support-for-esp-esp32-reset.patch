@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Mon, 23 Oct 2023 15:03:21 -0700
-Subject: [PATCH 38/59] reset: reset-simple: add support for esp,esp32-reset
+Subject: [PATCH 38/60] reset: reset-simple: add support for esp,esp32-reset
 
 Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
 (cherry picked from commit f43b05ad4ba0fa7c271bf714b082c3247aa269f5)
@@ -21,3 +21,6 @@ index 79e94ecfe4f55..27c30fbeeab72 100644
  	{ /* sentinel */ },
  };
  
+-- 
+2.55.0
+

@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: paulneja <207793167+paulneja@users.noreply.github.com>
 Date: Sun, 13 Sep 2026 12:35:34 -0300
-Subject: [PATCH 54/59] esp32-ipc: run tx completion whenever the queue moved
+Subject: [PATCH 54/60] esp32-ipc: run tx completion whenever the queue moved
 
 ---
  drivers/misc/esp32-ipc.c | 21 ++++++++++++++++++---
@@ -49,3 +49,6 @@ index 01bad9ed60e4a..4cffd40960a6f 100644
  
  	return IRQ_HANDLED;
  }
+-- 
+2.55.0
+

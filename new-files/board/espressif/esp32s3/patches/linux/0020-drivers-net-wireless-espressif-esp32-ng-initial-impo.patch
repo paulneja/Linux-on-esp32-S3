@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Tue, 27 Jun 2023 06:05:28 -0700
-Subject: [PATCH 20/59] drivers/net/wireless/espressif/esp32-ng: initial import
+Subject: [PATCH 20/60] drivers/net/wireless/espressif/esp32-ng: initial import
 
 Imported from esp-hosted version 5910e160d20e99d6ea9ab5a45c0bbdb6afa65629
 
@@ -6998,3 +6998,6 @@ index 0000000000000..b588ca673b914
 +#else
 +#define esp_dbg(...) do {} while(0)
 +#endif
+-- 
+2.55.0
+

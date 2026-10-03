@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Thu, 12 Oct 2023 10:33:20 -0700
-Subject: [PATCH 10/59] gpio: add esp32 GPIO driver
+Subject: [PATCH 10/60] gpio: add esp32 GPIO driver
 
 TODO:
 - interaction/fusion with pinctrl?
@@ -490,3 +490,6 @@ index 0000000000000..0c34342bac20e
 +MODULE_AUTHOR("Max Filippov <jcmvbkbc@gmail.com>");
 +MODULE_DESCRIPTION("ESP32 GPIO driver");
 +MODULE_LICENSE("GPL");
+-- 
+2.55.0
+

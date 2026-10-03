@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Mon, 20 Nov 2023 09:46:05 -0800
-Subject: [PATCH 12/59] spi: add esp32 host driver
+Subject: [PATCH 12/60] spi: add esp32 host driver
 
 Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
 (cherry picked from commit 5694270fd4c58cff7dcbb0c062523607b7cf4f79)
@@ -536,3 +536,6 @@ index 0000000000000..e94e1cedb8da4
 +MODULE_AUTHOR("Max Filippov <jcmvbkbc@gmail.com>");
 +MODULE_DESCRIPTION("ESP32 SPI driver");
 +MODULE_LICENSE("GPL");
+-- 
+2.55.0
+

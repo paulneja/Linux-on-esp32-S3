@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Tue, 17 Oct 2023 17:41:55 -0700
-Subject: [PATCH 06/59] fdpic: sysctl: make default stack size adjustable
+Subject: [PATCH 06/60] fdpic: sysctl: make default stack size adjustable
 
 Use
   echo new-default-stack-size > /proc/sys/kernel/default_stack_size
@@ -75,3 +75,6 @@ index 2c77e383e7375..24067fbd2fd08 100644
  
  /* Stack area protections */
  #define EXSTACK_DEFAULT   0	/* Whatever the arch defaults to */
+-- 
+2.55.0
+

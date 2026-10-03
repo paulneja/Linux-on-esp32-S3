@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Mon, 23 Oct 2023 15:02:03 -0700
-Subject: [PATCH 35/59] serial: esp32_uart: add reset deassertion
+Subject: [PATCH 35/60] serial: esp32_uart: add reset deassertion
 
 Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
 (cherry picked from commit 36a7c6252c92caf3a04ddfe87d71692cc3c0d20f)
@@ -40,3 +40,6 @@ index 667c2198a03a5..04be5363025e9 100644
  	port->uartclk = clk_get_rate(sport->clk);
  	port->dev = &pdev->dev;
  	port->type = PORT_GENERIC;
+-- 
+2.55.0
+

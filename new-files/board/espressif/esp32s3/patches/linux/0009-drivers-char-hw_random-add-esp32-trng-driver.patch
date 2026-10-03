@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Sat, 29 Jul 2023 18:13:53 -0700
-Subject: [PATCH 09/59] drivers/char/hw_random: add esp32-trng driver
+Subject: [PATCH 09/60] drivers/char/hw_random: add esp32-trng driver
 
 esp32-trng is the driver for the random number generator peripheral of
 the ESP32xx chips.
@@ -132,3 +132,6 @@ index 0000000000000..a02798fecd419
 +MODULE_LICENSE("GPL");
 +MODULE_AUTHOR("Max Filippov <jcmvbkbc@gmail.com>");
 +MODULE_DESCRIPTION("ESP32 true random number generator driver");
+-- 
+2.55.0
+

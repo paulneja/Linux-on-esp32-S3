@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Sun, 6 Jul 2025 04:46:01 -0700
-Subject: [PATCH 42/59] xtensa: enable support for dead code elimination
+Subject: [PATCH 42/60] xtensa: enable support for dead code elimination
 
 Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
 (cherry picked from commit c492d6909ab1d5d30a0d25bf49b19a4b0f5e0fc5)
@@ -51,3 +51,6 @@ index f47e9bbbd2911..85c08d16bdb86 100644
      __tagtable_end = .;
  
      . = ALIGN(16);
+-- 
+2.55.0
+

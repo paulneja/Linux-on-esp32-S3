@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: paulneja <207793167+paulneja@users.noreply.github.com>
 Date: Sat, 12 Sep 2026 16:11:57 -0300
-Subject: [PATCH 52/59] esp32s3_rsa: timeout instead of spinning forever
+Subject: [PATCH 52/60] esp32s3_rsa: timeout instead of spinning forever
 
 ---
  drivers/crypto/esp32s3_rsa.c | 42 ++++++++++++++++++++++++++++++------
@@ -86,3 +86,6 @@ index e96d0ac9fff69..388dabcd32014 100644
  
  	ret = crypto_register_akcipher(&esp_rsa_alg);
  	if (ret) {
+-- 
+2.55.0
+

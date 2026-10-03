@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: paulneja <207793167+paulneja@users.noreply.github.com>
 Date: Sat, 12 Sep 2026 01:09:18 -0300
-Subject: [PATCH 51/59] esp32-ng: our fixes on top of max's driver
+Subject: [PATCH 51/60] esp32-ng: our fixes on top of max's driver
 
 ---
  .../net/wireless/espressif/esp32-ng/Kconfig   |  5 --
@@ -562,3 +562,6 @@ index 56355d9533be1..87f483412ee92 100644
  	adapter->events_wq = alloc_workqueue("ESP_EVENTS_WORKQUEUE", WQ_HIGHPRI, 0);
  
  	if (!adapter->events_wq) {
+-- 
+2.55.0
+

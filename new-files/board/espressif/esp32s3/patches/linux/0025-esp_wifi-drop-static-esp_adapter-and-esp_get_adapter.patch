@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Thu, 29 Jun 2023 08:13:35 -0700
-Subject: [PATCH 25/59] esp_wifi: drop static esp_adapter and esp_get_adapter()
+Subject: [PATCH 25/60] esp_wifi: drop static esp_adapter and esp_get_adapter()
 
 Either pass the pointer to the adapter or extract it from the available
 data.
@@ -345,3 +345,6 @@ index 99ea3f4d259e3..e00123aae5de0 100644
  MODULE_VERSION(RELEASE_VERSION);
 -module_init(esp_init);
 -module_exit(esp_exit);
+-- 
+2.55.0
+

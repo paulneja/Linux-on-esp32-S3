@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Sun, 9 Jul 2023 13:13:09 -0700
-Subject: [PATCH 29/59] esp_wifi: rearrange esp_get_packets
+Subject: [PATCH 29/60] esp_wifi: rearrange esp_get_packets
 
 esp_get_packets is called from a workqueue function that is queued on
 every received packet. Queuing may fail when multiple packets are
@@ -46,3 +46,6 @@ index d74a23b302c40..a89e5a138519d 100644
  }
  
  int esp_send_packet(struct esp_adapter *adapter, struct sk_buff *skb)
+-- 
+2.55.0
+

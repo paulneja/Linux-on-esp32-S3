@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: paulneja <207793167+paulneja@users.noreply.github.com>
 Date: Sun, 26 Jul 2026 15:06:04 -0300
-Subject: [PATCH 48/59] esp32-ng: ble pipe for wifi setup, /dev/esp-ble
+Subject: [PATCH 48/60] esp32-ng: ble pipe for wifi setup, /dev/esp-ble
 
 ---
  .../net/wireless/espressif/esp32-ng/Makefile  |   2 +-
@@ -283,3 +283,6 @@ index f05a2b1483d15..56355d9533be1 100644
  	} else if (payload_header->if_type == ESP_TEST_IF) {
  #if TEST_RAW_TP
  		if (raw_tp_mode != 0) {
+-- 
+2.55.0
+

@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Sun, 15 Dec 2019 11:25:58 -0800
-Subject: [PATCH 39/59] xtensa: esp32: add platform
+Subject: [PATCH 39/60] xtensa: esp32: add platform
 
 Add platform directory, defconfig, device tree and entry in platforms
 selector in Kconfig.
@@ -1162,3 +1162,6 @@ index 0000000000000..92be65541a3f0
 +#define BASE_BAUD 115200
 +
 +#endif /* __ASM_XTENSA_ESP32_SERIAL_H */
+-- 
+2.55.0
+

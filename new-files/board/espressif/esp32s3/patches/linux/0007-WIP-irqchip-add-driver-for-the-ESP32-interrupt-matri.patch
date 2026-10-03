@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Sun, 23 Oct 2022 06:11:31 -0700
-Subject: [PATCH 07/59] WIP: irqchip: add driver for the ESP32 interrupt matrix
+Subject: [PATCH 07/60] WIP: irqchip: add driver for the ESP32 interrupt matrix
 
 TODO:
 - implement domain freeing
@@ -226,3 +226,6 @@ index 0000000000000..0cd87a4348771
 +IRQCHIP_PLATFORM_DRIVER_BEGIN(esp32_intc)
 +IRQCHIP_MATCH("esp,esp32-intc", esp32_intc_init)
 +IRQCHIP_PLATFORM_DRIVER_END(esp32_intc)
+-- 
+2.55.0
+

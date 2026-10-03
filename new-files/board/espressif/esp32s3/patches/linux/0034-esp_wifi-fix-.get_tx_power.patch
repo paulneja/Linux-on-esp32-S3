@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Sat, 13 Sep 2025 01:45:43 -0700
-Subject: [PATCH 34/59] esp_wifi: fix .get_tx_power()
+Subject: [PATCH 34/60] esp_wifi: fix .get_tx_power()
 
 Fix get_tx_power prototype on rebase to v6.16
 
@@ -23,3 +23,6 @@ index 4975c77123952..98ebc3d6e1ce7 100644
  				     int *dbm)
  {
  	struct esp_wifi_device *priv = NULL;
+-- 
+2.55.0
+

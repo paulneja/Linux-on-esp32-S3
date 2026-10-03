@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Sun, 31 Dec 2023 22:26:43 -0800
-Subject: [PATCH 15/59] clk: add clock provider for the esp32 SoC
+Subject: [PATCH 15/60] clk: add clock provider for the esp32 SoC
 
 Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
 (cherry picked from commit 4aee6cf966e685bcb6a7c47d03c8271023c0c4ef)
@@ -168,3 +168,6 @@ index 0000000000000..42046d6b8767d
 +	of_clk_add_hw_provider(node, of_clk_hw_onecell_get, esp32_clk_data);
 +}
 +CLK_OF_DECLARE_DRIVER(esp32_cc, "esp,esp32-core-clock", esp32_core_clk_init);
+-- 
+2.55.0
+

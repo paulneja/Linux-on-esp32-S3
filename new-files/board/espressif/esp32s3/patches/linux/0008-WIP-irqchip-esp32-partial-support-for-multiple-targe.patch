@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Sat, 17 Jun 2023 00:54:10 -0700
-Subject: [PATCH 08/59] WIP: irqchip/esp32: partial support for multiple target
+Subject: [PATCH 08/60] WIP: irqchip/esp32: partial support for multiple target
  CPUs
 
 There's only one parent domain for downstream controllers and there's no
@@ -129,3 +129,6 @@ index 0cd87a4348771..c1b18abcb0d41 100644
  
  	*hw = priv;
  
+-- 
+2.55.0
+

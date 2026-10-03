@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: paulneja <207793167+paulneja@users.noreply.github.com>
 Date: Sun, 13 Sep 2026 12:35:34 -0300
-Subject: [PATCH 53/59] map_esp32: lock the shared flash cmd
+Subject: [PATCH 53/60] map_esp32: lock the shared flash cmd
 
 ---
  drivers/mtd/chips/map_esp32.c | 35 ++++++++++++++++++++++++++++++++---
@@ -104,3 +104,6 @@ index fabf6e0f4a5e5..b1dc47c8bb812 100644
  
  	init_completion(&completion);
  	hw->completion = &completion;
+-- 
+2.55.0
+

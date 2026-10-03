@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: paulneja <207793167+paulneja@users.noreply.github.com>
 Date: Wed, 23 Sep 2026 15:27:18 -0300
-Subject: [PATCH 45/59] irq-esp32-intc: probe gets a platform_device since 6.18
+Subject: [PATCH 45/60] irq-esp32-intc: probe gets a platform_device since 6.18
 
 ---
  drivers/irqchip/irq-esp32-intc.c | 19 ++++++++-----------
@@ -62,3 +62,6 @@ index c1b18abcb0d41..fec33d98ed7b8 100644
 -IRQCHIP_MATCH("esp,esp32-intc", esp32_intc_init)
 +IRQCHIP_MATCH("esp,esp32-intc", esp32_intc_probe)
  IRQCHIP_PLATFORM_DRIVER_END(esp32_intc)
+-- 
+2.55.0
+

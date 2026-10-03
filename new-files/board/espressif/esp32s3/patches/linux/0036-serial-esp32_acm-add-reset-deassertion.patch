@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Max Filippov <jcmvbkbc@gmail.com>
 Date: Mon, 23 Oct 2023 15:02:03 -0700
-Subject: [PATCH 36/59] serial: esp32_acm: add reset deassertion
+Subject: [PATCH 36/60] serial: esp32_acm: add reset deassertion
 
 Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
 (cherry picked from commit d9e8973443df302056b467a357981d080d8cf266)
@@ -40,3 +40,6 @@ index bb7cc65427f0b..2903284071d29 100644
  	port->dev = &pdev->dev;
  	port->type = PORT_GENERIC;
  	port->iotype = UPIO_MEM;
+-- 
+2.55.0
+
