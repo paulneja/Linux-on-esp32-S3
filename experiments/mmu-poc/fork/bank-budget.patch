@@ -1,0 +1,79 @@
+nommu-bank: cap what a switch copies, not what the MMU swaps
+
+With the heap growing 64 KiB at a time, a long Bash session passed the
+512 KiB fork limit and could no longer run anything. The limit was there
+to bound how long a switch copies; aligned chunks the MMU exchanges cost
+about 80 us each. fork_bank_max_bytes now caps the copied part only, and
+fork_bank_max_total (2 MiB) caps the whole bank.
+
+diff --git a/mm/nommu-bank.inc b/mm/nommu-bank.inc
+index c4f308e667934079e5e252db2f5a7168d6043aba..41c615972964c998eab90abc9c551b3d574bae52 100644
+--- a/mm/nommu-bank.inc
++++ b/mm/nommu-bank.inc
+@@ -8,16 +8,21 @@ static bool nommu_bank_trace;
+ module_param_named(fork_bank_trace, nommu_bank_trace, bool, 0600);
+ MODULE_PARM_DESC(fork_bank_trace, "Log successful NOMMU bank forks (default off)");
+ /*
+- * Ceiling on the private memory one fork may bank. It also bounds the time
+- * nommu_bank_switch() takes, because a switch exchanges every banked page:
+- * budget roughly this many bytes of PSRAM traffic per context switch between
+- * two banked processes.
++ * Ceiling on the banked memory a switch has to copy. It bounds the time
++ * nommu_bank_switch() takes: budget roughly this many bytes of PSRAM traffic
++ * per context switch between two banked processes. Chunks the MMU exchanges
++ * cost almost nothing and count only against fork_bank_max_total.
+  */
+ static unsigned long nommu_bank_max_bytes = 512UL * 1024;
+ module_param_named(fork_bank_max_bytes, nommu_bank_max_bytes, ulong, 0644);
+ MODULE_PARM_DESC(fork_bank_max_bytes,
+-		 "Largest private memory a fork may bank, in bytes (default 524288)");
++		 "Largest banked memory a switch may copy, in bytes (default 524288)");
+ #define NOMMU_BANK_MAX_BYTES (READ_ONCE(nommu_bank_max_bytes))
++static unsigned long nommu_bank_max_total = 2048UL * 1024;
++module_param_named(fork_bank_max_total, nommu_bank_max_total, ulong, 0644);
++MODULE_PARM_DESC(fork_bank_max_total,
++		 "Largest private memory a fork may bank, in bytes (default 2097152)");
++#define NOMMU_BANK_MAX_TOTAL (READ_ONCE(nommu_bank_max_total))
+ #define BANK_GFP (GFP_KERNEL | __GFP_NORETRY | __GFP_NOWARN)
+ #define BANK_CHUNK		SZ_64K
+ #define BANK_CHUNK_PAGES	(BANK_CHUNK >> PAGE_SHIFT)
+@@ -358,7 +363,17 @@ static void bank_mmu_swap(void *resident, void *shadow)
+ 	local_irq_restore(flags);
+ 	atomic_long_add(BANK_CHUNK_PAGES, &nommu_bank_mmu_pages);
+ }
++static unsigned long bank_mmu_bytes(struct vm_region *region)
++{
++	unsigned long start = ALIGN(region->vm_start, BANK_CHUNK);
++	unsigned long top = ALIGN_DOWN(region->vm_top, BANK_CHUNK);
++
++	if (!READ_ONCE(nommu_bank_mmu) || top <= start || !bank_mmu_psram(start))
++		return 0;
++	return top - start;
++}
+ #else
++#define bank_mmu_bytes(region) 0UL
+ #define bank_mmu_chunk(resident, pages, left) false
+ #define bank_mmu_swap(resident, shadow) do { } while (0)
+ #endif
+@@ -599,7 +614,7 @@ int nommu_bank_dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
+ 	VMA_ITERATOR(src_iter, oldmm, 0);
+ 	VMA_ITERATOR(dst_iter, mm, 0);
+ 	struct vm_area_struct *src, *dst;
+-	unsigned long bytes = 0, addr;
++	unsigned long bytes = 0, copied = 0, len, addr;
+ 	int ret;
+ 
+ 	/* mm_users also includes temporary /proc and ptrace references. They
+@@ -635,8 +650,10 @@ checked_users:
+ 			return -EOPNOTSUPP;
+ 		if (src->vm_region->vm_usage != 1 && !src->nommu_bank)
+ 			return -EOPNOTSUPP;
+-		bytes += src->vm_region->vm_top - src->vm_region->vm_start;
+-		if (bytes > NOMMU_BANK_MAX_BYTES)
++		len = src->vm_region->vm_top - src->vm_region->vm_start;
++		bytes += len;
++		copied += len - bank_mmu_bytes(src->vm_region);
++		if (copied > NOMMU_BANK_MAX_BYTES || bytes > NOMMU_BANK_MAX_TOTAL)
+ 			return -ENOMEM;
+ 		for (addr = src->vm_region->vm_start;
+ 		     addr < src->vm_region->vm_top; addr += PAGE_SIZE)
