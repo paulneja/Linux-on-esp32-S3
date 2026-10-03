@@ -47,6 +47,13 @@ static unsigned irq_depth;
 #define local_irq_restore(f) do { irq_depth=(f); } while (0)
 #define preempt_disable() ((void)0)
 #define preempt_enable() ((void)0)
+#define SZ_64K 65536
+#define ilog2(n) __builtin_ctz(n)
+#define IS_ALIGNED(x,a) (((unsigned long)(x) & ((a)-1)) == 0)
+struct page;
+#define alloc_pages(g,o) ((struct page *)NULL)
+#define split_page(p,o) ((void)0)
+#define page_address(p) ((void *)(p))
 /* The Xtensa cycle counter has no host equivalent. Advance it by 240 cycles
  * per read -- one microsecond at the board's nominal clock -- so the switch
  * timing around the exchange is exercised here rather than only on target.
