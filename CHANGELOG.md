@@ -4,7 +4,65 @@ Releases carry one flashable `.bin` for a 16 MB / 8 MB-PSRAM ESP32-S3. Full
 notes and the binaries are on the
 [releases page](https://github.com/paulneja/Linux-on-esp32-S3/releases).
 
-## 0.8.2 — unreleased
+## 0.9.0 — unreleased
+
+The kernel moves from 6.11 to 7.2.4 and becomes this project's own tree,
+fork() gets several times cheaper, and a freshly flashed board has nothing
+listening on the network until someone logs in. Measured on a clean build of
+the release commit: **35 board tests, 0 failed**, ten more beyond the suite
+(10/10), **20 factory boots, 20 clean**, 100 `ip link` down/up cycles and 25
+`wifi connect` in a row, SSH with a pty, WiFi setup over Bluetooth from a
+phone, and an update from 0.8.1 that kept the password and the WiFi.
+MemAvailable is 4204 kB at the start of the suite, against 3708 kB in 0.8.1.
+
+### Kernel
+
+- **Linux 7.2.4 instead of 6.11.** 6.11 stopped getting fixes at the end of
+  2024. The kernel now comes from the kernel.org tarball, with its checksum
+  pinned in `build/sources.lock`, plus a series of 61 patches kept in this
+  repository, instead of a branch of linux-xtensa. The port brings back the
+  ESP32 serial drivers that 7.1 removed upstream, follows the API changes in
+  GPIO, cfg80211, the interrupt matrix probe and workqueues, and keeps
+  `PREEMPT_NONE`, which 7.x hides unless the platform asks for it. The same
+  tree, with every commit and its author, is published as
+  [linux-esp32s3](https://github.com/paulneja/linux-esp32s3).
+- **Fourteen commits nobody here used left the series:** TRAX, the classic
+  ESP32 variant, USB, the BOX-3 and KC705 boards, fbtft and perf.
+- **A smaller kernel.** Netfilter, IPv6, perf events, suspend, MMC and FAT,
+  the block layer, socket diagnostics, policy routing, rfkill and cramfs on
+  block devices are off; nothing on the board used them. BusyBox drops IPv6
+  as well, and the printk buffer is 16 KiB, twice what a boot writes.
+  `xipImage` goes from 2,982,472 to 2,419,056 bytes. `test-board.py` reads
+  the flash through `/dev/mtdN` now that there is no block layer.
+- The timer showed 0 interrupts in `/proc/interrupts` on 7.x, because it was
+  not marked per-CPU; it is now. `panic_print=0x20` became
+  `panic_console_replay`, since 7.x warns about the old name at every boot.
+
+### fork()
+
+- **The bank exchange ran with interrupts off.** Swapping up to 512 KiB took
+  21.5 ms with the tick, the UART and the IPC to core 0 all held off. It now
+  happens in `finish_arch_post_lock_switch()`, after the runqueue lock is
+  dropped and with interrupts on. With three busy forked shells the timer
+  delivers 101 interrupts a second at HZ=100.
+- **Aligned 64 KiB chunks are exchanged through the cache MMU.** Linux's RAM
+  is PSRAM mapped in 64 KiB pages, so instead of copying a chunk and its
+  shadow word by word, the switch writes both back from the cache, swaps
+  their two MMU entries and invalidates them: about 80 µs per chunk against
+  3.8 ms. `fork_bank_mmu=0` turns it off, `ForkMmuSwapped` in
+  `/proc/meminfo` counts what it moved, and writing 0 to the
+  `fork_bank_switch_max` parameter clears `ForkSwitchMax`.
+- **malloc grows the heap 64 KiB at a time.** uClibc extended it 4 KiB at a
+  time, and each extension was a separate mapping too small for the MMU, so
+  most of a shell's heap still went word by word. With a local uClibc-ng
+  patch, applied through crosstool-NG, the heap comes in aligned 64 KiB
+  mappings, and malloc falls back to the exact size when no 64 KiB block is
+  free. The worst context switch with three busy Bash processes went from
+  29.1 ms to 5.1 to 5.7 ms, and with four forked MicroPython processes
+  holding 192 KiB each, from 33.6 ms to 9.4 ms. The data of shared libraries
+  is still copied, since those mappings are a few KiB each. The larger heap
+  steps cost about 276 kB of MemAvailable at boot.
+
 
 ### WiFi
 
