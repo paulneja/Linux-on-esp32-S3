@@ -1,0 +1,21 @@
+malloc: grow the heap 64 KiB at a time on nommu
+
+Each 4 KiB extension is its own mapping. On the ESP32-S3 a forked
+process's memory is exchanged through the cache MMU in aligned 64 KiB
+pages, so 4 KiB mappings fall back to copying word by word.
+
+--- a/libc/stdlib/malloc/malloc.h
++++ b/libc/stdlib/malloc/malloc.h
+@@ -25,7 +25,11 @@
+ /* The minimum size of block we request from the the system to extend the
+    heap for small allocations (we may request a bigger block if necessary to
+    satisfy a particularly big request).  */
+-#define MALLOC_HEAP_EXTEND_SIZE	MALLOC_PAGE_SIZE
++#ifdef __ARCH_USE_MMU__
++# define MALLOC_HEAP_EXTEND_SIZE	MALLOC_PAGE_SIZE
++#else
++# define MALLOC_HEAP_EXTEND_SIZE	65536
++#endif
+ 
+ /* When a heap free-area grows above this size, try to unmap it, releasing
+    the memory back to the system.  */
