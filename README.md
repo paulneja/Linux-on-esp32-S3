@@ -157,18 +157,79 @@ The build supports multiple board and flash configurations through the
 `TARGET` environment variable. `./run.sh` asks the first time and keeps the
 answer in `.target`. Option 2 in the menu changes it.
 
-| TARGET               | Board                                      | Flash | PSRAM | `/home`                                           |
-| -------------------- | ------------------------------------------ | ----: | ----: | ------------------------------------------------- |
-| `esp32s3_16m`        | ESP32-S3 DevKitC-1 / N16R8                 | 16 MB |  8 MB | JFFS2 in flash                                    |
-| `esp32s3_8m`         | Generic ESP32-S3 / N8R8 (experimental)     |  8 MB |  8 MB | No dedicated flash partition                      |
-| `xiao_esp32s3_8m`    | Seeed Studio XIAO ESP32S3 / N8R8           |  8 MB |  8 MB | No dedicated flash partition                      |
-| `xiao_esp32s3_8m_sd` | Seeed Studio XIAO ESP32S3 / N8R8 + MicroSD |  8 MB |  8 MB | ext2 on MicroSD (`fdisk` `mke2fs` setup required) |
+| TARGET               | Board                                      | Flash | PSRAM | `/home`                                                    |
+| -------------------- | ------------------------------------------ | ----: | ----: | ---------------------------------------------------------- |
+| `esp32s3_16m`        | ESP32-S3 DevKitC-1 / N16R8                 | 16 MB |  8 MB | JFFS2 in flash                                             |
+| `esp32s3_8m`         | Generic ESP32-S3 / N8R8 (experimental)     |  8 MB |  8 MB | 256 KiB JFFS2 in flash                                     |
+| `xiao_esp32s3_8m`    | Seeed Studio XIAO ESP32S3 / N8R8           |  8 MB |  8 MB | 256 KiB JFFS2 in flash                                     |
+| `xiao_esp32s3_8m_sd` | Seeed Studio XIAO ESP32S3 / N8R8 + MicroSD |  8 MB |  8 MB | ext2 on MicroSD when present; 256 KiB JFFS2 flash fallback |
+
+All 8 MB targets include a 256 KiB JFFS2 `/home` partition in flash.
+On `xiao_esp32s3_8m_sd`, a prepared MicroSD card is mounted over `/home`
+when available. If no usable MicroSD card is present, the flash-backed
+`/home` remains available.
 
 The existing 16 MB target remains the default:
 
 ```sh
 TARGET=esp32s3_16m JOBS=8 bash build/reproduce.sh
 ```
+
+#### MicroSD `/home` on XIAO ESP32S3 Sense
+
+The `xiao_esp32s3_8m_sd` target uses the MicroSD slot on the XIAO
+ESP32S3 Sense expansion board. The SD interface uses:
+
+- CS: GPIO21
+- SCK: GPIO7
+- MISO: GPIO8
+- MOSI: GPIO9
+
+The regular XIAO ESP32S3 board does not include this MicroSD slot.
+
+The card must contain an ext2 filesystem. Most SD cards are supplied
+formatted as FAT or exFAT, so they must be reformatted before use.
+Formatting erases all data on the card.
+
+On Linux, identify the SD card device carefully, then create a partition
+and format it as ext2. For example, if the card is `/dev/sdX`:
+
+```sh
+sudo fdisk /dev/sdX
+sudo mkfs.ext2 /dev/sdX1
+```
+
+On macOS, install the ext2 filesystem tools with Homebrew:
+
+```sh
+brew install e2fsprogs
+```
+
+Then use `mke2fs` from the installed e2fsprogs package to format the SD
+partition as ext2.
+
+ext2 has no journal. Removing power while data is being written can
+leave the filesystem inconsistent or corrupt files. Run `sync` before
+removing power or the MicroSD card whenever possible.
+
+When a usable ext2 MicroSD card is present, it is mounted read/write on
+`/home`. Without a usable card, the target continues to use its 256 KiB
+flash-backed JFFS2 `/home`.
+
+#### 8 MB userspace profiles
+
+The 8 MB targets use a reduced Buildroot userspace and do not include
+all of the userspace programs available in the 16 MB experimental image.
+
+Two N8 profiles are available:
+
+- **Server** — includes Dropbear SSH/SCP and BusyBox httpd/CGI.
+- **Client** — includes curl with Mbed TLS for HTTP/HTTPS. To fit the
+  smaller rootfs partition, Dropbear, `iw`, BusyBox httpd/CGI, `wget`,
+  `bc`, and `dc` are disabled.
+
+The 16 MB feature and program lists therefore do not apply unchanged
+to the 8 MB targets.
 
 #### Build cache
 
@@ -238,10 +299,12 @@ For example:
 screen /dev/ttyUSB0 115200
 ```
 
-The chip's own USB port works as well: it shows up as `/dev/ttyACM0` (a COM
-port on Windows) and prints the boot log. The login there is off until you
-run `usb-console on` once from the UART, since its getty costs about 100 KiB
-of RAM.
+The chip's own USB port works as well: it shows up as `/dev/ttyACM0` on Linux,
+`/dev/cu.usbmodem*` on macOS, or a COM port on Windows, and prints the boot
+log. On the XIAO ESP32S3 targets, the `ttyGS3` login is enabled by default.
+On the generic 8 MB target it is disabled by default to save RAM. Use
+`usb-console on|off|status` to change the setting; the choice is kept across
+reboots.
 
 Log in as **`root` / `changeme123`**, then run `passwd` to change the
 password. A factory image has no WiFi configured:
@@ -303,8 +366,10 @@ checksums, partition checks and a board suite tied to one exact image.
   Both are off by default. SSH is slow on this hardware; the RSA driver does
   not accelerate its Curve25519 operations.
 - **USB console.** Kernel messages also go to the chip's own USB port
-  (`ttyGS3`). A login there is off by default, since its getty costs about
-  100 KiB of RAM: `usb-console on|off|status`, kept across reboots.
+  (`ttyGS3`). The login is enabled by default on the XIAO ESP32S3 targets
+  and disabled by default on the generic 8 MB target to save RAM.
+  Use `usb-console on|off|status` to change the setting; the choice is kept
+  across reboots.
 - **NTP and curl.** Plain HTTP works. HTTPS uses certificate verification
   with a trimmed CA bundle and TLS 1.2, but remains experimental under the
   board's RAM constraints.
@@ -312,6 +377,14 @@ checksums, partition checks and a board suite tied to one exact image.
 ## Build and test status
 
 What was tested, and on which bytes, is written down rather than implied:
+
+The current Image workflow runs host-side checks on pushes and pull requests.
+A full firmware build can also be started manually with `workflow_dispatch`,
+selecting the N16R8 target or one of the N8R8 targets. For N8R8 builds, the
+Server or Client userspace profile can also be selected. Full image builds
+are performed twice and compared to check reproducibility. Hardware-dependent
+board tests are not run in GitHub Actions and must still be performed on the
+target board.
 
 - **The 0.8.1 images were built by the Image workflow and tested as
   they are.** Two container builds of the release commit differ in one file,
