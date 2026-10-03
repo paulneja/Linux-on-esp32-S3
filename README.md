@@ -3,7 +3,7 @@
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ea4aaa?style=flat&logo=githubsponsors&logoColor=white)](https://donation.streamiverse.io/paulneja)
 [![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen?style=flat)](CONTRIBUTING.md)
 
-Linux 6.11 running **natively on the ESP32-S3's Xtensa cores**, with WiFi,
+Linux 7.2.4 running **natively on the ESP32-S3's Xtensa cores**, with WiFi,
 Bash, MicroPython and writable storage. Linux is not emulated: Espressif's
 firmware runs alongside it on the same chip and handles WiFi and flash access.
 All of this runs on one N16R8 board, without extra RAM, an SD card or a second
@@ -13,6 +13,19 @@ computer attached to keep it running.
 > **Want to help?** Hunt bugs, try it on other boards, or send fixes and
 > ideas: see [CONTRIBUTING.md](CONTRIBUTING.md). And if it saved you a
 > weekend, you can [chip in ❤️](https://donation.streamiverse.io/paulneja).
+
+## What's new in 0.9
+
+The kernel is Linux 7.2.4, built from the kernel.org release plus this
+project's own series, which is also published with its history as
+[linux-esp32s3](https://github.com/paulneja/linux-esp32s3). fork() now swaps
+memory through the chip's cache MMU, so the worst switch between forked
+processes dropped from about 30 ms to between 5 and 10 ms, and interrupts stay
+on while it happens. A freshly flashed board has nothing listening on the
+network: the first login sets a password and turns on SSH or Telnet, only the
+one you pick. A wrong WiFi password is reported as such and no longer leaves
+the scan broken (#20). With all that, about 500 kB more RAM is free than in
+0.8.1. The [changelog](CHANGELOG.md) has the measurements.
 
 ## What's new in 0.8.1
 
@@ -294,13 +307,16 @@ flash reclaim.
   it is not copy-on-write. The backend is UP-only, rejects multithreaded fork
   and limits private memory per fork to 512 KiB. Several Bash sessions or
   large pipelines can run out of memory; detached sessions default to Dash.
-- **A context switch can hold interrupts off for about 21 ms.** The backend
-  moves a process's private memory on every switch, up to the 512 KiB
-  ceiling, with interrupts disabled; over the full ceiling that is 21.5 ms,
-  longer than the 10 ms tick. Copy-on-write would avoid it and is not possible
-  on this chip: an unpermitted write fails and raises an asynchronous
-  interrupt, so there is no restartable fault to copy a page and retry the
-  store from. `/proc/meminfo` reports `ForkSwitchMax` and `ForkSwitchLast`.
+- **A switch between forked processes still costs CPU time.** The backend
+  exchanges a process's private memory on every switch, up to the 512 KiB
+  ceiling. Aligned 64 KiB chunks go through the cache MMU in about 80 µs
+  each, but small mappings such as the data of shared libraries are still
+  copied, so the worst switches measured take 5 to 10 ms, with interrupts on.
+  Copy-on-write would avoid the cost and is not possible on this chip: an
+  unpermitted write fails and raises an asynchronous interrupt, so there is
+  no restartable fault to copy a page and retry the store from.
+  `/proc/meminfo` reports `ForkSwitchMax`, `ForkSwitchLast` and
+  `ForkMmuSwapped`.
 - **Native binaries must target Xtensa/FDPIC.** Arbitrary x86, ARM or desktop
   Linux binaries do not run. CPython, Neovim, SQLite, sudo and doas are not
   included.
@@ -365,4 +381,7 @@ firmware. See [NOTICE](NOTICE) for third-party components and licenses.
 The people who helped along the way are in [THANKS.md](THANKS.md).
 
 This project is licensed under the **GPLv3** (see [LICENSE](LICENSE)). Kernel
-code contributed here (`drivers/crypto/esp32s3_rsa.c`) is GPL-2.0-or-later.
+code contributed here, such as `drivers/crypto/esp32s3_rsa.c` and the fork
+backend, is under the GPL-2.0 like the rest of the kernel; each file's SPDX
+header gives the exact terms. The kernel tree lives in
+[linux-esp32s3](https://github.com/paulneja/linux-esp32s3).
