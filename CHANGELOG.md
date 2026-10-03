@@ -62,7 +62,16 @@ MemAvailable is 4204 kB at the start of the suite, against 3708 kB in 0.8.1.
   holding 192 KiB each, from 33.6 ms to 9.4 ms. The data of shared libraries
   is still copied, since those mappings are a few KiB each. The larger heap
   steps cost about 276 kB of MemAvailable at boot.
-
+- **The 512 KiB limit counts only what a switch copies.** With the heap in
+  64 KiB steps, a Bash that had been running for a while held 556 to 576 KiB
+  of private memory and could no longer fork (`Cannot allocate memory`).
+  `fork_bank_max_bytes` (512 KiB) now applies to the copied part only, and
+  `fork_bank_max_total` (2 MiB) caps the whole bank. A Bash holding 576 KiB
+  forks again, with the slowest switch at 5.9 ms.
+- `mmu-run` and `mmu-probe` expected the PSRAM pages in order in the cache
+  MMU table. After a switch through the MMU they are in any order, so
+  `mmu-run` refused to start; both now accept any permutation and read the
+  real entry of each page.
 
 ### WiFi
 
