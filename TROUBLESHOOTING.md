@@ -149,9 +149,9 @@ carries KERN_ERR and worse, which saves about 0.7 s of a 13.7 s boot on a
 115200 line. Everything is still in the ring buffer -- `dmesg` shows it. To
 see it on the console at every boot, `bootlog verbose`; `bootlog quiet` puts
 it back. That cannot cover a fault before init runs, about 1.4 s in; for
-those, `panic_print=0x20` dumps the buffer when the kernel panics, and a
+those, `panic_console_replay` dumps the buffer when the kernel panics, and a
 development image can drop `quiet` from
-`board/espressif/esp32s3/patches/linux/03-kernel-cmdline-no-debug.patch`.
+`board/espressif/esp32s3/patches/linux/0049-esp32s3-dts-quiet-bootargs-cramfs-root-panic-10.patch`.
 
 ### Opening the serial console resets the board
 

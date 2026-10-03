@@ -171,7 +171,7 @@ record('bootlog-across-reboots', bootlog_roundtrip)
 # ---- 10. final health --------------------------------------------------------
 def final():
     t = c.command('cat /proc/sys/kernel/tainted', 10).splitlines()[-1].strip()
-    # "panic=10 panic_print=0x20" is in the command line; that is not a panic.
+    # "panic=10 panic_console_replay" is in the command line; that is not a panic.
     d = c.command('dmesg | grep -v "Kernel command line" | grep -cE "Oops|BUG:|panic|inconsist" || true', 10).splitlines()[-1].strip()
     m = meminfo(c, 'MemAvailable')
     assert t == '0' and d == '0', f'tainted={t} bad-lines={d}'
