@@ -165,6 +165,7 @@ rootfs_base() {
         client)
             echo "N8 userspace profile: client (curl + HTTP/HTTPS only)"
             "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_DROPBEAR
+            "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_IW
             "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_MBEDTLS
             "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_LIBCURL
             "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_LIBCURL_CURL
