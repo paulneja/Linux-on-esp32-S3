@@ -42,7 +42,7 @@ one, so there is no chance of mistaking it for a real secret. The first login
 does not hand out a shell until it is changed, and nothing listens on the
 network before that: a board joined to WiFi over Bluetooth is not reachable
 with the factory password. The first login then turns on SSH or Telnet, one
-of them; `ssh-server on` can still add SSH next to Telnet by hand.
+of them, or neither; `ssh-server on` can still add SSH next to Telnet by hand.
 
 ### It asks the internet what time it is
 

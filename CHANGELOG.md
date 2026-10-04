@@ -96,10 +96,15 @@ MemAvailable is 4272 kB at the start of the suite, against 3708 kB in 0.8.1.
   be on from the factory with `changeme123`, and a board joined to WiFi over
   Bluetooth was reachable with it before anyone had touched the console. The
   first root login now asks for a new password, refuses the factory one, and
-  then asks whether to turn on SSH or Telnet. Only that one is turned on.
-  `remote-login ssh|telnet|status` switches later; `ssh-server on` can still
-  add SSH next to Telnet by hand. An update keeps the choice, and a board
-  coming from 0.8.1 is asked once.
+  then asks whether to turn on SSH, Telnet or neither. Only that one is
+  turned on. `remote-login ssh|telnet|off|status` switches later;
+  `ssh-server on` can still add SSH next to Telnet by hand. An update keeps
+  the choice, and a board coming from 0.8.1 is asked once.
+- **The board tests leave the factory login behind.** The harness answers
+  the first login itself, so after `./run.sh` the board used to keep the
+  test password with SSH on. `build/factory-login.py` now runs after the
+  suite and puts back `changeme123`, nothing listening and the first-login
+  questions.
 
 ### Not fixed yet
 

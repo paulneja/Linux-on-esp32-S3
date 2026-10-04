@@ -121,6 +121,11 @@ came back, the regression for issue #9 (dropbear falling back to a `/dev/pty??`
 scan this kernel does not build). It needs `paramiko` on the host in addition
 to `pyserial` and `esptool`.
 
+All of them answer the first login themselves, with the password
+`esp32s3-board-test` and SSH. `./run.sh` runs `build/factory-login.py PORT`
+after the suite, which puts back `changeme123` and nothing listening, so the
+next console login asks again; after the other scripts, run it by hand.
+
 The fork backend is built by `experiments/mmu-poc/fork/build-kernel-reclaim.sh`
 with the page-set exchange on; `FORK_SWAP_BANKS=0` builds the copying model.
 

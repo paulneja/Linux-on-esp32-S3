@@ -83,8 +83,8 @@ This writes the whole 16 MB chip, `/etc` and `/home` included.
 **2. Log in on the console** at 115200 baud, for example with
 `screen /dev/ttyUSB0 115200`, as `root` with password `changeme123`. The
 first login asks for a new password, then whether the board should answer
-SSH or Telnet. Only the one you pick is turned on; `remote-login ssh|telnet`
-switches later.
+SSH, Telnet or neither. Only the one you pick is turned on;
+`remote-login ssh|telnet|off` switches later.
 
 **3. Join a network:**
 

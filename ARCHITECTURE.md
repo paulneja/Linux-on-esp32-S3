@@ -180,7 +180,7 @@ flashed board.
   shell and does not give a shell until it is changed.
 - No session timeout, no brute-force throttling yet.
 - Nothing listens on the network until that first login, which then turns on
-  SSH or Telnet, one of them (`remote-login ssh|telnet`). Telnet is plaintext
+  SSH or Telnet, one of them, or neither (`remote-login ssh|telnet|off`). Telnet is plaintext
   on the wire; SSH is not.
 
 ## Known gaps

@@ -231,7 +231,7 @@ Done. Open the serial console at 115200 baud, e.g.:
     screen /dev/ttyACM0 115200      (or: picocom -b 115200 /dev/ttyACM0)
 
 Log in as root / changeme123: the first login asks for a new password and
-whether to turn on SSH or Telnet. Nothing listens on the network before that.
+whether to turn on SSH, Telnet or neither. Nothing listens before that.
 No WiFi is configured on a fresh flash. The boot prints "Starting network
 (background): OK" either way — it comes up behind the login prompt, and what
 it actually did is in /var/log/network.log. Connect with:
