@@ -2,14 +2,14 @@
  {
   "name": "swap-model-is-live",
   "status": "PASS",
-  "detail": "ForkSwitchMax=5597us",
-  "seconds": 0.1
+  "detail": "ForkSwitchMax=5477us",
+  "seconds": 0.2
  },
  {
   "name": "jffs2-write-copy-readback",
   "status": "PASS",
   "detail": "384 KiB written, copied, read back identical",
-  "seconds": 11.1
+  "seconds": 10.0
  },
  {
   "name": "shell-pipelines-and-subshells",
@@ -27,7 +27,7 @@
   "name": "session-detach-attach",
   "status": "PASS",
   "detail": "started, wrote through the socket, stopped",
-  "seconds": 5.9
+  "seconds": 6.3
  },
  {
   "name": "cron-runs-a-job",
@@ -39,7 +39,7 @@
   "name": "passwd-and-relogin",
   "status": "PASS",
   "detail": "changed, logged out, logged in with it, restored",
-  "seconds": 3.8
+  "seconds": 3.6
  },
  {
   "name": "reboot-home-persists",
@@ -56,7 +56,7 @@
  {
   "name": "final-kernel-health",
   "status": "PASS",
-  "detail": "tainted 0, MemAvailable 4060 kB",
+  "detail": "tainted 0, MemAvailable 4084 kB",
   "seconds": 0.9
  }
 ]

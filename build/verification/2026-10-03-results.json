@@ -1,117 +1,122 @@
 {
-  "image_sha256": "b5cf155f9b783d2bb5c5bdbe09bcd0dad139cb2557492622e690d1fb12897dab",
-  "source_commit": "247cd1f0913e7162c2b68f701c7da03115dddd56",
+  "image_sha256": "33f106b45fa1e41d70eb3259eb07156d3bbbd9174f2f66871c32be3df6c2e1be",
+  "source_commit": "8fd846a40e53e8470296053735fb773d61b60ef7",
   "test_runner_sha256": "97f4c9fd2266df8fb9e1a007917376b19953f81e8bf575992d3b32cec970da96",
   "tests": [
     {
+      "name": "reset-and-boot",
+      "status": "pass",
+      "seconds": 13.614
+    },
+    {
       "name": "quiesce-background-forks",
       "status": "pass",
-      "seconds": 2.149
+      "seconds": 2.207
     },
     {
       "name": "memory-baseline",
       "status": "pass",
-      "seconds": 0.424
+      "seconds": 0.439
     },
     {
       "name": "installed-kernel-and-rootfs-hashes",
       "status": "pass",
-      "seconds": 9.938
+      "seconds": 9.886
     },
     {
       "name": "boot",
       "status": "pass",
-      "seconds": 1.14
+      "seconds": 1.156
     },
     {
       "name": "hardware-rsa-registered",
       "status": "pass",
-      "seconds": 0.356
+      "seconds": 0.383
     },
     {
       "name": "no-driver-timeout",
       "status": "pass",
-      "seconds": 0.395
+      "seconds": 0.392
     },
     {
       "name": "shell-policy",
       "status": "pass",
-      "seconds": 0.265
+      "seconds": 0.277
     },
     {
       "name": "first-boot-home",
       "status": "pass",
-      "seconds": 0.354
+      "seconds": 0.388
     },
     {
       "name": "excluded-programs",
       "status": "pass",
-      "seconds": 0.19
+      "seconds": 0.209
     },
     {
       "name": "mmu-executable-remap",
       "status": "pass",
-      "seconds": 0.172
+      "seconds": 0.182
     },
     {
       "name": "mmu-fibonacci",
       "status": "pass",
-      "seconds": 0.123
+      "seconds": 0.142
     },
     {
       "name": "fork-static",
       "status": "pass",
-      "seconds": 1.026
+      "seconds": 1.048
     },
     {
       "name": "fork-dynamic",
       "status": "pass",
-      "seconds": 1.482
+      "seconds": 1.5
     },
     {
       "name": "atfork",
       "status": "pass",
-      "seconds": 0.164
+      "seconds": 0.17
     },
     {
       "name": "process-compatibility",
       "status": "pass",
-      "seconds": 1.636
+      "seconds": 1.609
     },
     {
       "name": "bash",
       "status": "pass",
-      "seconds": 1.432
+      "seconds": 1.469
     },
     {
       "name": "dash",
       "status": "pass",
-      "seconds": 1.438
+      "seconds": 1.421
     },
     {
       "name": "make",
       "status": "pass",
-      "seconds": 1.676
+      "seconds": 1.853
     },
     {
       "name": "micropython",
       "status": "pass",
-      "seconds": 1.18
+      "seconds": 1.189
     },
     {
       "name": "network-tools",
       "status": "pass",
-      "seconds": 8.128
+      "seconds": 8.091
     },
     {
       "name": "hush-login",
       "status": "pass",
-      "seconds": 4.509
+      "seconds": 4.507
     },
     {
       "name": "jobq",
       "status": "pass",
-      "seconds": 4.598
+      "seconds": 4.594
     },
     {
       "name": "bootlog-default-is-quiet",
@@ -121,32 +126,32 @@
     {
       "name": "bootlog-verbose-raises-the-level",
       "status": "pass",
-      "seconds": 0.551
+      "seconds": 0.553
     },
     {
       "name": "bootlog-quiet-restores-it",
       "status": "pass",
-      "seconds": 0.58
+      "seconds": 0.592
     },
     {
       "name": "benchmarks-lightweight-launcher",
       "status": "pass",
-      "seconds": 12.788
+      "seconds": 12.724
     },
     {
       "name": "fork-exec-cycles",
       "status": "pass",
-      "seconds": 50.51
+      "seconds": 50.598
     },
     {
       "name": "jffs2-write-timing",
       "status": "pass",
-      "seconds": 3.607
+      "seconds": 3.158
     },
     {
       "name": "kernel-health",
       "status": "pass",
-      "seconds": 0.744
+      "seconds": 0.773
     },
     {
       "name": "memory-final",
@@ -156,27 +161,27 @@
     {
       "name": "test-home-users-board",
       "status": "pass",
-      "seconds": 34.823
+      "seconds": 35.343
     },
     {
       "name": "test-cron-board",
       "status": "pass",
-      "seconds": 47.846
+      "seconds": 48.412
     },
     {
       "name": "test-com-reconnect",
       "status": "pass",
-      "seconds": 9.079
+      "seconds": 9.086
     },
     {
       "name": "test-home-reboot",
       "status": "pass",
-      "seconds": 25.86
+      "seconds": 26.117
     },
     {
       "name": "final-kernel-health",
       "status": "pass",
-      "seconds": 0.613
+      "seconds": 0.661
     }
   ],
   "status": "pass",
@@ -190,19 +195,19 @@
   "memory_baseline": {
     "meminfo_kb": {
       "MemTotal": 7852,
-      "MemFree": 4532,
-      "MemAvailable": 4204,
+      "MemFree": 4608,
+      "MemAvailable": 4272,
       "ForkShadow": 0,
       "ForkRecovered": 1152,
-      "ForkMmuSwapped": 3840,
+      "ForkMmuSwapped": 4224,
       "Buffers": 0,
-      "Cached": 464,
+      "Cached": 448,
       "SwapCached": 0,
-      "Active": 184,
-      "Inactive": 216,
+      "Active": 188,
+      "Inactive": 196,
       "Unevictable": 64,
       "Mlocked": 0,
-      "MmapCopy": 1300,
+      "MmapCopy": 1236,
       "SwapTotal": 0,
       "SwapFree": 0,
       "Dirty": 0,
@@ -211,9 +216,9 @@
       "Mapped": 0,
       "Shmem": 0,
       "KReclaimable": 0,
-      "Slab": 1192,
+      "Slab": 1196,
       "SReclaimable": 0,
-      "SUnreclaim": 1192,
+      "SUnreclaim": 1196,
       "KernelStack": 264,
       "PageTables": 0,
       "SecPageTables": 0,
@@ -231,11 +236,11 @@
       "GPUReclaim": 0
     },
     "free_pages_by_order": [
-      1,
+      4,
+      8,
+      27,
+      0,
       2,
-      20,
-      5,
-      1,
       1,
       1,
       1,
@@ -245,20 +250,20 @@
     ],
     "largest_free_block_kb": 2048
   },
-  "jffs2_write_256k_seconds": 4,
+  "jffs2_write_256k_seconds": 2,
   "memory_final": {
     "meminfo_kb": {
       "MemTotal": 7852,
-      "MemFree": 4312,
-      "MemAvailable": 4100,
+      "MemFree": 4324,
+      "MemAvailable": 4104,
       "ForkShadow": 0,
-      "ForkRecovered": 42520,
-      "ForkMmuSwapped": 103168,
+      "ForkRecovered": 42360,
+      "ForkMmuSwapped": 103552,
       "Buffers": 0,
-      "Cached": 696,
+      "Cached": 680,
       "SwapCached": 0,
       "Active": 448,
-      "Inactive": 180,
+      "Inactive": 164,
       "Unevictable": 68,
       "Mlocked": 0,
       "MmapCopy": 1236,
@@ -270,9 +275,9 @@
       "Mapped": 0,
       "Shmem": 0,
       "KReclaimable": 0,
-      "Slab": 1244,
+      "Slab": 1248,
       "SReclaimable": 0,
-      "SUnreclaim": 1244,
+      "SUnreclaim": 1248,
       "KernelStack": 264,
       "PageTables": 0,
       "SecPageTables": 0,
@@ -290,5 +295,5 @@
       "GPUReclaim": 0
     }
   },
-  "finished_utc": "2026-10-03T20:28:34Z"
+  "finished_utc": "2026-10-03T23:42:47Z"
 }
