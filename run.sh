@@ -345,6 +345,9 @@ for name in bad:
     print('    failed:', name)
 PY
 	fi
+	info "putting the login back to the factory one"
+	"$py" "$REPO/build/factory-login.py" "$port" ||
+		warn "could not reset it; run: $py build/factory-login.py $port"
 	if [ "$rc" -ne 0 ]; then
 		red "the suite did not pass"
 		warn "if it was cut short, test users are left on the board;"
