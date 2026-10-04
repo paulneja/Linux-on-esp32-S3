@@ -16,12 +16,14 @@ factory_password() {
 	hash=$(root_hash)
 	[ -n "$hash" ] || return 0
 	case $hash in
-	'$5$'*) ;;
+	'$1$'*) method=md5 ;;
+	'$5$'*) method=sha256 ;;
+	'$6$'*) method=sha512 ;;
 	*) return 1 ;;
 	esac
-	salt=${hash#\$5\$}
+	salt=${hash#\$?\$}
 	salt=${salt%%\$*}
-	[ "$(mkpasswd -m sha256 "$FACTORY" "$salt" 2>/dev/null)" = "$hash" ]
+	[ "$(mkpasswd -m $method "$FACTORY" "$salt" 2>/dev/null)" = "$hash" ]
 }
 
 if factory_password; then

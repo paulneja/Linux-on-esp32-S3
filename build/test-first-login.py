@@ -30,7 +30,8 @@ class FirstLoginTests(unittest.TestCase):
         self.set_hash(FACTORY)
         self.fake('id', 'echo 0')
         self.fake('killall', 'exit 0')
-        self.fake('mkpasswd', '[ "$3" = changeme123 ] && echo \'%s\' || echo \'$5$salt$OTHER\'' % FACTORY)
+        self.fake('mkpasswd', '[ "$3" = changeme123 ] || { echo \'$5$salt$OTHER\'; exit; }\n'
+                              'case $2 in md5) echo \'$1$salt$FACTORY\' ;; *) echo \'%s\' ;; esac' % FACTORY)
         self.fake('passwd', f'''read -r a || exit 1
 read -r b || exit 1
 [ "$a" = "$b" ] || exit 1
@@ -64,6 +65,13 @@ echo "root:$h:19000:0:99999:7:::" > {self.etc}/shadow''')
         self.assertIn('$5$salt$NEW', (self.etc / 'shadow').read_text())
         self.assertEqual((self.etc / 'remote-login').read_text(), 'ssh\n')
         self.assertEqual(self.listening(), ['ssh', 'www'])
+
+    def test_the_factory_password_hashed_with_md5_still_counts(self):
+        self.set_hash('$1$salt$FACTORY')
+        r = self.run_first_login('hunter22\nhunter22\n3\n')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('factory password', r.stdout)
+        self.assertIn('$5$salt$NEW', (self.etc / 'shadow').read_text())
 
     def test_the_factory_password_is_refused_as_the_new_one(self):
         r = self.run_first_login('changeme123\nchangeme123\nhunter22\nhunter22\n2\n')
