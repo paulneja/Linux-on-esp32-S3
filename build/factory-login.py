@@ -22,13 +22,15 @@ args = parser.parse_args()
 pw = probe.FACTORY_PASSWORD
 c = probe.Console(args.port)
 c.login()
-c.command(f'printf "{pw}\\n{pw}\\n" | passwd root >/dev/null 2>&1', 30)
+c.command(f'printf "{pw}\\n{pw}\\n" | passwd -a sha256 root >/dev/null 2>&1', 30)
 c.command('remote-login off >/dev/null', 30)
 c.command('rm -f /etc/remote-login /home/.etc-backup/remote-login', 10)
 c.command('/etc/init.d/S03keepconfig save >/dev/null; sync', 60)
-state = c.command('remote-login status; ls /etc/remote-login 2>&1', 30, check=False)
+state = c.command('remote-login status; ls /etc/remote-login 2>&1; '
+                  "h=$(sed -n 's/^root:\\([^:]*\\):.*/\\1/p' /etc/shadow); s=${h#\\$5\\$}; "
+                  f'[ "$(mkpasswd -m sha256 {pw} ${{s%%\\$*}})" = "$h" ] && echo factory-$((1))-hash', 30, check=False)
 c.port.write(b'exit\n')
 c.close()
-if 'Listening: nothing' not in state or 'No such file' not in state:
+if 'Listening: nothing' not in state or 'No such file' not in state or 'factory-1-hash' not in state:
     raise SystemExit('factory-login: the board did not end up at the factory login:\n' + state)
 print(f'root is back to {pw}, nothing listens on the network, the first login will ask again')
