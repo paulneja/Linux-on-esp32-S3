@@ -96,7 +96,8 @@ jobs:
           for p in ../new-files/board/espressif/esp32s3/patches/linux/*.patch; do
             echo "== $(basename "$p")"; apply "$p"
           done
-          for p in kernel real/scheduler reclaim quiet-trace swap-banks switch-latency switch-irqs-on; do
+          for p in kernel real/scheduler reclaim quiet-trace swap-banks switch-latency switch-irqs-on \
+                   mmu-swap bank-budget; do
             echo "== fork/$p.patch"; apply "../experiments/mmu-poc/fork/$p.patch"
           done
 
