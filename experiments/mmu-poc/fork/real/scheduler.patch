@@ -1,6 +1,8 @@
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+index f15f5764818eb..1c25a13ae916c 100644
 --- a/kernel/sched/fair.c
 +++ b/kernel/sched/fair.c
-@@ -970,6 +970,25 @@
+@@ -1231,6 +1231,25 @@ int sched_update_scaling(void)
  
  static void clear_buddies(struct cfs_rq *cfs_rq, struct sched_entity *se);
  
@@ -26,21 +28,21 @@
  /*
   * XXX: strictly: vd_i += N*r_i/w_i such that: vd_i > ve_i
   * this is probably good enough.
-@@ -984,7 +1003,7 @@
- 	 * nice) while the request time r_i is determined by
+@@ -1246,7 +1265,7 @@ static bool update_deadline(struct cfs_rq *cfs_rq, struct sched_entity *se)
  	 * sysctl_sched_base_slice.
  	 */
--	se->slice = sysctl_sched_base_slice;
-+	se->slice = entity_base_slice(se);
+ 	if (!se->custom_slice)
+-		se->slice = sysctl_sched_base_slice;
++		se->slice = entity_base_slice(se);
  
  	/*
  	 * EEVDF: vd_i = ve_i + r_i / w_i
-@@ -5178,7 +5197,7 @@
- 	u64 vslice, vruntime = avg_vruntime(cfs_rq);
+@@ -5972,7 +5991,7 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
  	s64 lag = 0;
  
--	se->slice = sysctl_sched_base_slice;
-+	se->slice = entity_base_slice(se);
+ 	if (!se->custom_slice)
+-		se->slice = sysctl_sched_base_slice;
++		se->slice = entity_base_slice(se);
  	vslice = calc_delta_fair(se->slice, se);
  
  	/*

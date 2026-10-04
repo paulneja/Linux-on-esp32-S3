@@ -19,6 +19,10 @@ if os.name == 'posix':
     import termios
 
 
+FACTORY_PASSWORD = "changeme123"
+TEST_PASSWORD = "esp32s3-board-test"
+
+
 class ConsoleSerial(serial.Serial):
     def _console_lines(self):
         status = struct.unpack('I', fcntl.ioctl(self.fd, termios.TIOCMGET,
@@ -77,14 +81,35 @@ class Console:
         self.port.write(b"\n")
         data, _ = self.until(rb"(?:login: ?|(?:~ )?# |MMU_SHELL> )")
         if b"login:" in data:
-            self.port.write(b"root\n")
-            data, _ = self.until(rb"(?:Password: ?|(?:~ )?# )")
-            if b"Password:" in data:
-                password = os.environ.get("MMU_BOARD_PASSWORD", "changeme123")
-                self.port.write(password.encode() + b"\n")
-                data, _ = self.until(rb"(?:# |Login incorrect|(?:^|\n)[^\r\n]*login: ?$)")
+            password = os.environ.get("MMU_BOARD_PASSWORD", TEST_PASSWORD)
+            for attempt in dict.fromkeys((password, FACTORY_PASSWORD)):
+                self.port.write(b"root\n")
+                data, _ = self.until(rb"(?:Password: ?|(?:~ )?# )")
+                if b"Password:" not in data:
+                    return
+                self.port.write(attempt.encode() + b"\n")
+                data, _ = self.until(rb"(?:# |Login incorrect|New password: ?|Pick 1[^:\n]*: ?)")
+                if b"Login incorrect" in data:
+                    self.until(rb"login: ?$", 15)
+                    continue
                 if b"# " not in data:
-                    raise RuntimeError("Login failed; password not retried: " + data.decode(errors="replace"))
+                    if password == FACTORY_PASSWORD:
+                        password = TEST_PASSWORD
+                    self.first_login(data, password)
+                    attempt = password
+                os.environ["MMU_BOARD_PASSWORD"] = attempt
+                return
+            raise RuntimeError("Login failed with the test and the factory password")
+
+    def first_login(self, data, password):
+        while True:
+            if re.search(rb"(?:New|Retype) password: ?$", data):
+                self.port.write(password.encode() + b"\n")
+            elif re.search(rb"Pick 1[^:\n]*: ?$", data):
+                self.port.write(b"1\n")
+            elif re.search(rb"(?:~ )?# $", data):
+                return
+            data, _ = self.until(rb"(?:New password: ?|Retype password: ?|Pick 1[^:\n]*: ?|(?:~ )?# )$", 60)
 
     def command(self, text, seconds=30, check=True):
         token = "MMU_DONE_" + secrets.token_hex(12)

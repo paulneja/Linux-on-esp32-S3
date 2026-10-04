@@ -3,6 +3,7 @@
 import argparse
 import importlib.util
 import json
+import os
 import re
 import sys
 import time
@@ -16,7 +17,7 @@ except ImportError:
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('port')
-parser.add_argument('--password', default='changeme123')
+parser.add_argument('--password', help='defaults to the one the serial login used')
 parser.add_argument('--output', type=Path, default=Path('build-output/test-ssh-pty'))
 args = parser.parse_args()
 
@@ -27,6 +28,7 @@ spec.loader.exec_module(probe)
 
 c = probe.Console(args.port)
 c.login()
+password = args.password or os.environ['MMU_BOARD_PASSWORD']
 
 status = c.command('wifi status', 15, check=False)
 m = re.search(r'inet (\d+\.\d+\.\d+\.\d+)/\d+.*scope global espsta0', status)
@@ -46,7 +48,7 @@ result = {'ip': ip, 'status': 'FAIL', 'detail': ''}
 try:
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(ip, username='root', password=args.password, timeout=15,
+    client.connect(ip, username='root', password=password, timeout=15,
                     look_for_keys=False, allow_agent=False)
     try:
         chan = client.get_transport().open_session()

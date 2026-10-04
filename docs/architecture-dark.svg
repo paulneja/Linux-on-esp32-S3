@@ -1,0 +1,186 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="624" viewBox="0 0 1200 624">
+<rect x="1" y="1" width="1198" height="366" rx="14" fill="#151b23" stroke="#3d444d" stroke-width="1.2"/>
+<text x="28" y="38" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" font-weight="600" fill="#f0f6fc" text-anchor="start">ESP32-S3</text>
+<text x="124" y="38" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#9198a1" text-anchor="start">two Xtensa LX7 cores at 240 MHz, one chip</text>
+<rect x="28" y="62" width="470" height="280" rx="10" fill="#0d1117" stroke="#3d444d" stroke-width="1.2"/>
+<text x="52" y="98" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#f0f6fc" text-anchor="start">Core 0</text>
+<text x="120" y="98" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="400" fill="#9198a1" text-anchor="start">ESP-IDF 5.1 and FreeRTOS</text>
+<circle cx="56" cy="135.5" r="2.6" fill="#9198a1"/><text x="68" y="140" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#f0f6fc" text-anchor="start">owns the WiFi radio and the 802.11 MAC</text>
+<circle cx="56" cy="169.5" r="2.6" fill="#9198a1"/><text x="68" y="174" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#f0f6fc" text-anchor="start">NimBLE peripheral, Nordic UART service</text>
+<circle cx="56" cy="203.5" r="2.6" fill="#9198a1"/><text x="68" y="208" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#f0f6fc" text-anchor="start">writes the flash when Linux asks</text>
+<circle cx="56" cy="237.5" r="2.6" fill="#9198a1"/><text x="68" y="242" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#f0f6fc" text-anchor="start">boots first and starts Linux on core 1</text>
+<rect x="52" y="290" width="422" height="32" rx="6" fill="#3b2e0a" stroke="none" stroke-width="1.2"/>
+<text x="66" y="311" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="13" font-weight="500" fill="#d29922" text-anchor="start">network_adapter: esp-hosted firmware</text>
+<rect x="702" y="62" width="470" height="280" rx="10" fill="#0d1117" stroke="#4493f8" stroke-width="1.2"/>
+<text x="726" y="98" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#f0f6fc" text-anchor="start">Core 1</text>
+<text x="794" y="98" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="400" fill="#9198a1" text-anchor="start">Linux 7.2.4, NOMMU, runs from flash</text>
+<circle cx="730" cy="135.5" r="2.6" fill="#9198a1"/><text x="742" y="140" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#f0f6fc" text-anchor="start">esp32-ng driver: espsta0 and /dev/esp-ble</text>
+<circle cx="730" cy="169.5" r="2.6" fill="#9198a1"/><text x="742" y="174" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#f0f6fc" text-anchor="start">fork() by swapping memory banks</text>
+<circle cx="730" cy="203.5" r="2.6" fill="#9198a1"/><text x="742" y="208" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#f0f6fc" text-anchor="start">Bash, BusyBox, Dash, MicroPython, Make</text>
+<circle cx="730" cy="237.5" r="2.6" fill="#9198a1"/><text x="742" y="242" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#f0f6fc" text-anchor="start">dropbear or telnetd, cron, nano, curl</text>
+<rect x="726" y="290" width="422" height="32" rx="6" fill="#0c2d6b" stroke="none" stroke-width="1.2"/>
+<text x="740" y="311" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="13" font-weight="500" fill="#4493f8" text-anchor="start">xipImage + cramfs, executed in place</text>
+<line x1="510" y1="186" x2="690" y2="186" stroke="#9198a1" stroke-width="1.6"/>
+<path d="M 690 186 l -9 -5 v 10 z" fill="#9198a1"/>
+<path d="M 510 186 l 9 -5 v 10 z" fill="#9198a1"/>
+<text x="600" y="172" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#f0f6fc" text-anchor="middle">shared-memory IPC</text>
+<text x="600" y="212" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#9198a1" text-anchor="middle">WiFi frames, BLE bytes,</text>
+<text x="600" y="230" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#9198a1" text-anchor="middle">flash commands</text>
+<rect x="1" y="392" width="470" height="230" rx="14" fill="#0d1117" stroke="#3d444d" stroke-width="1.2"/>
+<text x="28" y="428" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#f0f6fc" text-anchor="start">Octal PSRAM</text>
+<text x="146" y="428" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="400" fill="#9198a1" text-anchor="start">8 MB, all of it Linux RAM</text>
+<rect x="28" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="41" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="54" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="67" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="80" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="93" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="106" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="119" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="132" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="145" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="158" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="171" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="184" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="197" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="210" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="223" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="236" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="249" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="262" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="275" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="288" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="301" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="314" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="327" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="340" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="353" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="366" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="379" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="392" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="405" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="418" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="431" y="448" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="28" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="41" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="54" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="67" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="80" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="93" y="461" width="11" height="11" rx="2" fill="#4493f8" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="106" y="461" width="11" height="11" rx="2" fill="#4493f8" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="119" y="461" width="11" height="11" rx="2" fill="#4493f8" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="132" y="461" width="11" height="11" rx="2" fill="#4493f8" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="145" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="158" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="171" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="184" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="197" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="210" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="223" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="236" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="249" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="262" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="275" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="288" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="301" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="314" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="327" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="340" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="353" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="366" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="379" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="392" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="405" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="418" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="431" y="461" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="28" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="41" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="54" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="67" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="80" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="93" y="474" width="11" height="11" rx="2" fill="#4493f8" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="106" y="474" width="11" height="11" rx="2" fill="#4493f8" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="119" y="474" width="11" height="11" rx="2" fill="#4493f8" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="132" y="474" width="11" height="11" rx="2" fill="#4493f8" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="145" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="158" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="171" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="184" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="197" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="210" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="223" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="236" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="249" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="262" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="275" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="288" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="301" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="314" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="327" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="340" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="353" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="366" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="379" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="392" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="405" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="418" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="431" y="474" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="28" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="41" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="54" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="67" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="80" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="93" y="487" width="11" height="11" rx="2" fill="#4493f8" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="106" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="119" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="132" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="145" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="158" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="171" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="184" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="197" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="210" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="223" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="236" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="249" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="262" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="275" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="288" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="301" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="314" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="327" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="340" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="353" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="366" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="379" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="392" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="405" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="418" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<rect x="431" y="487" width="11" height="11" rx="2" fill="#151b23" stroke="#3d444d" stroke-width="0.8"/>
+<text x="28" y="548" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#9198a1" text-anchor="start">128 pages of 64 KiB, mapped through the cache MMU. A context</text>
+<text x="28" y="568" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#9198a1" text-anchor="start">switch between forked processes swaps whole pages by</text>
+<text x="28" y="588" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#9198a1" text-anchor="start">rewriting MMU entries instead of copying them.</text>
+<rect x="497" y="392" width="702" height="230" rx="14" fill="#0d1117" stroke="#3d444d" stroke-width="1.2"/>
+<text x="524" y="428" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#f0f6fc" text-anchor="start">Flash</text>
+<text x="578" y="428" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="400" fill="#9198a1" text-anchor="start">16 MB</text>
+<rect x="524.0" y="450" width="27.6" height="60" rx="5" fill="#3b2e0a" stroke="#3d444d"/>
+<rect x="554.6" y="450" width="14.8" height="60" rx="5" fill="#0f3d1c" stroke="#3d444d"/>
+<rect x="572.4" y="450" width="160.1" height="60" rx="5" fill="#0c2d6b" stroke="#3d444d"/>
+<text x="582.4313725490197" y="475" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#f0f6fc" text-anchor="start">linux</text>
+<text x="582.4313725490197" y="497" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">4 MB</text>
+<text x="576.4313725490197" y="530" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">xipImage, XIP</text>
+<rect x="735.6" y="450" width="302.9" height="60" rx="5" fill="#0c2d6b" stroke="#3d444d"/>
+<text x="745.5686274509804" y="475" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#f0f6fc" text-anchor="start">rootfs</text>
+<text x="745.5686274509804" y="497" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">7.5 MB</text>
+<text x="739.5686274509804" y="530" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">cramfs, XIP</text>
+<rect x="1041.5" y="450" width="129.5" height="60" rx="5" fill="#0f3d1c" stroke="#3d444d"/>
+<text x="1051.450980392157" y="475" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#f0f6fc" text-anchor="start">home</text>
+<text x="1051.450980392157" y="497" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">3.25 MB</text>
+<text x="1045.450980392157" y="530" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">jffs2</text>
+<path d="M 537.8 512 V 548 H 640" fill="none" stroke="#9198a1" stroke-width="0.8"/>
+<path d="M 562.0 512 V 566 H 640" fill="none" stroke="#9198a1" stroke-width="0.8"/>
+<text x="646" y="552" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">firmware, 768 KB: ESP-IDF on core 0</text>
+<text x="646" y="570" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">etc, 448 KB: jffs2</text>
+<text x="524" y="596" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#9198a1" text-anchor="start">Kernel and root filesystem run straight from flash; /etc and /home</text>
+<text x="524" y="614" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#9198a1" text-anchor="start">are writable jffs2 and survive updates.</text>
+</svg>

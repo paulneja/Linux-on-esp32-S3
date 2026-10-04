@@ -5,7 +5,7 @@ index 6a86f988b1..755e1cbef3 100644
 @@ -1 +1,2 @@
 -ssh     stream  tcp     nowait  root    /usr/sbin/dropbear      dropbear -i -B
 +#ssh     stream  tcp     nowait  root    /usr/sbin/dropbear      dropbear -i -R -I 600
-+telnet  stream  tcp     nowait  root    /usr/sbin/telnetd       telnetd -i
++#telnet  stream  tcp     nowait  root    /usr/sbin/telnetd       telnetd -i
 diff --git a/board/espressif/esp32s3/rootfs_overlay/etc/wpa_supplicant.conf.example b/board/espressif/esp32s3/rootfs_overlay/etc/wpa_supplicant.conf.example
 index f49bd3d1a8..bc164ab136 100644
 --- a/board/espressif/esp32s3/rootfs_overlay/etc/wpa_supplicant.conf.example

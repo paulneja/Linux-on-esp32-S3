@@ -48,6 +48,12 @@ connect_and_report() {
 	else
 		wifi connect "$_ssid" >/dev/null 2>&1
 	fi
+	if [ $? = 2 ]; then
+		say ""
+		say "Wrong password for '$_ssid'."
+		say "Send anything to try again."
+		return
+	fi
 
 	_n=0
 	_ip=""
@@ -62,10 +68,14 @@ connect_and_report() {
 		say ""
 		say "Connected to '$_ssid'"
 		say "IP address: $_ip"
-		say "You can telnet to it from your LAN now."
+		case $(cat /etc/remote-login 2>/dev/null) in
+		ssh)    say "You can ssh root@$_ip from your LAN now." ;;
+		telnet) say "You can telnet to it from your LAN now." ;;
+		*)      say "Log in once on the serial or USB console to set a password and pick SSH or Telnet." ;;
+		esac
 	else
 		say ""
-		say "Joined '$_ssid' but got no IP (wrong password?)."
+		say "Joined '$_ssid' but got no IP yet."
 		say "Send anything to try again."
 	fi
 }

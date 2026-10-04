@@ -10,6 +10,7 @@
 #define INVALID UINT32_C(0x4000)
 #define PSRAM UINT32_C(0x8000)
 #define PAGE_MASK UINT32_C(0x3fff)
+#define RAM_PAGES 128u
 #define ALIAS_SLOT 0x100u
 #define ALIAS_ADDRESS UINT32_C(0x3d000000)
 #define CODE_ADDRESS UINT32_C(0x43000000)
@@ -20,4 +21,15 @@
 #define DATA_OFFSET CODE_CAPACITY
 #define PAYLOAD_DATA (ALIAS_ADDRESS + DATA_OFFSET)
 struct mmu_memory { void *pages[WINDOW_PAGES]; };
+static inline int ram_layout_ok(const uint32_t *map)
+{
+    uint8_t seen[RAM_PAGES] = {0};
+    unsigned i;
+    for (i = MMU_COUNT - RAM_PAGES; i < MMU_COUNT; ++i) {
+        uint32_t page = map[i] & PAGE_MASK;
+        if ((map[i] & ~PAGE_MASK) != PSRAM || page >= RAM_PAGES || seen[page]++)
+            return 0;
+    }
+    return 1;
+}
 #endif

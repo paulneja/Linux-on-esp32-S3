@@ -415,7 +415,7 @@ static void esp_cmd_work(struct work_struct *work)
 
 static int create_cmd_wq(struct esp_adapter *adapter)
 {
-	adapter->cmd_wq = alloc_workqueue("ESP_CMD_WORK_QUEUE", 0, 0);
+	adapter->cmd_wq = alloc_workqueue("ESP_CMD_WORK_QUEUE", WQ_PERCPU, 0);
 
 	RET_ON_FAIL(!adapter->cmd_wq);
 

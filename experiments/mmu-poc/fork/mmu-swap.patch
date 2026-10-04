@@ -1,0 +1,271 @@
+nommu-bank: exchange 64 KiB chunks through the ESP32-S3 MMU
+
+Linux RAM is PSRAM behind the cache MMU, mapped in 64 KiB pages. A chunk
+of a banked region and its shadow, both aligned, swap two table entries
+instead of 128 KiB of PSRAM traffic. The rest still goes word by word.
+fork_bank_mmu=0 turns it off; ForkMmuSwapped counts what it moved, and
+fork_bank_switch_max=0 clears ForkSwitchMax.
+
+diff --git a/fs/proc/meminfo.c b/fs/proc/meminfo.c
+index e5897be92ed873865d2ce1a89fa50d1af3f298d2..c9fb48c480ec91bbefb45d6e902ba1954b2adfee 100644
+--- a/fs/proc/meminfo.c
++++ b/fs/proc/meminfo.c
+@@ -66,6 +66,7 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
+ #ifdef CONFIG_XTENSA_NOMMU_FORK
+ 	show_val_kb(m, "ForkShadow:     ", atomic_long_read(&nommu_bank_shadow_pages));
+ 	show_val_kb(m, "ForkRecovered:  ", atomic_long_read(&nommu_bank_recovered_pages));
++	show_val_kb(m, "ForkMmuSwapped: ", atomic_long_read(&nommu_bank_mmu_pages));
+ 	/* Microseconds at the nominal 240 MHz: the worst and the most recent
+ 	 * time a context switch spent exchanging banked pages.
+ 	 */
+diff --git a/include/linux/nommu-bank.h b/include/linux/nommu-bank.h
+index ea7d1cbc78c9e06667f4a7abdae19477b2af56ca..5a9da112d529ee26aa9b17e19822b8374a5c56b5 100644
+--- a/include/linux/nommu-bank.h
++++ b/include/linux/nommu-bank.h
+@@ -4,6 +4,7 @@
+ #include <linux/atomic.h>
+ extern atomic_long_t nommu_bank_shadow_pages;
+ extern atomic_long_t nommu_bank_recovered_pages;
++extern atomic_long_t nommu_bank_mmu_pages;
+ extern unsigned long nommu_bank_switch_max_cycles;
+ extern unsigned long nommu_bank_switch_last_cycles;
+ struct mm_struct;
+diff --git a/mm/nommu-bank.inc b/mm/nommu-bank.inc
+index 9faa80cd56cc0bdfa95be576e85e4684b76108c9..c4f308e667934079e5e252db2f5a7168d6043aba 100644
+--- a/mm/nommu-bank.inc
++++ b/mm/nommu-bank.inc
+@@ -19,6 +19,9 @@ MODULE_PARM_DESC(fork_bank_max_bytes,
+ 		 "Largest private memory a fork may bank, in bytes (default 524288)");
+ #define NOMMU_BANK_MAX_BYTES (READ_ONCE(nommu_bank_max_bytes))
+ #define BANK_GFP (GFP_KERNEL | __GFP_NORETRY | __GFP_NOWARN)
++#define BANK_CHUNK		SZ_64K
++#define BANK_CHUNK_PAGES	(BANK_CHUNK >> PAGE_SHIFT)
++#define BANK_CHUNK_ORDER	ilog2(BANK_CHUNK_PAGES)
+ 
+ /*
+  * Shadow pages move between descriptors instead of being copied into a
+@@ -107,11 +110,12 @@ static void bank_report_broken(const char *where)
+ 
+ /* How long a context switch spends exchanging banked pages, in CPU cycles.
+  * Reported in /proc/meminfo as ForkSwitchMax, in microseconds at the nominal
+- * 240 MHz; write anything to /proc/sys/vm/fork_bank_reset_max to clear it
++ * 240 MHz; write 0 to the fork_bank_switch_max parameter to clear it
+  * before a measurement.
+  */
+ unsigned long nommu_bank_switch_max_cycles;
+ unsigned long nommu_bank_switch_last_cycles;
++module_param_named(fork_bank_switch_max, nommu_bank_switch_max_cycles, ulong, 0644);
+ 
+ /* A single-owner descriptor survives, but owns no backup pages. Keeping
+  * that descriptor stable matters when another mm exits while fork sleeps
+@@ -163,14 +167,31 @@ static int bank_alloc_pages(struct nommu_bank *bank)
+ {
+ 	unsigned int i;
+ 
+-	for (i = 0; i < bank->capacity; i++) {
+-		bank->pages[i] = (void *)__get_free_page(BANK_GFP);
+-		if (!bank->pages[i]) {
++	for (i = 0; i < bank->capacity; ) {
++		unsigned int n = 1, j;
++		void *p = NULL;
++
++		if (bank->capacity - i >= BANK_CHUNK_PAGES &&
++		    IS_ALIGNED(bank->region->vm_start + i * PAGE_SIZE, BANK_CHUNK)) {
++			struct page *page = alloc_pages(BANK_GFP, BANK_CHUNK_ORDER);
++
++			if (page) {
++				split_page(page, BANK_CHUNK_ORDER);
++				p = page_address(page);
++				n = BANK_CHUNK_PAGES;
++			}
++		}
++		if (!p)
++			p = (void *)__get_free_page(BANK_GFP);
++		if (!p) {
+ 			bank_release_pages(bank);
+ 			return -ENOMEM;
+ 		}
+-		bank->count++;
+-		atomic_long_inc(&nommu_bank_shadow_pages);
++		for (j = 0; j < n; j++)
++			bank->pages[i + j] = p + j * PAGE_SIZE;
++		bank->count += n;
++		atomic_long_add(n, &nommu_bank_shadow_pages);
++		i += n;
+ 	}
+ 	return 0;
+ }
+@@ -221,6 +242,145 @@ static void bank_swap_page(void *resident, void *shadow)
+ 	}
+ }
+ 
++atomic_long_t nommu_bank_mmu_pages = ATOMIC_LONG_INIT(0);
++
++#ifdef CONFIG_XTENSA_PLATFORM_ESP32
++#define S3_DCACHE_CTRL		0x600c4000UL
++#define S3_DCACHE_SYNC_CTRL	0x600c4028UL
++#define S3_DCACHE_SYNC_ADDR	0x600c402cUL
++#define S3_DCACHE_SYNC_SIZE	0x600c4030UL
++#define S3_DCACHE_AUTOLOAD	0x600c404cUL
++#define S3_MMU_TABLE		0x600c5000UL
++#define S3_SYNC_INVALIDATE	BIT(0)
++#define S3_SYNC_WRITEBACK	BIT(1)
++#define S3_SYNC_DONE		BIT(3)
++#define S3_MMU_KIND		(BIT(15) | BIT(14))
++#define S3_MMU_PSRAM		BIT(15)
++
++static bool nommu_bank_mmu = true;
++module_param_named(fork_bank_mmu, nommu_bank_mmu, bool, 0644);
++MODULE_PARM_DESC(fork_bank_mmu, "Exchange aligned 64 KiB chunks by remapping (default on)");
++
++static inline u32 s3_rd(unsigned long reg)
++{
++	mb();
++	return *(volatile u32 *)reg;
++}
++
++static inline void s3_wr(unsigned long reg, u32 val)
++{
++	mb();
++	*(volatile u32 *)reg = val;
++	mb();
++}
++
++static inline volatile u32 *s3_mmu_entry(unsigned long addr)
++{
++	return (volatile u32 *)S3_MMU_TABLE + ((addr & 0x1ffffff) >> 16);
++}
++
++static bool bank_mmu_psram(unsigned long addr)
++{
++	return addr >= 0x3c000000 && addr < 0x3e000000 &&
++	       (*s3_mmu_entry(addr) & S3_MMU_KIND) == S3_MMU_PSRAM;
++}
++
++/* Same register sequence as the ROM's Cache_*_Items. */
++static void s3_dcache_sync(u32 op, unsigned long addr, u32 lines)
++{
++	s3_wr(S3_DCACHE_SYNC_ADDR, addr);
++	s3_wr(S3_DCACHE_SYNC_SIZE, (s3_rd(S3_DCACHE_SYNC_SIZE) & 0xff800000) | lines);
++	s3_wr(S3_DCACHE_SYNC_CTRL, s3_rd(S3_DCACHE_SYNC_CTRL) | op);
++	while (!(s3_rd(S3_DCACHE_SYNC_CTRL) & S3_SYNC_DONE))
++		;
++}
++
++static u32 s3_autoload_suspend(void)
++{
++	u32 was = s3_rd(S3_DCACHE_AUTOLOAD) & BIT(2);
++
++	if (was) {
++		s3_wr(S3_DCACHE_AUTOLOAD, s3_rd(S3_DCACHE_AUTOLOAD) & ~BIT(2));
++		s3_wr(S3_DCACHE_AUTOLOAD, s3_rd(S3_DCACHE_AUTOLOAD) | BIT(9));
++	}
++	while (!(s3_rd(S3_DCACHE_AUTOLOAD) & BIT(3)))
++		;
++	s3_wr(S3_DCACHE_AUTOLOAD, s3_rd(S3_DCACHE_AUTOLOAD) & ~BIT(9));
++	return was;
++}
++
++static void s3_autoload_resume(u32 was)
++{
++	if (was)
++		s3_wr(S3_DCACHE_AUTOLOAD, s3_rd(S3_DCACHE_AUTOLOAD) | was);
++}
++
++static bool bank_mmu_chunk(void *resident, void **pages, unsigned int left)
++{
++	unsigned long r = (unsigned long)resident, s = (unsigned long)pages[0];
++	unsigned int j;
++
++	if (!READ_ONCE(nommu_bank_mmu) || left < BANK_CHUNK_PAGES ||
++	    !IS_ALIGNED(r, BANK_CHUNK) || !IS_ALIGNED(s, BANK_CHUNK))
++		return false;
++	for (j = 1; j < BANK_CHUNK_PAGES; j++)
++		if (pages[j] != (void *)(s + j * PAGE_SIZE))
++			return false;
++	return bank_mmu_psram(r) && bank_mmu_psram(s);
++}
++
++/*
++ * The cache is tagged by virtual address, so both windows are written back
++ * under the old mapping and invalidated after the swap. Nothing may touch
++ * them in between: interrupts off, and neither core 0 nor DMA reaches a
++ * banked page.
++ */
++static void bank_mmu_swap(void *resident, void *shadow)
++{
++	unsigned long r = (unsigned long)resident, s = (unsigned long)shadow;
++	u32 lines = BANK_CHUNK / (16 << ((s3_rd(S3_DCACHE_CTRL) >> 3) & 3));
++	volatile u32 *er = s3_mmu_entry(r), *es = s3_mmu_entry(s);
++	unsigned long flags;
++	u32 autoload, tmp;
++
++	local_irq_save(flags);
++	autoload = s3_autoload_suspend();
++	s3_dcache_sync(S3_SYNC_WRITEBACK, r, lines);
++	s3_dcache_sync(S3_SYNC_WRITEBACK, s, lines);
++	mb();
++	tmp = *er;
++	*er = *es;
++	*es = tmp;
++	mb();
++	s3_dcache_sync(S3_SYNC_INVALIDATE, r, lines);
++	s3_dcache_sync(S3_SYNC_INVALIDATE, s, lines);
++	s3_autoload_resume(autoload);
++	local_irq_restore(flags);
++	atomic_long_add(BANK_CHUNK_PAGES, &nommu_bank_mmu_pages);
++}
++#else
++#define bank_mmu_chunk(resident, pages, left) false
++#define bank_mmu_swap(resident, shadow) do { } while (0)
++#endif
++
++static void bank_exchange(struct nommu_bank *bank)
++{
++	unsigned long start = bank->region->vm_start;
++	unsigned int i = 0;
++
++	while (i < bank->count) {
++		void *resident = (void *)(start + i * PAGE_SIZE);
++
++		if (bank_mmu_chunk(resident, &bank->pages[i], bank->count - i)) {
++			bank_mmu_swap(resident, bank->pages[i]);
++			i += BANK_CHUNK_PAGES;
++		} else {
++			bank_swap_page(resident, bank->pages[i]);
++			i++;
++		}
++	}
++}
++
+ /* Whether the set may be handed from "from" to "to". Asked before anything
+  * is touched: this runs inside switch_mm with interrupts off, where there is
+  * no way to report a problem and no way to undo half a move. The receiver is
+@@ -269,7 +429,6 @@ void nommu_bank_switch(struct mm_struct *mm)
+ 	list_for_each_entry(bank, &mm->context.nommu_banks, link) {
+ 		struct vm_region *region = bank->region;
+ 		struct nommu_bank *out = region->bank_owner;
+-		unsigned int i;
+ 
+ 		if (out == bank)
+ 			continue;
+@@ -283,9 +442,7 @@ void nommu_bank_switch(struct mm_struct *mm)
+ 			 */
+ 			if (!bank_can_move(out, bank))
+ 				continue;
+-			for (i = 0; i < bank->count; i++)
+-				bank_swap_page((void *)(region->vm_start + i * PAGE_SIZE),
+-					       bank->pages[i]);
++			bank_exchange(bank);
+ 			bank_move_pages(out, bank);
+ 		} else {
+ 			/* Nobody owns what is resident: bank_detach() promotes an
+@@ -342,7 +499,7 @@ static void bank_detach(struct vm_area_struct *vma)
+ 		 * exclusion also covers the switch list and a concurrent clone.
+ 		 */
+ 		if (was_owner) {
+-			bank_copy(heir, false);
++			bank_exchange(heir);
+ 			heir->region->bank_owner = heir;
+ 			atomic_long_add(heir->count, &nommu_bank_recovered_pages);
+ 			bank_release_pages(heir);

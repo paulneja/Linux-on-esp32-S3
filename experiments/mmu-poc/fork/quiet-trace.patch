@@ -1,3 +1,5 @@
+diff --git a/mm/nommu-bank.inc b/mm/nommu-bank.inc
+index 553ea25ef4cb9..186f045bd4cc5 100644
 --- a/mm/nommu-bank.inc
 +++ b/mm/nommu-bank.inc
 @@ -1,6 +1,12 @@
@@ -13,9 +15,9 @@
  #define NOMMU_BANK_MAX_BYTES (512UL * 1024)
  #define BANK_GFP (GFP_KERNEL | __GFP_NORETRY | __GFP_NOWARN)
  
-@@ -258,8 +264,9 @@
+@@ -258,8 +264,9 @@ checked_users:
  		mm->map_count++;
- 		vma_iter_store(&dst_iter, dst);
+ 		vma_iter_store_new(&dst_iter, dst);
  	}
 -	pr_info("fork-bank: parent=%d private=%lu pages=%lu\n",
 -		current->pid, bytes, bytes >> PAGE_SHIFT);

@@ -333,18 +333,19 @@ static int esp_cfg80211_set_default_key(struct wiphy *wiphy,
 	return cmd_set_default_key(priv, key_index);
 }
 
-static int esp_cfg80211_del_key(struct wiphy *wiphy, struct net_device *dev,
+static int esp_cfg80211_del_key(struct wiphy *wiphy, struct wireless_dev *wdev,
 				INT_LINK_ID u8 key_index, bool pairwise,
 				const u8 *mac_addr)
 {
 	return 0;
 }
 
-static int esp_cfg80211_add_key(struct wiphy *wiphy, struct net_device *dev,
+static int esp_cfg80211_add_key(struct wiphy *wiphy, struct wireless_dev *wdev,
 				INT_LINK_ID u8 key_index, bool pairwise,
 				const u8 *mac_addr, struct key_params *params)
 {
 	struct esp_wifi_device *priv = NULL;
+	struct net_device *dev = wdev ? wdev->netdev : NULL;
 
 	if (!wiphy || !dev || !params) {
 		esp_err("%u invalid params\n", __LINE__);
@@ -359,7 +360,7 @@ static int esp_cfg80211_add_key(struct wiphy *wiphy, struct net_device *dev,
 	esp_dbg("\n");
 
 	if (params->key_len == 0) {
-		return esp_cfg80211_del_key(wiphy, dev, ZERO_LINK_ID key_index, pairwise, mac_addr);
+		return esp_cfg80211_del_key(wiphy, wdev, ZERO_LINK_ID key_index, pairwise, mac_addr);
 	}
 	return cmd_add_key(priv, key_index, pairwise, mac_addr, params);
 }
@@ -512,7 +513,7 @@ static int esp_pwr_to_dbm(int power)
 }
 
 static int esp_cfg80211_set_tx_power(struct wiphy *wiphy,
-				     struct wireless_dev *wdev,
+				     struct wireless_dev *wdev, int radio_idx,
 				     enum nl80211_tx_power_setting type, int mbm)
 {
 	struct esp_device *esp_dev = wiphy_priv(wiphy);
@@ -555,12 +556,14 @@ static int esp_cfg80211_set_tx_power(struct wiphy *wiphy,
 	return cmd_set_tx_power(priv, priv->tx_pwr);
 }
 
-static int esp_cfg80211_get_station(struct wiphy *wiphy, struct net_device *ndev,
+static int esp_cfg80211_get_station(struct wiphy *wiphy, struct wireless_dev *wdev,
 				    const u8 *mac, struct station_info *sinfo)
 {
 	struct esp_wifi_device *priv = NULL;
 
-	priv = netdev_priv(ndev);
+	if (!wdev || !wdev->netdev)
+		return -ENOENT;
+	priv = netdev_priv(wdev->netdev);
 
 	if (!mac || !priv) {
 		esp_err("mac=%p priv=%p\n", mac, priv);
@@ -589,7 +592,8 @@ static int esp_cfg80211_get_station(struct wiphy *wiphy, struct net_device *ndev
 }
 
 static int esp_cfg80211_get_tx_power(struct wiphy *wiphy,
-				     struct wireless_dev *wdev,
+				     struct wireless_dev *wdev, int radio_idx,
+				     unsigned int link_id,
 				     int *dbm)
 {
 	struct esp_wifi_device *priv = NULL;

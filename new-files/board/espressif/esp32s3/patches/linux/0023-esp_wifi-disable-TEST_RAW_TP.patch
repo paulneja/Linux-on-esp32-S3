@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Thu, 1 Feb 2024 04:32:55 -0800
+Subject: [PATCH 23/61] esp_wifi: disable TEST_RAW_TP
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit 6e611c836117c1ffd537fb7f627ecb857a115407)
+---
+ drivers/net/wireless/espressif/esp32-ng/esp_stats.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_stats.h b/drivers/net/wireless/espressif/esp32-ng/esp_stats.h
+index a508d2c6c7de2..3ca91a8b71115 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_stats.h
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_stats.h
+@@ -10,7 +10,7 @@
+ 
+ #include "esp.h"
+ 
+-#define TEST_RAW_TP 1
++#define TEST_RAW_TP 0
+ 
+ #if TEST_RAW_TP
+ 
+-- 
+2.55.0
+

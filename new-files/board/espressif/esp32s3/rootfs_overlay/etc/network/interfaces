@@ -9,6 +9,7 @@ iface espsta0 inet dhcp
 	# router lists it as unnamed and every instruction in the README
 	# starts with "find the IP address first".
 	hostname esp32s3
-	post-up wpa_supplicant -i espsta0 -c /etc/wpa_supplicant.conf -B
+	post-up : > /run/wpa_supplicant.log
+	post-up wpa_supplicant -i espsta0 -c /etc/wpa_supplicant.conf -B -f /run/wpa_supplicant.log
 	# killall sulks when theres nothing to kill
 	pre-down killall -q wpa_supplicant || true

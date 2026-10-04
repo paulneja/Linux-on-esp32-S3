@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD */
+/*
+ * Espressif Systems Wireless LAN device driver
+ *
+ * SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD
+ *
+ */
 
 #include "utils.h"
 #include "esp_stats.h"
@@ -168,6 +173,7 @@ void test_raw_tp_cleanup(void)
 
 void update_test_raw_tp_rx_stats(u16 len)
 {
+	/* if traffic dir is esp to host, increment stats */
 	if (!test_raw_tp__host_to_esp)
 		test_raw_tp_len += len;
 }

@@ -77,7 +77,8 @@ rootfs_base() {
     "$base/buildroot/utils/config" --file "$br/.config" --undefine PRIMARY_SITE --set-str PRIMARY_SITE 'https://sources.buildroot.net'
     grep -qx 'BR2_PRIMARY_SITE="https://sources.buildroot.net"' "$br/.config"
     "$base/buildroot/utils/config" --file "$br/.config" --set-str WGET 'wget -nd -t 3 --timeout=20'
-    test "$(git ls-remote https://github.com/jcmvbkbc/linux-xtensa.git "refs/tags/$LINUX_KERNEL_TAG^{}" | cut -f1)" = "$LINUX_KERNEL_REV"
+    grep -qx "sha256  $LINUX_TARBALL_SHA256  linux-$LINUX_VERSION.tar.xz" "$repo/new-files/board/espressif/esp32s3/package-patches/linux/linux.hash"
+    grep -qx "BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE=\"$LINUX_VERSION\"" "$br/.config"
     make -C "$base/buildroot" O="$br" BR2_JLEVEL="$JOBS"
     test -s "$br/images/rootfs.cramfs"
 }

@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Sun, 18 Feb 2024 17:23:39 -0800
+Subject: [PATCH 31/61] esp_wifi: fix skb leaks in PACKET_TYPE_EAPOL processing
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit e21c33aa85cdee597b0a8ada17dba7fd9d4e6e5f)
+---
+ drivers/net/wireless/espressif/esp32-ng/main.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/net/wireless/espressif/esp32-ng/main.c b/drivers/net/wireless/espressif/esp32-ng/main.c
+index a89e5a138519d..c2325e63fd65a 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/main.c
++++ b/drivers/net/wireless/espressif/esp32-ng/main.c
+@@ -712,6 +712,7 @@ static void process_rx_packet(struct esp_adapter *adapter, struct sk_buff *skb)
+ 			eap_skb = alloc_skb(skb->len + ETH_HLEN, GFP_KERNEL);
+ 			if (!eap_skb) {
+ 				esp_info("%u memory alloc failed\n", __LINE__);
++				dev_kfree_skb_any(skb);
+ 				return;
+ 			}
+ 			eap_skb->dev = priv->ndev;
+@@ -727,6 +728,7 @@ static void process_rx_packet(struct esp_adapter *adapter, struct sk_buff *skb)
+ 
+ 			skb_put_data(eap_skb, skb->data, skb->len);
+ 			eap_skb->protocol = eth_type_trans(eap_skb, eap_skb->dev);
++			dev_kfree_skb_any(skb);
+ 
+ 			netif_rx(eap_skb);
+ 
+-- 
+2.55.0
+

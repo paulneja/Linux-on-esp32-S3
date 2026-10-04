@@ -932,7 +932,7 @@ static int init_adapter(struct esp_adapter *adapter, const struct esp_if_ops *if
 	skb_queue_head_init(&adapter->events_skb_q);
 
 	/* Prepare interface RX work */
-	adapter->if_rx_workqueue = alloc_workqueue("ESP_IF_RX_WORK_QUEUE", 0, 0);
+	adapter->if_rx_workqueue = alloc_workqueue("ESP_IF_RX_WORK_QUEUE", WQ_PERCPU, 0);
 
 	if (!adapter->if_rx_workqueue) {
 		deinit_adapter(adapter);
@@ -941,7 +941,7 @@ static int init_adapter(struct esp_adapter *adapter, const struct esp_if_ops *if
 
 	INIT_WORK(&adapter->if_rx_work, esp_if_rx_work);
 
-	adapter->events_wq = alloc_workqueue("ESP_EVENTS_WORKQUEUE", WQ_HIGHPRI, 0);
+	adapter->events_wq = alloc_workqueue("ESP_EVENTS_WORKQUEUE", WQ_HIGHPRI | WQ_PERCPU, 0);
 
 	if (!adapter->events_wq) {
 		deinit_adapter(adapter);
@@ -950,7 +950,7 @@ static int init_adapter(struct esp_adapter *adapter, const struct esp_if_ops *if
 
 	INIT_WORK(&adapter->events_work, esp_events_work);
 
-	adapter->mac_filter_wq = alloc_workqueue("MAC_FILTER", 0, 0);
+	adapter->mac_filter_wq = alloc_workqueue("MAC_FILTER", WQ_PERCPU, 0);
 	if (!adapter->mac_filter_wq) {
 		deinit_adapter(adapter);
 		return -ENOMEM;

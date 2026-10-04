@@ -10,25 +10,25 @@ are retained as required. The GPLv3 applies to the combined work; each
 component below remains additionally available under its own original license.
 
 ================================================================================
-1. Linux kernel (Xtensa port for the ESP32)
-   https://github.com/jcmvbkbc/linux-xtensa  (branch xtensa-6.11-esp32-tag)
+1. Linux kernel 7.2.4, with the ESP32-S3 port
+   https://kernel.org (linux-7.2.4.tar.xz, checksum in build/sources.lock)
    Copyright (c) Linus Torvalds and contributors.
    Licensed under the GNU General Public License version 2 (with the Linux
    syscall note). See https://kernel.org and the COPYING file of the kernel
    tree for the full text.
 
-   This repository ships patches against that tree, not the tree itself:
-
-     new-files/board/espressif/esp32s3/patches/linux/
-       02-kernel-esp32s3-rsa-crypto.patch   — drivers/crypto/esp32s3_rsa.c
-
-   Both are derivative works of the Linux kernel and are therefore licensed
-   under GPL-2.0-or-later, as declared in their SPDX headers. The prebuilt
-   images/xipImage is a compiled Linux kernel; the corresponding source is the
-   upstream tree above plus these patches.
+   The build applies the patches in
+   new-files/board/espressif/esp32s3/patches/linux/ to that tarball. Most of
+   the ESP32 platform and drivers in them were written by Max Filippov
+   (https://github.com/jcmvbkbc) for linux-xtensa; the rest are this
+   project's. The fork backend is in experiments/mmu-poc/fork/. The same
+   kernel, as a git tree with every commit and its author, is published at
+   https://github.com/paulneja/linux-esp32s3. All of it is a derivative work
+   of the Linux kernel under GPL-2.0, as declared in the SPDX headers. The
+   prebuilt images/xipImage is compiled from that source.
 
    kernel-driver-esp32-ng/ is a readable reference copy of the in-tree
-   esp32-ng driver (pristine upstream plus the BLE pipe; STA only — same
+   esp32-ng driver (pristine upstream plus the BLE pipe; STA only, same
    GPL-2.0 terms as the kernel).
 
 ================================================================================
@@ -67,6 +67,8 @@ component below remains additionally available under its own original license.
 
      BusyBox        — GPLv2          https://busybox.net
      uClibc-ng      — LGPLv2.1       https://uclibc-ng.org
+                      (the heap grows 64 KiB at a time on NOMMU; patch in
+                      new-files/toolchain-patches/uClibc-ng/)
      Dropbear SSH   — MIT-style      https://matt.ucc.asn.au/dropbear/
      wpa_supplicant — BSD-3-Clause   https://w1.fi/wpa_supplicant/
      curl / libcurl — curl license   https://curl.se

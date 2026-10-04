@@ -4,7 +4,7 @@
 struct mmu_window { struct mmu_memory *active; unsigned stage; int fatal; uint32_t cycles; };
 
 static uint32_t page_entry(void *page)
-{ return page ? PSRAM | (((uintptr_t)page - RAM_START) / PAGE_SIZE) : INVALID; }
+{ return page ? REG32(MMU_TABLE + 4 * (((uintptr_t)page - DATA_BASE) / PAGE_SIZE)) : INVALID; }
 
 static int instruction_invalidate(unsigned page)
 {

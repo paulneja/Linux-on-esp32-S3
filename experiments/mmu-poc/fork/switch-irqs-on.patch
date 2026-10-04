@@ -1,0 +1,128 @@
+nommu-bank: exchange the banks with interrupts on
+
+switch_mm() runs with the runqueue locked and interrupts off; over 512 KiB
+the exchange held the tick, the UART and the IPC off for 21.5 ms. It now
+happens in finish_arch_post_lock_switch(), in the incoming task, with
+interrupts back on. Same CPU time, ForkSwitchMax still reports it.
+
+diff --git a/arch/xtensa/include/asm/nommu_context.h b/arch/xtensa/include/asm/nommu_context.h
+index 7ee5efe9dcf74..0ec7f5c92173b 100644
+--- a/arch/xtensa/include/asm/nommu_context.h
++++ b/arch/xtensa/include/asm/nommu_context.h
+@@ -8,7 +8,9 @@ static inline void init_kio(void)
+ }
+ 
+ #ifdef CONFIG_XTENSA_NOMMU_FORK
++#include <linux/irqflags.h>
+ #include <linux/mm_types.h>
++#include <asm/current.h>
+ #include <linux/nommu-bank.h>
+ #include <asm-generic/mm_hooks.h>
+ #define init_new_context init_new_context
+@@ -20,7 +22,21 @@ static inline int init_new_context(struct task_struct *tsk, struct mm_struct *mm
+ static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
+ 			     struct task_struct *tsk)
+ {
+-	nommu_bank_switch(next);
++	if (irqs_disabled())
++		next->context.bank_switch_pending = 1;
++	else
++		nommu_bank_switch(next);
++}
++
++#define finish_arch_post_lock_switch finish_arch_post_lock_switch
++static inline void finish_arch_post_lock_switch(void)
++{
++	struct mm_struct *mm = current->mm;
++
++	if (mm && mm->context.bank_switch_pending) {
++		mm->context.bank_switch_pending = 0;
++		nommu_bank_switch(mm);
++	}
+ }
+ #include <asm-generic/mmu_context.h>
+ #else
+diff --git a/fs/proc/meminfo.c b/fs/proc/meminfo.c
+index d6d816252a965..e5897be92ed87 100644
+--- a/fs/proc/meminfo.c
++++ b/fs/proc/meminfo.c
+@@ -67,7 +67,7 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
+ 	show_val_kb(m, "ForkShadow:     ", atomic_long_read(&nommu_bank_shadow_pages));
+ 	show_val_kb(m, "ForkRecovered:  ", atomic_long_read(&nommu_bank_recovered_pages));
+ 	/* Microseconds at the nominal 240 MHz: the worst and the most recent
+-	 * time a context switch held interrupts off to exchange banked pages.
++	 * time a context switch spent exchanging banked pages.
+ 	 */
+ 	seq_printf(m, "ForkSwitchMax:  %8lu us\n",
+ 		   nommu_bank_switch_max_cycles / 240);
+diff --git a/include/asm-generic/mmu.h b/include/asm-generic/mmu.h
+index eb47a51b60c75..13472d0834b76 100644
+--- a/include/asm-generic/mmu.h
++++ b/include/asm-generic/mmu.h
+@@ -14,6 +14,7 @@ typedef struct {
+ 	unsigned long		end_brk;
+ #ifdef CONFIG_XTENSA_NOMMU_FORK
+ 	struct list_head nommu_banks;
++	unsigned int bank_switch_pending;
+ #endif
+ 
+ #ifdef CONFIG_BINFMT_ELF_FDPIC
+diff --git a/mm/nommu-bank.inc b/mm/nommu-bank.inc
+index ceb7c90b7045a..9faa80cd56cc0 100644
+--- a/mm/nommu-bank.inc
++++ b/mm/nommu-bank.inc
+@@ -9,9 +9,9 @@ module_param_named(fork_bank_trace, nommu_bank_trace, bool, 0600);
+ MODULE_PARM_DESC(fork_bank_trace, "Log successful NOMMU bank forks (default off)");
+ /*
+  * Ceiling on the private memory one fork may bank. It also bounds the time
+- * nommu_bank_switch() spends with interrupts disabled, because a switch
+- * exchanges every banked page: budget roughly this many bytes of PSRAM
+- * traffic per context switch between two banked processes.
++ * nommu_bank_switch() takes, because a switch exchanges every banked page:
++ * budget roughly this many bytes of PSRAM traffic per context switch between
++ * two banked processes.
+  */
+ static unsigned long nommu_bank_max_bytes = 512UL * 1024;
+ module_param_named(fork_bank_max_bytes, nommu_bank_max_bytes, ulong, 0644);
+@@ -105,13 +105,10 @@ static void bank_report_broken(const char *where)
+ 	dump_stack();
+ }
+ 
+-/* How long a context switch spends with interrupts disabled, in CPU cycles.
+- * This is the number that decides how large fork_bank_max_bytes may safely
+- * be: a switch between two banked processes exchanges every banked page with
+- * interrupts off, so the timer tick, the shmem IPC interrupt and the UART all
+- * wait for it. Reported in /proc/meminfo as ForkSwitchMax, in microseconds at
+- * the nominal 240 MHz; write anything to /proc/sys/vm/fork_bank_reset_max to
+- * clear it before a measurement.
++/* How long a context switch spends exchanging banked pages, in CPU cycles.
++ * Reported in /proc/meminfo as ForkSwitchMax, in microseconds at the nominal
++ * 240 MHz; write anything to /proc/sys/vm/fork_bank_reset_max to clear it
++ * before a measurement.
+  */
+ unsigned long nommu_bank_switch_max_cycles;
+ unsigned long nommu_bank_switch_last_cycles;
+@@ -262,12 +259,12 @@ static void bank_move_pages(struct nommu_bank *to, struct nommu_bank *from)
+ void nommu_bank_switch(struct mm_struct *mm)
+ {
+ 	struct nommu_bank *bank;
+-	unsigned long flags, started;
++	unsigned long started;
+ 
+ 	/* init_mm has no user banks and a zero-initialized context. */
+ 	if (!mm->context.nommu_banks.next)
+ 		return;
+-	local_irq_save(flags);
++	preempt_disable();
+ 	started = get_ccount();
+ 	list_for_each_entry(bank, &mm->context.nommu_banks, link) {
+ 		struct vm_region *region = bank->region;
+@@ -315,7 +312,7 @@ void nommu_bank_switch(struct mm_struct *mm)
+ 	nommu_bank_switch_last_cycles = get_ccount() - started;
+ 	if (nommu_bank_switch_last_cycles > nommu_bank_switch_max_cycles)
+ 		nommu_bank_switch_max_cycles = nommu_bank_switch_last_cycles;
+-	local_irq_restore(flags);
++	preempt_enable();
+ }
+ 
+ static void bank_detach(struct vm_area_struct *vma)

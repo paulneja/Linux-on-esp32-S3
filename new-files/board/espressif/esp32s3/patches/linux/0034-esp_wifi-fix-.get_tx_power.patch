@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Sat, 13 Sep 2025 01:45:43 -0700
+Subject: [PATCH 34/61] esp_wifi: fix .get_tx_power()
+
+Fix get_tx_power prototype on rebase to v6.16
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit 20661179b39e2b821c13d8605060b22b763b554f)
+---
+ drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c b/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c
+index 4975c77123952..98ebc3d6e1ce7 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c
++++ b/drivers/net/wireless/espressif/esp32-ng/esp_cfg80211.c
+@@ -575,6 +575,7 @@ static int esp_cfg80211_get_station(struct wiphy *wiphy, struct net_device *ndev
+ 
+ static int esp_cfg80211_get_tx_power(struct wiphy *wiphy,
+ 				     struct wireless_dev *wdev,
++				     unsigned int link_id,
+ 				     int *dbm)
+ {
+ 	struct esp_wifi_device *priv = NULL;
+-- 
+2.55.0
+

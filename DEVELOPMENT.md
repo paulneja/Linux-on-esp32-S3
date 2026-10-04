@@ -113,9 +113,8 @@ There are two build paths, and they are not interchangeable.
 runtime and the expanded userspace, and packages a complete 16 MiB image with
 checksums. Use it to produce the system this branch describes.
 
-`make-images.sh` below is the older path. It packages the base system only,
-which is what the committed `images/` and the GitHub Actions workflow still
-build. It does not include fork, Bash or the added programs.
+`make-images.sh` below is the older path. It packages the base system only
+and does not include fork, Bash or the added programs.
 
 The base build driver compiles everything but stops there — it does not gather
 the results or package them. `make-images.sh` closes that gap:
@@ -250,8 +249,12 @@ that matters.
 **Verified against fresh independent clones** (not against an already-patched
 tree): the buildroot patch applies to a fresh `jcmvbkbc/buildroot
 -b xtensa-2024.08-fdpic`, the firmware patch to a fresh `jcmvbkbc/esp-hosted
--b ipc-5.1.1`, and all three kernel patches to a fresh `jcmvbkbc/linux-xtensa
--b xtensa-6.11-esp32-tag`.
+-b ipc-5.1.1`, and the kernel series to the kernel.org `linux-7.2.4.tar.xz`
+(CI checks that one on every push). The series comes from
+[linux-esp32s3](https://github.com/paulneja/linux-esp32s3): work on the kernel
+there and export it with `git format-patch --zero-commit upstream-v7.2.4..X`,
+where X is the last commit before the `nommu`/`nommu-bank` ones. Those fork
+commits ship as `experiments/mmu-poc/fork/*.patch` instead.
 
 ### The kernel driver: a special case, already solved more robustly
 

@@ -4,6 +4,122 @@ Releases carry one flashable `.bin` for a 16 MB / 8 MB-PSRAM ESP32-S3. Full
 notes and the binaries are on the
 [releases page](https://github.com/paulneja/Linux-on-esp32-S3/releases).
 
+## 0.9.0 — Linux 7.2.4, and fork through the cache MMU (2026-10-04)
+
+The kernel moves from 6.11 to 7.2.4 and becomes this project's own tree,
+fork() gets several times cheaper, and a freshly flashed board has nothing
+listening on the network until someone logs in. Measured on the images in
+`images/`: **36 board tests, 0 failed**, ten more beyond the suite (10/10),
+**20 factory boots, 20 clean**, 100 `ip link` down/up cycles and 25
+`wifi connect` in a row, and SSH with a pty. WiFi setup over Bluetooth from a
+phone and an update from 0.8.1 that kept the password and the WiFi were
+checked on an earlier build of the same kernel. MemAvailable is 4204 kB at
+the start of the suite, against 3708 kB in 0.8.1.
+
+### Kernel
+
+- **Linux 7.2.4 instead of 6.11.** 6.11 stopped getting fixes at the end of
+  2024. The kernel now comes from the kernel.org tarball, with its checksum
+  pinned in `build/sources.lock`, plus a series of 61 patches kept in this
+  repository, instead of a branch of linux-xtensa. The port brings back the
+  ESP32 serial drivers that 7.1 removed upstream, follows the API changes in
+  GPIO, cfg80211, the interrupt matrix probe and workqueues, and keeps
+  `PREEMPT_NONE`, which 7.x hides unless the platform asks for it. The same
+  tree, with every commit and its author, is published as
+  [linux-esp32s3](https://github.com/paulneja/linux-esp32s3); this release
+  ships its tag `v7.2.4-esp32s3.2`.
+- **Fourteen commits nobody here used left the series:** TRAX, the classic
+  ESP32 variant, USB, the BOX-3 and KC705 boards, fbtft and perf.
+- **A smaller kernel.** Netfilter, IPv6, perf events, suspend, MMC and FAT,
+  the block layer, socket diagnostics, policy routing, rfkill and cramfs on
+  block devices are off; nothing on the board used them. BusyBox drops IPv6
+  as well, and the printk buffer is 16 KiB, twice what a boot writes.
+  `xipImage` goes from 2,982,472 to 2,419,056 bytes. `test-board.py` reads
+  the flash through `/dev/mtdN` now that there is no block layer.
+- The timer showed 0 interrupts in `/proc/interrupts` on 7.x, because it was
+  not marked per-CPU; it is now. `panic_print=0x20` became
+  `panic_console_replay`, since 7.x warns about the old name at every boot.
+
+### fork()
+
+- **The bank exchange ran with interrupts off.** Swapping up to 512 KiB took
+  21.5 ms with the tick, the UART and the IPC to core 0 all held off. It now
+  happens in `finish_arch_post_lock_switch()`, after the runqueue lock is
+  dropped and with interrupts on. With three busy forked shells the timer
+  delivers 101 interrupts a second at HZ=100.
+- **Aligned 64 KiB chunks are exchanged through the cache MMU.** Linux's RAM
+  is PSRAM mapped in 64 KiB pages, so instead of copying a chunk and its
+  shadow word by word, the switch writes both back from the cache, swaps
+  their two MMU entries and invalidates them: about 80 µs per chunk against
+  3.8 ms. `fork_bank_mmu=0` turns it off, `ForkMmuSwapped` in
+  `/proc/meminfo` counts what it moved, and writing 0 to the
+  `fork_bank_switch_max` parameter clears `ForkSwitchMax`.
+- **malloc grows the heap 64 KiB at a time.** uClibc extended it 4 KiB at a
+  time, and each extension was a separate mapping too small for the MMU, so
+  most of a shell's heap still went word by word. With a local uClibc-ng
+  patch, applied through crosstool-NG, the heap comes in aligned 64 KiB
+  mappings, and malloc falls back to the exact size when no 64 KiB block is
+  free. On the release image, with `fork_bank_mmu` off and then on, the
+  worst context switch with three busy Bash processes goes from 29.3 ms to
+  5.2 to 5.6 ms, and with four forked MicroPython processes holding 192 KiB
+  each, from 33.5 ms to 9.3 to 9.6 ms. The data of shared libraries
+  is still copied, since those mappings are a few KiB each. The larger heap
+  steps cost about 276 kB of MemAvailable at boot.
+- **The 512 KiB limit counts only what a switch copies.** With the heap in
+  64 KiB steps, a Bash that had been running for a while held 556 to 576 KiB
+  of private memory and could no longer fork (`Cannot allocate memory`).
+  `fork_bank_max_bytes` (512 KiB) now applies to the copied part only, and
+  `fork_bank_max_total` (2 MiB) caps the whole bank. On the release image a
+  Bash holding 1.3 MB of private memory forks three children; the slowest
+  switch is then 17 ms, because more of that memory is copied.
+- `mmu-run` and `mmu-probe` expected the PSRAM pages in order in the cache
+  MMU table. After a switch through the MMU they are in any order, so
+  `mmu-run` refused to start; both now accept any permutation and read the
+  real entry of each page.
+
+### WiFi
+
+- **A wrong password left the board unable to scan (#20).** `wpa_supplicant`
+  kept retrying the network, and while it authenticates the firmware refuses
+  a scan (`cmd_scan_request ... ret: -1`) or the kernel answers busy. It
+  recovered only when the retry backoff left a gap, minutes later. Killing
+  `wpa_supplicant` made the next scan work at once, which is what confirmed
+  it on the board. `wpa_supplicant` now logs to `/run/wpa_supplicant.log`;
+  `wifi connect` reads it, says "Wrong password" (exit status 2) and stops the
+  retries, `wifi status` says the last attempt failed, and a scan stops a
+  wrong-password loop before it starts. Over Bluetooth the phone is told the
+  password was wrong instead of "got no IP". On the board: a wrong password
+  is reported in 19 s and the scan right after it works, five times in a row;
+  the right one gets an address in 13 s.
+
+### Logging in
+
+- **Nothing listens on the network until the first login.** Telnet used to
+  be on from the factory with `changeme123`, and a board joined to WiFi over
+  Bluetooth was reachable with it before anyone had touched the console. The
+  first root login now asks for a new password, refuses the factory one, and
+  then asks whether to turn on SSH, Telnet or neither. Only that one is
+  turned on. `remote-login ssh|telnet|off|status` switches later;
+  `ssh-server on` can still add SSH next to Telnet by hand. An update keeps
+  the choice, and a board coming from 0.8.1 is asked once.
+- **The board tests leave the factory login behind.** The harness answers
+  the first login itself, so after `./run.sh` the board used to keep the
+  test password with SSH on. `build/factory-login.py` now runs after the
+  suite and puts back `changeme123`, nothing listening and the first-login
+  questions.
+- **`passwd` stores SHA-256 hashes.** BusyBox defaulted to MD5 crypt, so the
+  factory password was SHA-256 but every password set on the board,
+  including the one the first login asks for, was MD5. The first login also
+  recognizes the factory password in any of the formats, which it did not
+  when the tests put it back with MD5.
+
+### Not fixed yet
+
+- Boot to login averages 15.1 s over 20 factory boots, against 14.2 s on
+  0.8.1. Where the extra second goes is not tracked down yet.
+- Once in about 60 runs, the `hush-login` test sat at its prompt until the
+  timeout. It has not come back since, and the cause is not known.
+
 ## 0.8.1 — WiFi that survives being poked, and a USB console (2026-09-23)
 
 A fixes release. Everything below was found by a user issue or by pushing the
