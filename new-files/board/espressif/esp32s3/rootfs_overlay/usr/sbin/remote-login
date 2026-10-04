@@ -21,7 +21,9 @@ use() {
 	tmp=$CONF.new
 	sed -e 's/^ssh\([ 	]\)/#ssh\1/' -e 's/^telnet\([ 	]\)/#telnet\1/' \
 		"$CONF" > "$tmp" 2>/dev/null || : > "$tmp"
-	if grep -q "^#$1[ 	]" "$tmp"; then
+	if [ "$1" = off ]; then
+		:
+	elif grep -q "^#$1[ 	]" "$tmp"; then
 		sed -i "s/^#$1\([ 	]\)/$1\1/" "$tmp"
 	else
 		printf '%s\n' "$line" >> "$tmp"
@@ -44,6 +46,10 @@ telnet)
 	use telnet
 	echo "Telnet on, SSH off. Telnet sends the password in clear text."
 	;;
+off|none)
+	use off
+	echo "SSH and Telnet off. Log in on the console."
+	;;
 status|"")
 	on=
 	grep -q '^ssh[ 	]' "$CONF" && on="$on ssh"
@@ -51,7 +57,7 @@ status|"")
 	echo "Listening:${on:- nothing}"
 	;;
 *)
-	echo "usage: remote-login {ssh|telnet|status}" >&2
+	echo "usage: remote-login {ssh|telnet|off|status}" >&2
 	exit 1
 	;;
 esac

@@ -37,21 +37,32 @@ if factory_password; then
 	done
 fi
 
+echo
+echo "Which way in over the network? Only the one you pick is turned on."
 if [ -x "${FIRST_LOGIN_DROPBEAR:-/usr/sbin/dropbear}" ]; then
-	echo
-	echo "Which way in over the network? Only the one you pick is turned on."
 	echo "  1) SSH     encrypted, slow to connect on this board"
 	echo "  2) Telnet  clear text, only on a LAN you trust"
+	echo "  3) None    console only"
 	while :; do
-		printf "Pick 1 or 2: "
+		printf "Pick 1, 2 or 3: "
 		read -r answer || exit 1
 		case $answer in
 		1) remote-login ssh; break ;;
 		2) remote-login telnet; break ;;
+		3) remote-login off; break ;;
 		esac
 	done
 else
-	remote-login telnet
+	echo "  1) Telnet  clear text, only on a LAN you trust"
+	echo "  2) None    console only"
+	while :; do
+		printf "Pick 1 or 2: "
+		read -r answer || exit 1
+		case $answer in
+		1) remote-login telnet; break ;;
+		2) remote-login off; break ;;
+		esac
+	done
 fi
-echo "Change it later with: remote-login ssh|telnet"
+echo "Change it later with: remote-login ssh|telnet|off"
 echo
