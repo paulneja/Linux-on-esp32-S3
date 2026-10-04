@@ -105,6 +105,11 @@ MemAvailable is 4272 kB at the start of the suite, against 3708 kB in 0.8.1.
   test password with SSH on. `build/factory-login.py` now runs after the
   suite and puts back `changeme123`, nothing listening and the first-login
   questions.
+- **`passwd` stores SHA-256 hashes.** BusyBox defaulted to MD5 crypt, so the
+  factory password was SHA-256 but every password set on the board,
+  including the one the first login asks for, was MD5. The first login also
+  recognizes the factory password in any of the formats, which it did not
+  when the tests put it back with MD5.
 
 ### Not fixed yet
 
