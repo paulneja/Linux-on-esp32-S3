@@ -88,7 +88,7 @@ class Console:
                 if b"Password:" not in data:
                     return
                 self.port.write(attempt.encode() + b"\n")
-                data, _ = self.until(rb"(?:# |Login incorrect|New password: ?|Pick 1 or 2: ?)")
+                data, _ = self.until(rb"(?:# |Login incorrect|New password: ?|Pick 1[^:\n]*: ?)")
                 if b"Login incorrect" in data:
                     self.until(rb"login: ?$", 15)
                     continue
@@ -105,11 +105,11 @@ class Console:
         while True:
             if re.search(rb"(?:New|Retype) password: ?$", data):
                 self.port.write(password.encode() + b"\n")
-            elif re.search(rb"Pick 1 or 2: ?$", data):
+            elif re.search(rb"Pick 1[^:\n]*: ?$", data):
                 self.port.write(b"1\n")
             elif re.search(rb"(?:~ )?# $", data):
                 return
-            data, _ = self.until(rb"(?:New password: ?|Retype password: ?|Pick 1 or 2: ?|(?:~ )?# )$", 60)
+            data, _ = self.until(rb"(?:New password: ?|Retype password: ?|Pick 1[^:\n]*: ?|(?:~ )?# )$", 60)
 
     def command(self, text, seconds=30, check=True):
         token = "MMU_DONE_" + secrets.token_hex(12)

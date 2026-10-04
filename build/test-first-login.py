@@ -89,12 +89,22 @@ echo "root:$h:19000:0:99999:7:::" > {self.etc}/shadow''')
         r = self.run_first_login('')
         self.assertEqual((r.returncode, r.stdout), (0, ''))
 
-    def test_no_ssh_server_means_telnet_without_asking(self):
-        self.set_hash('$5$salt$MINE')
-        r = self.run_first_login('', dropbear=False)
+    def test_none_leaves_only_the_console(self):
+        r = self.run_first_login('hunter22\nhunter22\n3\n')
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertNotIn('Pick 1 or 2', r.stdout)
+        self.assertEqual((self.etc / 'remote-login').read_text(), 'off\n')
+        self.assertEqual(self.listening(), ['www'])
+
+    def test_no_ssh_server_offers_telnet_or_none(self):
+        self.set_hash('$5$salt$MINE')
+        r = self.run_first_login('1\n', dropbear=False)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn(') SSH', r.stdout)
         self.assertEqual(self.listening(), ['telnet', 'www'])
+        (self.etc / 'remote-login').unlink()
+        r = self.run_first_login('2\n', dropbear=False)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.listening(), ['www'])
 
     def test_switching_later_keeps_only_one(self):
         self.set_hash('$5$salt$MINE')
@@ -106,6 +116,10 @@ echo "root:$h:19000:0:99999:7:::" > {self.etc}/shadow''')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.listening(), ['telnet', 'www'])
         self.assertEqual((self.etc / 'remote-login').read_text(), 'telnet\n')
+        r = subprocess.run(['sh', str(SBIN / 'remote-login'), 'off'],
+                           capture_output=True, text=True, env=env, timeout=20)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.listening(), ['www'])
 
 
 if __name__ == '__main__':
