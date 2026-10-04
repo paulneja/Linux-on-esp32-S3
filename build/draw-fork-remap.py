@@ -42,7 +42,6 @@ def text(x, y, s, size, fill, weight=400, anchor='start', mono=False):
 
 
 def move_keyframes(name, t1, t2, dy):
-    """Down (or up) during switch 1, back during switch 2."""
     return (f'@keyframes {name} {{ 0%, {pct(t1)} {{ transform: translateY(0) }} '
             f'{pct(t1 + 0.42)}, {pct(t2)} {{ transform: translateY({dy}px) }} '
             f'{pct(t2 + 0.42)}, 100% {{ transform: translateY(0) }} }}')
@@ -79,7 +78,6 @@ def draw(c):
     out.append(f'<rect x="1" y="1" width="{W - 2}" height="{H - 2}" rx="14" fill="{c["surface"]}" stroke="{c["line"]}"/>')
     xs = slot_x()
 
-    # copying every page
     out.append(f'<rect x="24" y="24" width="{W - 48}" height="220" rx="10" fill="{c["card"]}" stroke="{c["line"]}"/>')
     out.append(text(48, 58, 'Copying every page', 16, c['fg'], 600))
     out += status('c', 58, 2.0 + 0.5 * len(SLOTS), c, css)
@@ -97,7 +95,6 @@ def draw(c):
                        f'style="animation: {name} {CYCLE}s ease-in-out infinite"/>')
     out.append(text(48, 226, 'Every page of both processes crosses the memory bus on every switch.', 13, c['muted']))
 
-    # through the cache MMU
     top = 268
     out.append(f'<rect x="24" y="{top}" width="{W - 48}" height="250" rx="10" fill="{c["card"]}" stroke="{c["line"]}"/>')
     out.append(text(48, top + 34, 'Aligned 64 KiB pages through the cache MMU', 16, c['fg'], 600))
