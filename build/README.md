@@ -67,7 +67,7 @@ user files. Back up a used board privately before any full-image test.
 Never publish raw board backups: they may contain credentials and user data.
 
 Point `flash.sh` at this directory with `--images`; without it the script
-reads `images/`, which holds the 0.8.1 release. Its default combined-image
+reads `images/`, which holds the 0.9 release. Its default combined-image
 write replaces `/etc` and `/home` even without `--erase`. `--parts` preserves
 `/home` but still replaces `/etc`, including accounts, password hashes and
 network configuration. `--parts --erase` resets both, writing `home.jffs2`
@@ -218,8 +218,7 @@ The exact 16 MiB image SHA256 is
 See the [verification record](verification/2026-09-06.md) and its archived
 machine-readable results for scope and limitations. This result applies to
 that artifact, not automatically to future code changes or other profiles.
-The committed `images/` are the 0.8.1 release: `image-1` of the Image
-workflow run on the release commit, two container builds that differ only
-in `/etc/shadow`. Unlike 0.8, the board suite, the extra tests and the soak
-under `verification/2026-09-23-*` ran on those exact bytes
-([record](verification/2026-09-23-release.md)).
+The committed `images/` are the 0.9 release, a clean `./run.sh` build of
+the release branch. The board suite, the extra tests, the soak, WiFi and SSH
+under `verification/2026-10-04-*` ran on those exact bytes
+([record](verification/2026-10-04-release.md)).

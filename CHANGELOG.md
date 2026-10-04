@@ -4,16 +4,17 @@ Releases carry one flashable `.bin` for a 16 MB / 8 MB-PSRAM ESP32-S3. Full
 notes and the binaries are on the
 [releases page](https://github.com/paulneja/Linux-on-esp32-S3/releases).
 
-## 0.9.0 — unreleased
+## 0.9.0 — Linux 7.2.4, and fork through the cache MMU (2026-10-04)
 
 The kernel moves from 6.11 to 7.2.4 and becomes this project's own tree,
 fork() gets several times cheaper, and a freshly flashed board has nothing
-listening on the network until someone logs in. Measured on a clean build of
-the release commit: **36 board tests, 0 failed**, ten more beyond the suite
-(10/10), **20 factory boots, 20 clean**, 100 `ip link` down/up cycles and 25
-`wifi connect` in a row, SSH with a pty, WiFi setup over Bluetooth from a
-phone, and an update from 0.8.1 that kept the password and the WiFi.
-MemAvailable is 4272 kB at the start of the suite, against 3708 kB in 0.8.1.
+listening on the network until someone logs in. Measured on the images in
+`images/`: **36 board tests, 0 failed**, ten more beyond the suite (10/10),
+**20 factory boots, 20 clean**, 100 `ip link` down/up cycles and 25
+`wifi connect` in a row, and SSH with a pty. WiFi setup over Bluetooth from a
+phone and an update from 0.8.1 that kept the password and the WiFi were
+checked on an earlier build of the same kernel. MemAvailable is 4204 kB at
+the start of the suite, against 3708 kB in 0.8.1.
 
 ### Kernel
 
@@ -25,7 +26,8 @@ MemAvailable is 4272 kB at the start of the suite, against 3708 kB in 0.8.1.
   GPIO, cfg80211, the interrupt matrix probe and workqueues, and keeps
   `PREEMPT_NONE`, which 7.x hides unless the platform asks for it. The same
   tree, with every commit and its author, is published as
-  [linux-esp32s3](https://github.com/paulneja/linux-esp32s3).
+  [linux-esp32s3](https://github.com/paulneja/linux-esp32s3); this release
+  ships its tag `v7.2.4-esp32s3.2`.
 - **Fourteen commits nobody here used left the series:** TRAX, the classic
   ESP32 variant, USB, the BOX-3 and KC705 boards, fbtft and perf.
 - **A smaller kernel.** Netfilter, IPv6, perf events, suspend, MMC and FAT,
@@ -58,9 +60,9 @@ MemAvailable is 4272 kB at the start of the suite, against 3708 kB in 0.8.1.
   patch, applied through crosstool-NG, the heap comes in aligned 64 KiB
   mappings, and malloc falls back to the exact size when no 64 KiB block is
   free. On the release image, with `fork_bank_mmu` off and then on, the
-  worst context switch with three busy Bash processes goes from 34.6 ms to
+  worst context switch with three busy Bash processes goes from 29.3 ms to
   5.2 to 5.6 ms, and with four forked MicroPython processes holding 192 KiB
-  each, from 34.0 ms to 9.7 to 10.3 ms. The data of shared libraries
+  each, from 33.5 ms to 9.3 to 9.6 ms. The data of shared libraries
   is still copied, since those mappings are a few KiB each. The larger heap
   steps cost about 276 kB of MemAvailable at boot.
 - **The 512 KiB limit counts only what a switch copies.** With the heap in
@@ -69,7 +71,7 @@ MemAvailable is 4272 kB at the start of the suite, against 3708 kB in 0.8.1.
   `fork_bank_max_bytes` (512 KiB) now applies to the copied part only, and
   `fork_bank_max_total` (2 MiB) caps the whole bank. On the release image a
   Bash holding 1.3 MB of private memory forks three children; the slowest
-  switch is then 16 ms, because more of that memory is copied.
+  switch is then 17 ms, because more of that memory is copied.
 - `mmu-run` and `mmu-probe` expected the PSRAM pages in order in the cache
   MMU table. After a switch through the MMU they are in any order, so
   `mmu-run` refused to start; both now accept any permutation and read the
@@ -113,7 +115,7 @@ MemAvailable is 4272 kB at the start of the suite, against 3708 kB in 0.8.1.
 
 ### Not fixed yet
 
-- Boot to login averages 15.3 s over 20 factory boots, against 14.2 s on
+- Boot to login averages 15.1 s over 20 factory boots, against 14.2 s on
   0.8.1. Where the extra second goes is not tracked down yet.
 - Once in about 60 runs, the `hush-login` test sat at its prompt until the
   timeout. It has not come back since, and the cause is not known.

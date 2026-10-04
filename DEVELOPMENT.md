@@ -113,9 +113,8 @@ There are two build paths, and they are not interchangeable.
 runtime and the expanded userspace, and packages a complete 16 MiB image with
 checksums. Use it to produce the system this branch describes.
 
-`make-images.sh` below is the older path. It packages the base system only,
-which is what the committed `images/` and the GitHub Actions workflow still
-build. It does not include fork, Bash or the added programs.
+`make-images.sh` below is the older path. It packages the base system only
+and does not include fork, Bash or the added programs.
 
 The base build driver compiles everything but stops there — it does not gather
 the results or package them. `make-images.sh` closes that gap:

@@ -39,9 +39,9 @@ computer attached to keep it running.
   <tr><td>Cores</td><td>core 0 runs Espressif's firmware for WiFi and BLE, core 1 runs Linux</td></tr>
   <tr><td>Kernel</td><td>Linux 7.2.4, NOMMU, executed in place from flash (<a href="https://github.com/paulneja/linux-esp32s3">source</a>)</td></tr>
   <tr><td>Userland</td><td>Bash 5.2, BusyBox, Dash, MicroPython, GNU Make, dropbear, curl, nano, cron</td></tr>
-  <tr><td>Boot to login</td><td>about 15.3 s, the average of 20 cold boots</td></tr>
-  <tr><td>Free RAM</td><td>4272 kB of 7852 kB when the test suite starts</td></tr>
-  <tr><td>fork()</td><td>supported through swapped memory banks; the slowest switches measured take 5.2 to 10.3 ms</td></tr>
+  <tr><td>Boot to login</td><td>about 15.1 s, the average of 20 cold boots</td></tr>
+  <tr><td>Free RAM</td><td>4204 kB of 7852 kB when the test suite starts</td></tr>
+  <tr><td>fork()</td><td>supported through swapped memory banks; the slowest switches measured take 5.0 to 9.6 ms</td></tr>
   <tr><td>Network</td><td>WiFi client, SSH or Telnet, setup from a phone over Bluetooth</td></tr>
   <tr><td>Tested</td><td>36 board tests, 10 extra checks, 20 cold boots, WiFi and SSH, on every release</td></tr>
 </table>
@@ -54,12 +54,12 @@ the kernel.org release plus 61 patches.
 
 fork() got a lot cheaper. Most of the work now goes through the chip's cache
 MMU, and the slowest switch in the same test dropped from 22 ms, with
-interrupts off, to 5.5 ms.
+interrupts off, to 5.0 ms.
 
 A freshly flashed board doesn't listen on the network anymore until you log
 in on the console, change the password and pick SSH or Telnet. Also fixed #20,
 where a wrong WiFi password broke the next scan. The kernel is 563 KB smaller
-and there's about 560 kB more free RAM than in 0.8.1.
+and there's about 500 kB more free RAM than in 0.8.1.
 
 ## Hardware
 
@@ -221,7 +221,7 @@ on the board for each release:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/releases-dark.svg">
-  <img alt="Three charts by release. Free RAM when the suite starts: 1340 kB on 0.7, 3744 on 0.8, 3708 on 0.8.1, 4272 on 0.9. Kernel image: 3.43 MB, 2.98, 2.98, 2.42. Slowest switch between forked processes: 21.9 ms on 0.8 and 21.8 ms on 0.8.1 with interrupts off, 5.5 ms on 0.9" src="docs/releases.svg">
+  <img alt="Three charts by release. Free RAM when the suite starts: 1340 kB on 0.7, 3744 on 0.8, 3708 on 0.8.1, 4204 on 0.9. Kernel image: 3.43 MB, 2.98, 2.98, 2.42. Slowest switch between forked processes: 21.9 ms on 0.8 and 21.8 ms on 0.8.1 with interrupts off, 5.0 ms on 0.9" src="docs/releases.svg">
 </picture>
 
 The same 0.9 image under load, with the MMU path turned off and on
@@ -229,7 +229,7 @@ The same 0.9 image under load, with the MMU path turned off and on
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/fork-switch-dark.svg">
-  <img alt="Slowest context switch on the 0.9 image while each load runs. Three busy Bash children: 34.6 ms copying every page, 5.6 ms through the MMU. Four MicroPython processes with 192 KiB each: 34.0 ms copying, 10.3 ms through the MMU" src="docs/fork-switch.svg">
+  <img alt="Slowest context switch on the 0.9 image while each load runs. Three busy Bash children: 29.3 ms copying every page, 5.6 ms through the MMU. Four MicroPython processes with 192 KiB each: 33.5 ms copying, 9.6 ms through the MMU" src="docs/fork-switch.svg">
 </picture>
 
 All of it read off the board. The records are in
@@ -243,7 +243,7 @@ records name the image hash they ran on.
 
 | Release | Board suite | Extra checks | Cold boots | Also checked | Record |
 |---|---|---|---|---|---|
-| 0.9 | 36 of 36 | 10 of 10 | 20 of 20 | WiFi stress, SSH with a pty, BLE from a phone, update from 0.8.1, fork with the MMU on and off | [results](build/verification/2026-10-03-results.json), [soak](build/verification/2026-10-03-soak.json) |
+| 0.9 | 36 of 36 | 10 of 10 | 20 of 20 | WiFi stress, SSH with a pty, fork with the MMU on and off; BLE from a phone and the update from 0.8.1 on an earlier build | [release](build/verification/2026-10-04-release.md) |
 | 0.8.1 | 36 of 36 | 10 of 10 | 20 of 20 | the WiFi stress that used to panic the kernel, SSH with a pty | [release](build/verification/2026-09-23-release.md) |
 | 0.8 | 36 of 36 | 10 of 10 | 10 of 10 | 55 clean boots on the flash cache fix, against 10 faults in 17 before it | [release](build/verification/2026-09-14-release.md) |
 
