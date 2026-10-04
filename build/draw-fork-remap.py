@@ -2,14 +2,14 @@
 """Draw docs/fork-remap*.svg, the animated comparison of the two switch paths.
 
 The animation is not to scale. The figures in the caption come from
-build/verification/2026-10-03-fork-mmu.json.
+build/verification/2026-10-04-fork-mmu.json.
 """
 import json
 from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
 docs = root / 'docs'
-bash = json.loads((root / 'build/verification/2026-10-03-fork-mmu.json').read_text())['bash']
+bash = json.loads((root / 'build/verification/2026-10-04-fork-mmu.json').read_text())['bash']
 FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
 MONO = "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace"
 LIGHT = dict(fg='#1f2328', muted='#59636e', line='#d1d9e0', surface='#f6f8fa', card='#ffffff',

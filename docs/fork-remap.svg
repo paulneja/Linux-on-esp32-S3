@@ -101,6 +101,6 @@
 <text x="70" y="552" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">process A</text>
 <rect x="168" y="540" width="14" height="14" rx="3" fill="#bc4c00"/>
 <text x="190" y="552" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">process B</text>
-<text x="48" y="588" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Slowest switch measured with three busy Bash children on the 0.9 image: 34.6 ms copying, 5.6 ms through the MMU.</text>
+<text x="48" y="588" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Slowest switch measured with three busy Bash children on the 0.9 image: 29.3 ms copying, 5.6 ms through the MMU.</text>
 <text x="48" y="610" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#59636e" text-anchor="start">The animation shows the order of the work, not its duration.</text>
 </svg>

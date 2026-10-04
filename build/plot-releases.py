@@ -32,11 +32,11 @@ def switch_ms(name):
 
 releases = ['0.7', '0.8', '0.8.1', '0.9']
 free_kb = [1340, available('2026-09-14-final-results.json'),
-           available('2026-09-23-results.json'), available('2026-10-03-results.json')]
+           available('2026-09-23-results.json'), available('2026-10-04-results.json')]
 kernel_mb = [3432520 / 1e6, 2982440 / 1e6, 2982472 / 1e6, 2419056 / 1e6]
 switch = [None, switch_ms('2026-09-14-extra-tests.json'),
-          switch_ms('2026-09-23-extra-tests.json'), switch_ms('2026-10-03-extra-tests.json')]
-mmu = results('2026-10-03-fork-mmu.json')
+          switch_ms('2026-09-23-extra-tests.json'), switch_ms('2026-10-04-extra-tests.json')]
+mmu = results('2026-10-04-fork-mmu.json')
 
 
 def style(dark):

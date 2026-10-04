@@ -506,8 +506,8 @@ z
    <g id="patch_6">
     <path d="M 295.391597 263.7 
 L 337.080689 263.7 
-L 337.080689 59.515488 
-L 295.391597 59.515488 
+L 337.080689 62.765616 
+L 295.391597 62.765616 
 z
 " clip-path="url(#pa84b2dcb71)" style="fill: #58a6ff"/>
    </g>
@@ -549,12 +549,12 @@ L 350.534896 263.7
     </g>
    </g>
    <g id="text_15">
-    <!-- 4272 -->
-    <g style="fill: #d0d4d9" transform="translate(304.783643 54.485619) scale(0.09 -0.09)">
+    <!-- 4204 -->
+    <g style="fill: #d0d4d9" transform="translate(304.783643 57.735747) scale(0.09 -0.09)">
      <use xlink:href="#DejaVuSans-17"/>
      <use xlink:href="#DejaVuSans-15" transform="translate(63.625 0)"/>
-     <use xlink:href="#DejaVuSans-1a" transform="translate(127.25 0)"/>
-     <use xlink:href="#DejaVuSans-15" transform="translate(190.875 0)"/>
+     <use xlink:href="#DejaVuSans-13" transform="translate(127.25 0)"/>
+     <use xlink:href="#DejaVuSans-17" transform="translate(190.875 0)"/>
     </g>
    </g>
    <g id="text_16">
@@ -1527,8 +1527,8 @@ z
    <g id="patch_19">
     <path d="M 997.708038 263.7 
 L 1055.745793 263.7 
-L 1055.745793 211.344262 
-L 997.708038 211.344262 
+L 1055.745793 216.162098 
+L 997.708038 216.162098 
 z
 " clip-path="url(#p35cb35d364)" style="fill: #58a6ff"/>
    </g>
@@ -1567,11 +1567,11 @@ L 1069.2 263.7
     </g>
    </g>
    <g id="text_48">
-    <!-- 5.5 ms -->
-    <g style="fill: #d0d4d9" transform="translate(1011.412853 205.358472) scale(0.09 -0.09)">
+    <!-- 5.0 ms -->
+    <g style="fill: #d0d4d9" transform="translate(1011.412853 210.176309) scale(0.09 -0.09)">
      <use xlink:href="#DejaVuSans-18"/>
      <use xlink:href="#DejaVuSans-11" transform="translate(63.625 0)"/>
-     <use xlink:href="#DejaVuSans-18" transform="translate(95.40625 0)"/>
+     <use xlink:href="#DejaVuSans-13" transform="translate(95.40625 0)"/>
      <use xlink:href="#DejaVuSans-3" transform="translate(159.03125 0)"/>
      <use xlink:href="#DejaVuSans-50" transform="translate(190.8125 0)"/>
      <use xlink:href="#DejaVuSans-56" transform="translate(288.21875 0)"/>
