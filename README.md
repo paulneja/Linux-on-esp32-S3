@@ -41,7 +41,7 @@ computer attached to keep it running.
   <tr><td>Userland</td><td>Bash 5.2, BusyBox, Dash, MicroPython, GNU Make, dropbear, curl, nano, cron</td></tr>
   <tr><td>Boot to login</td><td>about 15.3 s, the average of 20 cold boots</td></tr>
   <tr><td>Free RAM</td><td>4272 kB of 7852 kB when the test suite starts</td></tr>
-  <tr><td>fork()</td><td>real, through swapped memory banks; the slowest switches measured take 5.2 to 10.3 ms</td></tr>
+  <tr><td>fork()</td><td>supported through swapped memory banks; the slowest switches measured take 5.2 to 10.3 ms</td></tr>
   <tr><td>Network</td><td>WiFi client, SSH or Telnet, setup from a phone over Bluetooth</td></tr>
   <tr><td>Tested</td><td>36 board tests, 10 extra checks, 20 cold boots, WiFi and SSH, on every release</td></tr>
 </table>
@@ -224,14 +224,17 @@ on the board for each release:
   <img alt="Three charts by release. Free RAM when the suite starts: 1340 kB on 0.7, 3744 on 0.8, 3708 on 0.8.1, 4272 on 0.9. Kernel image: 3.43 MB, 2.98, 2.98, 2.42. Slowest switch between forked processes: 21.9 ms on 0.8 and 21.8 ms on 0.8.1 with interrupts off, 5.5 ms on 0.9" src="docs/releases.svg">
 </picture>
 
-All of it read off the board. The records are in
-[`build/verification/`](build/verification/), and
-[`build/plot-releases.py`](build/plot-releases.py) draws the charts from them.
+The same 0.9 image under load, with the MMU path turned off and on
+(`fork_bank_mmu=0` and `1`):
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/fork-switch-dark.svg">
   <img alt="Slowest context switch on the 0.9 image while each load runs. Three busy Bash children: 34.6 ms copying every page, 5.6 ms through the MMU. Four MicroPython processes with 192 KiB each: 34.0 ms copying, 10.3 ms through the MMU" src="docs/fork-switch.svg">
 </picture>
+
+All of it read off the board. The records are in
+[`build/verification/`](build/verification/), and
+[`build/plot-releases.py`](build/plot-releases.py) draws the charts from them.
 
 ### Tested on the board
 
