@@ -18,6 +18,23 @@ notes and the binaries are on the
   stack. A `sh` with a 30 KiB variable and one subshell brought the 0.9
   kernel down on its second try; with the patch, 35 runs with 30, 60 and
   120 KiB passed, and MemAvailable after boot did not move.
+- **SSH and Telnet ports, and how SSH lets you in.** `remote-login port
+  ssh|telnet N` moves either one, `remote-login auth password|both|key`
+  picks what SSH accepts, and `remote-login status` shows all of it. The
+  settings are kept in `/etc/remote-login.conf`, which can be edited by hand
+  and applied with `remote-login apply`, and they survive an update with the
+  rest of the configuration. Key-only is dropbear's own `-s`; password-only
+  needed a small dropbear patch, `-n`, since dropbear has no switch to turn
+  public keys off. `ssh-server on|off` now goes through the same settings.
+- **`web-server port N`** moves the web page off port 80. The server's line
+  in inetd.conf is found by its program now, not by the port number.
+- **More tests.** On the host: `remote-login`, `ssh-server` and
+  `web-server`; the saved clock, the NTP hook, BLE provisioning, the USB
+  console login and `use-shell`; CI runs these and the `bootlog`, bash vfork
+  and soak classifier tests that existed but were not run. On the board:
+  `build/test-network-services.py` checks the ports and all three SSH modes
+  from the host, and the extra tests re-execute a subshell with 30 KiB of
+  arguments.
 
 ## 0.9.0 — Linux 7.2.4, and fork through the cache MMU (2026-10-04)
 
