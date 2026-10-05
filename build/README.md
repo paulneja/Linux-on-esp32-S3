@@ -92,7 +92,11 @@ rebuilding that path; it is not the pipeline that produces the released image.
 Run the host-only regression tests with `python3 build/test-*.py` -- flash,
 shell fallback, keepconfig, kernel config, bash's vfork patch, `bootlog`, the
 `wifi` script, the first login, `remote-login`/`ssh-server`/`web-server`, the
-clock, NTP, BLE and USB console services, and the soak runner's classifier. They use temporary images, a
+clock, NTP, BLE and USB console services, and the soak runner's classifier.
+The board runs its scripts under BusyBox hush, not bash: `build/host-hush.sh`
+builds the image's hush for the host, and `BOARD_SH=<that path>` runs the
+script tests under it. hush exits a `set -e` script when a `while read` loop
+ends, which bash and dash do not. They use temporary images, a
 simulated esptool and stub shells, never a serial device. `test-wifi-script.py`
 also refuses one shell shape outright: a heredoc inside a `( subshell )`, which
 the image's busybox ash cannot finish although every host shell can.
