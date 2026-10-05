@@ -152,52 +152,6 @@ rootfs_base() {
     cd "$driver"
     ./apply-local-changes.sh buildroot
     make -C "$base/buildroot" O="$br" "${PROFILE}_defconfig"
-        case "$N8_PROFILE" in
-        server)
-            echo "N8 userspace profile: server (Dropbear SSH/SCP)"
-            "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_DROPBEAR
-            "$base/buildroot/utils/config" --file "$br/.config" --set-str PACKAGE_DROPBEAR_LOCALOPTIONS_FILE "board/espressif/esp32s3/dropbear-localoptions.h"
-            "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_MBEDTLS
-            "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_LIBCURL
-            "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_LIBCURL_CURL
-            "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_LIBCURL_MBEDTLS
-            ;;
-        client)
-            echo "N8 userspace profile: client (curl + HTTP/HTTPS only)"
-            "$base/buildroot/utils/config" --file "$br/.config" \
-                --set-str PACKAGE_BUSYBOX_CONFIG "board/espressif/esp32s3/busybox-8m-client.config"
-            "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_DROPBEAR
-            "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_IW
-            "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_MBEDTLS
-            "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_LIBCURL
-            "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_LIBCURL_CURL
-            "$base/buildroot/utils/config" --file "$br/.config" --enable PACKAGE_LIBCURL_MBEDTLS
-            "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_LIBCURL_PROXY_SUPPORT
-            "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_LIBCURL_COOKIES_SUPPORT
-            "$base/buildroot/utils/config" --file "$br/.config" --disable PACKAGE_LIBCURL_EXTRA_PROTOCOLS_FEATURES
-
-            cat >> "$base/buildroot/package/mbedtls/mbedtls.mk" <<'EOF'
-
-# N8 client profile: replace the default Mbed TLS configuration with
-# the reduced HTTPS client-only configuration.
-define MBEDTLS_USE_N8_CLIENT_CONFIG
-	cp $(TOPDIR)/board/espressif/esp32s3/mbedtls-8m-client.h \
-		$(@D)/include/mbedtls/config.h
-endef
-MBEDTLS_PRE_CONFIGURE_HOOKS += MBEDTLS_USE_N8_CLIENT_CONFIG
-EOF
-
-            cat >> "$base/buildroot/package/libcurl/libcurl.mk" <<'EOF'
-
-# N8 client profile: disable protocols not covered by
-# BR2_PACKAGE_LIBCURL_EXTRA_PROTOCOLS_FEATURES.
-LIBCURL_CONF_OPTS += \
-	--disable-file \
-	--disable-ftp \
-	--disable-mqtt
-EOF
-            ;;
-    esac
     if [ -d /cache/ccache ]; then
         "$base/buildroot/utils/config" --file "$br/.config" --enable CCACHE
     fi
@@ -271,7 +225,18 @@ userspace() {
     bash "$exp/programs/build-process-tools.sh"
     bash "$exp/programs/make-image.sh"
     bash "$exp/programs/compact-image.sh"
-    python3 "$exp/programs/image-profiles.py" build --profile all --output "$work/artifacts/rootfs.cramfs"
+    case "$TARGET" in
+        esp32s3_8m|xiao_esp32s3_8m|xiao_esp32s3_8m_sd)
+            USERSPACE_PROFILE=base
+            ;;
+        *)
+            USERSPACE_PROFILE=all
+            ;;
+    esac
+
+    python3 "$exp/programs/image-profiles.py" build \
+        --profile "$USERSPACE_PROFILE" \
+        --output "$work/artifacts/rootfs.cramfs"
     python3 "$exp/programs/test-cron-image.py" "$work/artifacts/rootfs.cramfs"
     python3 "$exp/programs/test-process-tools.py"
     python3 "$exp/programs/test-strip-sections.py"
