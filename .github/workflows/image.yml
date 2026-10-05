@@ -169,6 +169,13 @@ jobs:
       - name: Clock, NTP, BLE, USB console and use-shell tests
         run: python3 build/test-services.py
 
+      - name: The board scripts again, under BusyBox hush
+        run: |
+          sh=$(bash build/host-hush.sh "$RUNNER_TEMP/host-hush" | tail -n 1)
+          for t in first-login remote-login services bootlog keepconfig; do
+            BOARD_SH="$sh" python3 "build/test-$t.py"
+          done
+
   build:
     name: Full image ${{ matrix.run }}
     needs: host-tests
