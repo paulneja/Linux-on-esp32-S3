@@ -4,6 +4,21 @@ Releases carry one flashable `.bin` for a 16 MB / 8 MB-PSRAM ESP32-S3. Full
 notes and the binaries are on the
 [releases page](https://github.com/paulneja/Linux-on-esp32-S3/releases).
 
+## Unreleased
+
+- **A kernel crash when logging in over SSH from kitty (#22).** On NOMMU the
+  kernel copies a new program's arguments and environment to the top of its
+  stack, and the FDPIC loader sized that stack only by what the program
+  declares: 16 KiB for BusyBox, 32 KiB for the rest. kitty's `ssh` kitten
+  runs a large bootstrap script through `sh`, and each hush subshell
+  re-executes itself with every shell variable as an argument, so the copy
+  ran past the bottom of the stack and over kernel memory. The crash then
+  showed up later and somewhere else: a VMA tree when a process exited, or
+  jffs2's node lists. Kernel patch 62 adds the size of the arguments to the
+  stack. A `sh` with a 30 KiB variable and one subshell brought the 0.9
+  kernel down on its second try; with the patch, 35 runs with 30, 60 and
+  120 KiB passed, and MemAvailable after boot did not move.
+
 ## 0.9.0 — Linux 7.2.4, and fork through the cache MMU (2026-10-04)
 
 The kernel moves from 6.11 to 7.2.4 and becomes this project's own tree,
