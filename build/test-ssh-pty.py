@@ -39,16 +39,19 @@ if not m:
 ip = m.group(1)
 print(f'board at {ip}')
 
-if 'SSH: enabled' not in c.command('ssh-server status', 10, check=False):
-    c.command('ssh-server on', 10, check=False)
-c.close()
+saved = '/etc/remote-login /etc/remote-login.conf'
+c.command(f'for f in {saved}; do [ -e $f ] && cp -p $f $f.ssh-pty; done; true', 10, check=False)
+c.command('remote-login ssh; remote-login auth both', 30, check=False)
+port = re.search(r'SSH: port (\d+)', c.command('remote-login status', 10, check=False))
+port = int(port.group(1)) if port else 22
+time.sleep(3)
 
 args.output.mkdir(parents=True, exist_ok=True)
 result = {'ip': ip, 'status': 'FAIL', 'detail': ''}
 try:
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(ip, username='root', password=password, timeout=15,
+    client.connect(ip, port=port, username='root', password=password, timeout=15,
                     look_for_keys=False, allow_agent=False)
     try:
         chan = client.get_transport().open_session()
@@ -70,6 +73,10 @@ try:
         client.close()
 except Exception as e:
     result['detail'] = f'{type(e).__name__}: {e}'
+
+c.command(f'for f in {saved}; do if [ -e $f.ssh-pty ]; then mv $f.ssh-pty $f; else rm -f $f; fi; done; '
+          'remote-login apply', 30, check=False)
+c.close()
 
 (args.output / 'results.json').write_text(json.dumps(result, indent=1) + '\n')
 print(f'{result["status"]}: ssh-pty  -- {result["detail"]}')
