@@ -12,6 +12,7 @@ import time
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
+SH = os.environ.get('BOARD_SH', 'sh')
 OVERLAY = ROOT / 'new-files/board/espressif/esp32s3/rootfs_overlay'
 
 
@@ -44,7 +45,7 @@ class Base(unittest.TestCase):
         return path
 
     def run_script(self, path, *args, env=None):
-        return subprocess.run(['sh', str(path), *args], capture_output=True, text=True,
+        return subprocess.run([SH, str(path), *args], capture_output=True, text=True,
                               env={**self.env, **(env or {})}, timeout=30)
 
     def calls(self):

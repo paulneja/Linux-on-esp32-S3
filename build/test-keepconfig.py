@@ -15,6 +15,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
+SH = os.environ.get('BOARD_SH', 'sh')
 SCRIPT = ROOT / 'new-files/board/espressif/esp32s3/rootfs_overlay/etc/init.d/S03keepconfig'
 
 
@@ -32,7 +33,7 @@ class KeepConfigTests(unittest.TestCase):
     def run_script(self, action):
         env = {**os.environ, 'KEEP_ETC': str(self.etc), 'KEEP_BACKUP': str(self.backup),
                'KEEP_MOUNTS': str(self.mounts)}
-        result = subprocess.run(['sh', str(SCRIPT), action], capture_output=True,
+        result = subprocess.run([SH, str(SCRIPT), action], capture_output=True,
                                 text=True, env=env, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout

@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
+SH = os.environ.get('BOARD_SH', 'sh')
 SBIN = ROOT / 'new-files/board/espressif/esp32s3/rootfs_overlay/usr/sbin'
 WEB = '#80\tstream\ttcp\tnowait\twww-data\t/usr/sbin/httpd\thttpd -i -h /home/www\n'
 OLD = ('ssh\tstream\ttcp\tnowait\troot\t/usr/sbin/dropbear\tdropbear -i -R -I 600\n'
@@ -33,7 +34,7 @@ class Base(unittest.TestCase):
         self.inetd.write_text(WEB)
         self.fake('id', 'case "$*" in "-u") echo 0 ;; "-u www-data") echo 33 ;; *) exit 0 ;; esac')
         self.fake('killall', 'echo "$@" >> %s/killall.log' % self.dir)
-        (self.bin / 'remote-login').symlink_to(SBIN / 'remote-login')
+        self.fake('remote-login', f'exec {SH} {SBIN / "remote-login"} "$@"')
 
     def fake(self, name, body):
         path = self.bin / name
@@ -45,7 +46,7 @@ class Base(unittest.TestCase):
                'REMOTE_LOGIN_ETC': str(self.etc), 'REMOTE_LOGIN_DROPBEAR': str(self.dropbear),
                'REMOTE_LOGIN_HOME': str(self.home), 'WEB_SERVER_CONF': str(self.inetd),
                'WEB_SERVER_DOCROOT': str(self.www)}
-        return subprocess.run(['sh', str(SBIN / name), *args], capture_output=True,
+        return subprocess.run([SH, str(SBIN / name), *args], capture_output=True,
                               text=True, env=env, timeout=20)
 
     def ok(self, name, *args):
