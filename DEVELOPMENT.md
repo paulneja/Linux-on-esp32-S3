@@ -632,6 +632,12 @@ that one directory match `new-files/` exactly.
   the BLE pipe. The remaining files keep their names so existing references
   stay valid. Top-level `patches/` has its own gaps for the same reason: only
   `00`, `02` and `03` remain.
+- `new-files/board/espressif/esp32s3/package-patches/` is
+  `BR2_GLOBAL_PATCH_DIR`: Buildroot applies `<package>/*.patch` on top of its
+  own for that package. BusyBox gets private home directories and a separate
+  environment per cron job; dropbear gets `-n`, which turns public key logins
+  off for `remote-login auth password`, since dropbear has no switch for it.
+  `linux/linux.hash` pins the kernel.org tarball.
 - `flash.sh` — flashes a bare board from `images/` with nothing but `esptool`
   (see "Flash directly" above).
 - `patches/02-firmware-network-adapter.patch` — every change to the ESP32
