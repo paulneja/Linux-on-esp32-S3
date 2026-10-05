@@ -15,6 +15,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
+SH = os.environ.get('BOARD_SH', 'sh')
 SCRIPT = ROOT / 'new-files/board/espressif/esp32s3/rootfs_overlay/etc/init.d/S03keepconfig'
 
 
@@ -32,7 +33,7 @@ class KeepConfigTests(unittest.TestCase):
     def run_script(self, action):
         env = {**os.environ, 'KEEP_ETC': str(self.etc), 'KEEP_BACKUP': str(self.backup),
                'KEEP_MOUNTS': str(self.mounts)}
-        result = subprocess.run(['sh', str(SCRIPT), action], capture_output=True,
+        result = subprocess.run([SH, str(SCRIPT), action], capture_output=True,
                                 text=True, env=env, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout
@@ -193,6 +194,18 @@ class KeepConfigTests(unittest.TestCase):
         self.run_script('start')
         self.assertEqual((self.etc / 'remote-login').read_text(), 'telnet\n')
         self.assertIn('\ntelnet\t', '\n' + (self.etc / 'inetd.conf').read_text())
+
+    def test_ports_and_ssh_auth_survive_an_update(self):
+        self.configure()
+        self.write('remote-login', 'ssh\n')
+        self.write('remote-login.conf', 'SSH_PORT=2222\nTELNET_PORT=23\nSSH_AUTH=key\n')
+        self.write('inetd.conf', '2222\tstream\ttcp\tnowait\troot\t/usr/sbin/dropbear\tdropbear -i -R -I 600 -s\n')
+        self.run_script('stop')
+        self.reflash_etc()
+        self.run_script('start')
+        self.assertEqual((self.etc / 'remote-login.conf').read_text(),
+                         'SSH_PORT=2222\nTELNET_PORT=23\nSSH_AUTH=key\n')
+        self.assertIn('2222\t', (self.etc / 'inetd.conf').read_text())
 
     def test_no_choice_saved_means_first_login_asks_again(self):
         self.configure()

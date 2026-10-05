@@ -9,55 +9,189 @@ fi
 ETC=${REMOTE_LOGIN_ETC:-/etc}
 CONF=$ETC/inetd.conf
 CHOICE=$ETC/remote-login
-SSH_LINE='ssh	stream	tcp	nowait	root	/usr/sbin/dropbear	dropbear -i -R -I 600'
-TELNET_LINE='telnet	stream	tcp	nowait	root	/usr/sbin/telnetd	telnetd -i'
+SETTINGS=$ETC/remote-login.conf
+DROPBEAR=${REMOTE_LOGIN_DROPBEAR:-/usr/sbin/dropbear}
+KEYS=${REMOTE_LOGIN_HOME:-/home/root}/.ssh/authorized_keys
+
+SSH_PORT=22
+TELNET_PORT=23
+SSH_AUTH=both
+
+usage() {
+	echo "usage: remote-login ssh|telnet|off" >&2
+	echo "       remote-login port ssh|telnet N|default" >&2
+	echo "       remote-login auth password|both|key" >&2
+	echo "       remote-login apply|status" >&2
+	exit 1
+}
 
 restart_inetd() {
 	killall -HUP inetd 2>/dev/null || /etc/init.d/S45inetd start
 }
 
-use() {
-	if [ "$1" = ssh ]; then line=$SSH_LINE; else line=$TELNET_LINE; fi
-	tmp=$CONF.new
-	sed -e 's/^ssh\([ 	]\)/#ssh\1/' -e 's/^telnet\([ 	]\)/#telnet\1/' \
-		"$CONF" > "$tmp" 2>/dev/null || : > "$tmp"
-	if [ "$1" = off ]; then
-		:
-	elif grep -q "^#$1[ 	]" "$tmp"; then
-		sed -i "s/^#$1\([ 	]\)/$1\1/" "$tmp"
-	else
-		printf '%s\n' "$line" >> "$tmp"
+valid_port() {
+	case $1 in
+	''|*[!0-9]*|0*) return 1 ;;
+	esac
+	[ "$1" -le 65535 ]
+}
+
+setting() {
+	sed -n "s/^$1=//p" "$SETTINGS" 2>/dev/null | tail -n 1
+}
+
+load() {
+	[ -r "$SETTINGS" ] || return 0
+	value=$(setting SSH_PORT)
+	if valid_port "$value"; then SSH_PORT=$value; fi
+	value=$(setting TELNET_PORT)
+	if valid_port "$value"; then TELNET_PORT=$value; fi
+	value=$(setting SSH_AUTH)
+	case $value in
+	password|both|key) SSH_AUTH=$value ;;
+	esac
+}
+
+store() {
+	printf 'SSH_PORT=%s\nTELNET_PORT=%s\nSSH_AUTH=%s\n' \
+		"$SSH_PORT" "$TELNET_PORT" "$SSH_AUTH" > "$SETTINGS.new"
+	mv "$SETTINGS.new" "$SETTINGS"
+}
+
+enabled() {
+	[ -r "$CHOICE" ] || return 1
+	for word in $(cat "$CHOICE"); do
+		[ "$word" = "$1" ] && return 0
+	done
+	return 1
+}
+
+web_port() {
+	awk '{ l = $0; sub(/^#/, "", l); split(l, f, /[ \t]+/)
+	       if (f[6] == "/usr/sbin/httpd") { print (f[1] ~ /^[0-9]+$/ ? f[1] : 80); exit } }' "$CONF" 2>/dev/null
+}
+
+check_ports() {
+	if [ "$SSH_PORT" = "$TELNET_PORT" ]; then
+		echo "remote-login: SSH and Telnet cannot share port $SSH_PORT" >&2
+		exit 1
 	fi
+	web=$(web_port)
+	if [ -n "$web" ] && { [ "$web" = "$SSH_PORT" ] || [ "$web" = "$TELNET_PORT" ]; }; then
+		echo "remote-login: port $web belongs to the web server" >&2
+		exit 1
+	fi
+}
+
+ssh_flags() {
+	case $SSH_AUTH in
+	password) echo ' -n' ;;
+	key) echo ' -s' ;;
+	esac
+}
+
+auth_text() {
+	case $SSH_AUTH in
+	password) echo 'password only' ;;
+	key) echo 'keys only' ;;
+	*) echo 'password or key' ;;
+	esac
+}
+
+apply() {
+	check_ports
+	ssh_on='#'
+	telnet_on='#'
+	enabled ssh && ssh_on=
+	enabled telnet && telnet_on=
+	tmp=$CONF.new
+	awk '{ l = $0; sub(/^#/, "", l); split(l, f, /[ \t]+/)
+	       if (f[6] != "/usr/sbin/dropbear" && f[6] != "/usr/sbin/telnetd") print }' \
+		"$CONF" > "$tmp" 2>/dev/null || : > "$tmp"
+	printf '%s%s\tstream\ttcp\tnowait\troot\t/usr/sbin/dropbear\tdropbear -i -R -I 600%s\n' \
+		"$ssh_on" "$SSH_PORT" "$(ssh_flags)" >> "$tmp"
+	printf '%s%s\tstream\ttcp\tnowait\troot\t/usr/sbin/telnetd\ttelnetd -i\n' \
+		"$telnet_on" "$TELNET_PORT" >> "$tmp"
 	mv "$tmp" "$CONF"
-	echo "$1" > "$CHOICE"
 	restart_inetd
 }
 
+choose() {
+	echo "$1" > "$CHOICE"
+	apply
+}
+
+load
+
 case "$1" in
 ssh)
-	if [ ! -x "${REMOTE_LOGIN_DROPBEAR:-/usr/sbin/dropbear}" ]; then
+	if [ ! -x "$DROPBEAR" ]; then
 		echo "remote-login: this image has no SSH server" >&2
 		exit 1
 	fi
-	use ssh
-	echo "SSH on, telnet off."
+	choose ssh
+	echo "SSH on port $SSH_PORT ($(auth_text)), telnet off."
 	;;
 telnet)
-	use telnet
-	echo "Telnet on, SSH off. Telnet sends the password in clear text."
+	choose telnet
+	echo "Telnet on port $TELNET_PORT, SSH off. Telnet sends the password in clear text."
 	;;
 off|none)
-	use off
+	choose off
 	echo "SSH and Telnet off. Log in on the console."
+	;;
+port)
+	[ $# -eq 3 ] || usage
+	value=$3
+	if [ "$value" = default ]; then
+		case $2 in
+		ssh) value=22 ;;
+		telnet) value=23 ;;
+		esac
+	fi
+	if ! valid_port "$value"; then
+		echo "remote-login: '$3' is not a port (1-65535)" >&2
+		exit 1
+	fi
+	case $2 in
+	ssh) SSH_PORT=$value ;;
+	telnet) TELNET_PORT=$value ;;
+	*) usage ;;
+	esac
+	check_ports
+	store
+	apply
+	case $2 in
+	ssh) echo "SSH port is $SSH_PORT." ;;
+	*) echo "Telnet port is $TELNET_PORT." ;;
+	esac
+	;;
+auth)
+	[ $# -eq 2 ] || usage
+	case $2 in
+	password|both|key) SSH_AUTH=$2 ;;
+	*) usage ;;
+	esac
+	store
+	apply
+	echo "SSH logins: $(auth_text)."
+	if [ "$SSH_AUTH" = key ] && [ ! -s "$KEYS" ]; then
+		echo "No $KEYS yet: SSH turns everyone away until a key is there. The console still works." >&2
+	fi
+	;;
+apply)
+	apply
+	echo "Applied $SETTINGS."
 	;;
 status|"")
 	on=
-	grep -q '^ssh[ 	]' "$CONF" && on="$on ssh"
-	grep -q '^telnet[ 	]' "$CONF" && on="$on telnet"
+	enabled ssh && on="$on ssh"
+	enabled telnet && on="$on telnet"
 	echo "Listening:${on:- nothing}"
+	echo "SSH: port $SSH_PORT, $(auth_text)$(enabled ssh || echo ', off')"
+	echo "Telnet: port $TELNET_PORT$(enabled telnet || echo ', off')"
 	;;
 *)
-	echo "usage: remote-login {ssh|telnet|off|status}" >&2
-	exit 1
+	usage
 	;;
 esac

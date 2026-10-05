@@ -66,5 +66,5 @@ else
 		esac
 	done
 fi
-echo "Change it later with: remote-login ssh|telnet|off"
+echo "Change it later with remote-login: ssh|telnet|off, port, auth"
 echo

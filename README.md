@@ -39,27 +39,28 @@ computer attached to keep it running.
   <tr><td>Cores</td><td>core 0 runs Espressif's firmware for WiFi and BLE, core 1 runs Linux</td></tr>
   <tr><td>Kernel</td><td>Linux 7.2.4, NOMMU, executed in place from flash (<a href="https://github.com/paulneja/linux-esp32s3">source</a>)</td></tr>
   <tr><td>Userland</td><td>Bash 5.2, BusyBox, Dash, MicroPython, GNU Make, dropbear, curl, nano, cron</td></tr>
-  <tr><td>Boot to login</td><td>about 15.1 s, the average of 20 cold boots</td></tr>
-  <tr><td>Free RAM</td><td>4204 kB of 7852 kB when the test suite starts</td></tr>
+  <tr><td>Boot to login</td><td>about 15.2 s, the average of 20 cold boots</td></tr>
+  <tr><td>Free RAM</td><td>4248 kB of 7852 kB when the test suite starts</td></tr>
   <tr><td>fork()</td><td>supported through swapped memory banks; the slowest switches measured take 5.0 to 9.6 ms</td></tr>
   <tr><td>Network</td><td>WiFi client, SSH or Telnet, setup from a phone over Bluetooth</td></tr>
-  <tr><td>Tested</td><td>36 board tests, 10 extra checks, 20 cold boots, WiFi and SSH, on every release</td></tr>
+  <tr><td>Tested</td><td>36 board tests, 11 extra checks, 20 cold boots, WiFi, SSH and its ports, on every release</td></tr>
 </table>
 
-## What's new in 0.9
+## What's new in 0.9.1
 
-The kernel is now 7.2.4 (6.11 stopped getting fixes in 2024) and lives in
-its own repo, [linux-esp32s3](https://github.com/paulneja/linux-esp32s3):
-the kernel.org release plus 61 patches.
+Fixes the kernel crash right after logging in over SSH (#22). It showed up
+with kitty's `kitten ssh`, whose setup script makes the shell hand every
+subshell a big pile of arguments. On NOMMU the kernel copied them past the
+bottom of the new program's stack, over its own memory. The stack now has
+room for them: patch 62 in
+[linux-esp32s3](https://github.com/paulneja/linux-esp32s3).
 
-fork() got a lot cheaper. Most of the work now goes through the chip's cache
-MMU, and the slowest switch in the same test dropped from 22 ms, with
-interrupts off, to 5.0 ms.
-
-A freshly flashed board doesn't listen on the network anymore until you log
-in on the console, change the password and pick SSH or Telnet. Also fixed #20,
-where a wrong WiFi password broke the next scan. The kernel is 563 KB smaller
-and there's about 500 kB more free RAM than in 0.8.1.
+The SSH and Telnet ports and how SSH logs in are one command now:
+`remote-login port ssh 2022`, `remote-login auth key` (or `password`,
+`both`), and `web-server port 8080` for the web page. They stay in
+`/etc/remote-login.conf` and survive updates; see [SECURITY.md](SECURITY.md).
+`./run.sh --test` also runs the extra checks, the network tests and 20 cold
+boots now.
 
 ## Hardware
 
@@ -69,7 +70,7 @@ the console work through the board's UART adapter or the chip's own USB port.
 
 ## Quick start
 
-**1. Flash.** `images/` holds the 0.9 release. With Python 3 and esptool
+**1. Flash.** `images/` holds the 0.9.1 release. With Python 3 and esptool
 installed, and nothing else holding the serial port:
 
 ```sh
@@ -84,7 +85,20 @@ This writes the whole 16 MB chip, `/etc` and `/home` included.
 `screen /dev/ttyUSB0 115200`, as `root` with password `changeme123`. The
 first login asks for a new password, then whether the board should answer
 SSH, Telnet or neither. Only the one you pick is turned on;
-`remote-login ssh|telnet|off` switches later.
+`remote-login ssh|telnet|off` switches later. The ports and how SSH lets you
+in can change too:
+
+```sh
+remote-login port ssh 2222            # or telnet; "default" puts 22/23 back
+remote-login auth key                 # password, key, or both (the default)
+remote-login status
+```
+
+Keys go in `/home/root/.ssh/authorized_keys`. The same settings live in
+`/etc/remote-login.conf` (`SSH_PORT=`, `TELNET_PORT=`, `SSH_AUTH=`) if you
+would rather edit them by hand; `remote-login apply` picks them up. They
+survive an update like the WiFi does. `web-server port 8080` moves the web
+page.
 
 **3. Join a network:**
 
@@ -107,7 +121,12 @@ arguments it opens a menu; each step is also a flag.
 ```sh
 ./run.sh                 # menu
 ./run.sh --all -y        # check, build, verify, flash and test, no prompts
+WIFI_SSID=net WIFI_PASS=secret ./run.sh --all -y   # and the SSH tests over WiFi
 ```
+
+The tests are the board suite, the extra tests, a soak of 20 factory boots
+(`SOAK_ROUNDS` changes that, 0 skips it) and, given a network, SSH and the
+port and login settings checked from the host. They take about an hour.
 
 It warns before anything that erases the board and says up front how long
 the build takes and how much disk it needs. `./run.sh --help` lists every
@@ -221,7 +240,7 @@ on the board for each release:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/releases-dark.svg">
-  <img alt="Three charts by release. Free RAM when the suite starts: 1340 kB on 0.7, 3744 on 0.8, 3708 on 0.8.1, 4204 on 0.9. Kernel image: 3.43 MB, 2.98, 2.98, 2.42. Slowest switch between forked processes: 21.9 ms on 0.8 and 21.8 ms on 0.8.1 with interrupts off, 5.0 ms on 0.9" src="docs/releases.svg">
+  <img alt="Three charts by release. Free RAM when the suite starts: 1340 kB on 0.7, 3744 on 0.8, 3708 on 0.8.1, 4204 on 0.9, 4248 on 0.9.1. Kernel image: 3.43 MB, 2.98, 2.98, 2.42, 2.42. Slowest switch between forked processes: 21.9 ms on 0.8 and 21.8 ms on 0.8.1 with interrupts off, 5.0 ms on 0.9, 5.8 ms on 0.9.1" src="docs/releases.svg">
 </picture>
 
 The same 0.9 image under load, with the MMU path turned off and on
@@ -243,6 +262,7 @@ records name the image hash they ran on.
 
 | Release | Board suite | Extra checks | Cold boots | Also checked | Record |
 |---|---|---|---|---|---|
+| 0.9.1 | 36 of 36 | 11 of 11 | 20 of 20 | SSH with a pty, SSH and Telnet on other ports, keys only, password only; the #22 crash before and after the fix | [release](build/verification/2026-10-05-fix-22.md) |
 | 0.9 | 36 of 36 | 10 of 10 | 20 of 20 | WiFi stress, SSH with a pty, fork with the MMU on and off; BLE from a phone and the update from 0.8.1 on an earlier build | [release](build/verification/2026-10-04-release.md) |
 | 0.8.1 | 36 of 36 | 10 of 10 | 20 of 20 | the WiFi stress that used to panic the kernel, SSH with a pty | [release](build/verification/2026-09-23-release.md) |
 | 0.8 | 36 of 36 | 10 of 10 | 10 of 10 | 55 clean boots on the flash cache fix, against 10 faults in 17 before it | [release](build/verification/2026-09-14-release.md) |
@@ -278,7 +298,8 @@ The cause was a flash cache shared by both cores that nothing invalidated
 after Linux wrote to jffs2; four lines in the firmware fixed it
 ([incident 15](DEVELOPMENT.md)). 0.8.1 made WiFi survive being taken down
 and up quickly and added the USB console. 0.9 moves to Linux 7.2.4 and the
-switch through the cache MMU. Every release, with causes and measurements,
+switch through the cache MMU, and 0.9.1 fixes a crash over SSH that only
+kitty triggered. Every release, with causes and measurements,
 is in the [changelog](CHANGELOG.md).
 
 ## Repository layout
@@ -308,6 +329,21 @@ is in the [changelog](CHANGELOG.md).
 
 <details>
 <summary><b>Earlier releases</b></summary>
+
+### What's new in 0.9
+
+The kernel is now 7.2.4 (6.11 stopped getting fixes in 2024) and lives in
+its own repo, [linux-esp32s3](https://github.com/paulneja/linux-esp32s3):
+the kernel.org release plus 61 patches.
+
+fork() got a lot cheaper. Most of the work now goes through the chip's cache
+MMU, and the slowest switch in the same test dropped from 22 ms, with
+interrupts off, to 5.0 ms.
+
+A freshly flashed board doesn't listen on the network anymore until you log
+in on the console, change the password and pick SSH or Telnet. Also fixed #20,
+where a wrong WiFi password broke the next scan. The kernel is 563 KB smaller
+and there's about 500 kB more free RAM than in 0.8.1.
 
 ### What's new in 0.8.1
 

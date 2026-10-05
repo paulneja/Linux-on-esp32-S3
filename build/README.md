@@ -67,7 +67,7 @@ user files. Back up a used board privately before any full-image test.
 Never publish raw board backups: they may contain credentials and user data.
 
 Point `flash.sh` at this directory with `--images`; without it the script
-reads `images/`, which holds the 0.9 release. Its default combined-image
+reads `images/`, which holds the 0.9.1 release. Its default combined-image
 write replaces `/etc` and `/home` even without `--erase`. `--parts` preserves
 `/home` but still replaces `/etc`, including accounts, password hashes and
 network configuration. `--parts --erase` resets both, writing `home.jffs2`
@@ -91,20 +91,26 @@ rebuilding that path; it is not the pipeline that produces the released image.
 
 Run the host-only regression tests with `python3 build/test-*.py` -- flash,
 shell fallback, keepconfig, kernel config, bash's vfork patch, `bootlog`, the
-`wifi` script, the first login, and the soak runner's classifier. They use temporary images, a
+`wifi` script, the first login, `remote-login`/`ssh-server`/`web-server`, the
+clock, NTP, BLE and USB console services, and the soak runner's classifier.
+The board runs its scripts under BusyBox hush, not bash: `build/host-hush.sh`
+builds the image's hush for the host, and `BOARD_SH=<that path>` runs the
+script tests under it. hush exits a `set -e` script when a `while read` loop
+ends, which bash and dash do not. They use temporary images, a
 simulated esptool and stub shells, never a serial device. `test-wifi-script.py`
 also refuses one shell shape outright: a heredoc inside a `( subshell )`, which
 the image's busybox ash cannot finish although every host shell can.
 
 Three tools drive the board itself, all through the serial console:
 
-- `build/test-board.py PORT ARTIFACTS --output DIR` is the suite `run.sh --all`
-  runs: 36 checks tied to the exact image by reading the kernel and rootfs
-  partitions back and hashing them.
+- `build/test-board.py PORT ARTIFACTS --output DIR` is the suite: 36 checks
+  tied to the exact image by reading the kernel and rootfs partitions back
+  and hashing them.
 - `build/extra-board-tests.py PORT [DIR]` is what a person does with the
   board and the suite does not: a detached session, cron firing, `passwd` and
   a fresh login, a reboot that keeps `/home`, jffs2 written and read back,
-  the shell under fork load, `bootlog` across reboots.
+  the shell under fork load, a subshell with 30 KiB of arguments (#22),
+  `bootlog` across reboots.
 - `build/soak-boot.py PORT ARTIFACTS --output DIR --rounds N` measures the
   factory-boot fault rate: each round rewrites `/etc` and `/home`, holds the
   board in reset until the port is listening, watches the boot, then logs in
@@ -118,13 +124,28 @@ PORT` reads the board's own `wifi status` over the console to find its IP,
 skips cleanly if WiFi is not configured, then opens SSH from the host with
 `get_pty=True` -- the `ssh -tt` equivalent -- and checks a real `/dev/pts/N`
 came back, the regression for issue #9 (dropbear falling back to a `/dev/pty??`
-scan this kernel does not build). It needs `paramiko` on the host in addition
-to `pyserial` and `esptool`.
+scan this kernel does not build). It turns SSH on with password and key on
+whatever port `remote-login` has, and puts the settings back when done. It
+needs `paramiko` on the host in addition to `pyserial` and `esptool`.
+
+`build/test-network-services.py PORT` does the same for `remote-login` and
+`web-server`: it moves SSH to 2222, tries password-only, key-only and both
+with a throwaway key, moves Telnet to 2323 and the web page to 8080, checks
+each from the host, and puts the board's settings back. Both log in with the
+password the harness set on the first login; on a board with its own, pass it
+as `MMU_BOARD_PASSWORD`.
+
+`./run.sh --test`, and so `--all`, runs all of them in that order: the
+suite, the extra tests, then the two network ones if `WIFI_SSID` and
+`WIFI_PASS` say which network to join (`build/board-wifi.py` joins it over the
+console; without them they are reported as skipped, not passed), then the
+soak, `SOAK_ROUNDS` rounds, 20 by default. The summary at the end names each
+part.
 
 All of them answer the first login themselves, with the password
 `esp32s3-board-test` and SSH. `./run.sh` runs `build/factory-login.py PORT`
-after the suite, which puts back `changeme123` and nothing listening, so the
-next console login asks again; after the other scripts, run it by hand.
+at the end, which puts back `changeme123` and nothing listening, so the next
+console login asks again; after running a script by hand, run it by hand too.
 
 The fork backend is built by `experiments/mmu-poc/fork/build-kernel-reclaim.sh`
 with the page-set exchange on; `FORK_SWAP_BANKS=0` builds the copying model.
@@ -218,7 +239,8 @@ The exact 16 MiB image SHA256 is
 See the [verification record](verification/2026-09-06.md) and its archived
 machine-readable results for scope and limitations. This result applies to
 that artifact, not automatically to future code changes or other profiles.
-The committed `images/` are the 0.9 release, a clean `./run.sh` build of
-the release branch. The board suite, the extra tests, the soak, WiFi and SSH
-under `verification/2026-10-04-*` ran on those exact bytes
-([record](verification/2026-10-04-release.md)).
+The committed `images/` are the 0.9.1 release, a clean `./run.sh` build of
+`71244b2` on the release branch. The board suite, the extra tests, the soak,
+SSH and the network tests under `verification/2026-10-05-clean-*` ran on
+those exact bytes ([record](verification/2026-10-05-fix-22.md)); what came
+after that commit is tests and docs only.

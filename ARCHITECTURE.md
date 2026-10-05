@@ -181,7 +181,9 @@ flashed board.
 - No session timeout, no brute-force throttling yet.
 - Nothing listens on the network until that first login, which then turns on
   SSH or Telnet, one of them, or neither (`remote-login ssh|telnet|off`). Telnet is plaintext
-  on the wire; SSH is not.
+  on the wire; SSH is not. `remote-login port` and `remote-login auth` set the
+  ports and whether SSH takes passwords, keys or both; the settings sit in
+  `/etc/remote-login.conf` and inetd.conf is written from them.
 
 ## Known gaps
 

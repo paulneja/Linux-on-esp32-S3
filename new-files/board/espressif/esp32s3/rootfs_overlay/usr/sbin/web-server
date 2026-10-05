@@ -1,63 +1,89 @@
 #!/bin/sh
 set -e
-CONF=/etc/inetd.conf
-PORT=80
-DOCROOT=/home/www
-enabled() { grep -q "^$PORT[ 	]" "$CONF"; }
+CONF=${WEB_SERVER_CONF:-/etc/inetd.conf}
+DOCROOT=${WEB_SERVER_DOCROOT:-/home/www}
+LINE='stream\ttcp\tnowait\twww-data\t/usr/sbin/httpd\thttpd -i -h /home/www'
+
+field() {
+    awk -v n="$1" '{ l = $0; sub(/^#/, "", l); split(l, f, /[ \t]+/)
+                     if (f[6] == "/usr/sbin/httpd") { print f[n]; exit } }' "$CONF"
+}
+PORT=$(field 1)
+case $PORT in www|http|'') PORT=80 ;; esac
+enabled() { awk '!/^#/ && $6 == "/usr/sbin/httpd" { f = 1 } END { exit !f }' "$CONF"; }
 restart_inetd() {
-    # SIGHUP, not kill-and-relaunch: see the note in ssh-server. Relaunching
-    # bare left /var/run/inetd.pid naming a process that no longer exists.
     killall -HUP inetd 2>/dev/null || /etc/init.d/S45inetd start
+}
+rewrite() {
+    updated=$(awk -v port="$1" -v line="$LINE" '{ l = $0; sub(/^#/, "", l); split(l, f, /[ \t]+/) }
+        f[6] == "/usr/sbin/httpd" { if (!done) print (substr($0,1,1)=="#" ? "#" : "") port "\t" line; done = 1; next }
+        { print }
+        END { if (!done) print "#" port "\t" line }' "$CONF")
+    if [ "$updated" = "$(cat "$CONF")" ]; then
+        return 0
+    fi
+    tmp=$(mktemp "$CONF.web.XXXXXX")
+    cp -p "$CONF" "$tmp"
+    printf '%s\n' "$updated" > "$tmp"
+    mv "$tmp" "$CONF"
 }
 migrate() {
     test "$(id -u)" = 0
     id www-data >/dev/null
     test "$(id -u www-data)" != 0
-    awk '$0 ~ /^#?80[ \t]/ && ($8 != "-i" || $9 != "-h" ||
-        ($10 != "/www" && $10 != "/home/www") || $6 != "/usr/sbin/httpd") { exit 1 }' "$CONF" || {
-        echo 'web-server: port 80 has a custom configuration; not changed' >&2
+    awk '{ l = $0; sub(/^#/, "", l); n = split(l, f, /[ \t]+/) }
+        f[6] == "/usr/sbin/httpd" && (f[8] != "-i" || f[9] != "-h" || (f[10] != "/www" && f[10] != "/home/www")) { exit 1 }
+        f[1] == 80 && f[6] != "/usr/sbin/httpd" { exit 1 }' "$CONF" || {
+        echo "web-server: port $PORT has a custom configuration; not changed" >&2
         return 1
     }
-    updated=$(awk '$0 ~ /^#?80[ \t]/ {
-        prefix = substr($0,1,1)=="#" ? "#" : ""
-        print prefix "80\tstream\ttcp\tnowait\twww-data\t/usr/sbin/httpd\thttpd -i -h /home/www"
-        next
-    } {print}' "$CONF")
-    if [ "$updated" = "$(cat "$CONF")" ]; then
-        return 0
+    [ "$(field 1)" ] || return 0
+    before=$(cat "$CONF")
+    rewrite "$PORT"
+    if [ "$before" != "$(cat "$CONF")" ]; then
+        if [ ! -e "$CONF.before-home-www" ]; then printf '%s\n' "$before" > "$CONF.before-home-www"; fi
+        killall -HUP inetd 2>/dev/null || :
     fi
-    tmp=$(mktemp /etc/inetd.web.XXXXXX)
-    cp -p "$CONF" "$tmp"
-    printf '%s\n' "$updated" > "$tmp"
-    if [ ! -e /etc/inetd.conf.before-home-www ]; then cp -p "$CONF" /etc/inetd.conf.before-home-www; fi
-    mv "$tmp" "$CONF"
-    killall -HUP inetd 2>/dev/null || :
+}
+taken() {
+    awk -v p="$1" '{ l = $0; sub(/^#/, "", l); split(l, f, /[ \t]+/)
+                     if (f[1] == "ssh") f[1] = 22; if (f[1] == "telnet") f[1] = 23 }
+        f[1] == p && f[6] != "/usr/sbin/httpd" { t = 1 } END { exit !t }' "$CONF"
 }
 case "${1:-status}" in
     migrate) migrate ;;
     on|enable)
         migrate
         test -r "$DOCROOT/index.html" || { echo 'web-server: missing /home/www/index.html' >&2; exit 1; }
-        if enabled; then echo 'Web server already enabled (/home/www, www-data)'; exit 0; fi
-        if grep -q '^#80[ 	]' "$CONF"; then
-            sed -i 's/^#80\([ 	]\)/80\1/' "$CONF"
-        else
-            printf '80\tstream\ttcp\tnowait\twww-data\t/usr/sbin/httpd\thttpd -i -h /home/www\n' >> "$CONF"
-        fi
+        if enabled; then echo "Web server already enabled (port $PORT, /home/www, www-data)"; exit 0; fi
+        rewrite "$PORT"
+        sed -i "s|^#\($PORT[ 	].*/usr/sbin/httpd\)|\1|" "$CONF"
         restart_inetd
-        echo 'Web server enabled: port 80, /home/www, user www-data (persists across boots).'
+        echo "Web server enabled: port $PORT, /home/www, user www-data (persists across boots)."
         ;;
     off|disable)
         test "$(id -u)" = 0
         if enabled; then
-            sed -i 's/^80\([ 	]\)/#80\1/' "$CONF"
+            sed -i "s|^\($PORT[ 	].*/usr/sbin/httpd\)|#\1|" "$CONF"
             restart_inetd
         fi
         echo 'Web server disabled.'
         ;;
-    status)
-        if enabled; then echo 'Web server enabled: port 80, /home/www, user www-data'
-        else echo 'Web server disabled: content in /home/www'; fi
+    port)
+        test "$(id -u)" = 0
+        case $2 in
+        default) set -- port 80 ;;
+        ''|*[!0-9]*|0*) echo "web-server: '$2' is not a port (1-65535)" >&2; exit 1 ;;
+        esac
+        if [ "$2" -gt 65535 ]; then echo "web-server: '$2' is not a port (1-65535)" >&2; exit 1; fi
+        if taken "$2"; then echo "web-server: port $2 is already used by another service" >&2; exit 1; fi
+        rewrite "$2"
+        if enabled; then restart_inetd; fi
+        echo "Web server port is $2."
         ;;
-    *) echo 'Usage: web-server {on|off|status|migrate}' >&2; exit 2 ;;
+    status)
+        if enabled; then echo "Web server enabled: port $PORT, /home/www, user www-data"
+        else echo "Web server disabled: port $PORT, content in /home/www"; fi
+        ;;
+    *) echo 'Usage: web-server {on|off|status|port N|migrate}' >&2; exit 2 ;;
 esac

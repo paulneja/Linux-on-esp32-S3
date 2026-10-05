@@ -1,0 +1,47 @@
+{
+ "ip": "<LAN address>",
+ "results": [
+  {
+   "name": "ssh-port-moves",
+   "status": "PASS",
+   "detail": "SSH answered on 2222 and the old port closed",
+   "seconds": 4.4
+  },
+  {
+   "name": "ssh-auth-both",
+   "status": "PASS",
+   "detail": "password and key both let in",
+   "seconds": 5.8
+  },
+  {
+   "name": "ssh-auth-key-only",
+   "status": "PASS",
+   "detail": "key in, password turned away",
+   "seconds": 6.9
+  },
+  {
+   "name": "ssh-auth-password-only",
+   "status": "PASS",
+   "detail": "password in, key turned away",
+   "seconds": 5.1
+  },
+  {
+   "name": "telnet-port",
+   "status": "PASS",
+   "detail": "telnet login prompt on 2323, SSH closed",
+   "seconds": 5.0
+  },
+  {
+   "name": "web-server-port",
+   "status": "PASS",
+   "detail": "page served on 8080, closed again",
+   "seconds": 6.5
+  },
+  {
+   "name": "restored",
+   "status": "PASS",
+   "detail": "Listening: ssh; SSH: port 22, password or key; Telnet: port 2323, off",
+   "seconds": 4.8
+  }
+ ]
+}

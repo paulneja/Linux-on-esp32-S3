@@ -1,0 +1,43 @@
+{
+ "issue": 22,
+ "test": "sh -c 'X=$(head -c N /dev/zero | tr \"\\0\" a); y=$(echo hi); echo size ${#X} $y' over ssh, then /proc/sys/kernel/tainted",
+ "before": {
+  "kernel": "0.9 release xipImage (cb7e52dc...)",
+  "size": 30000,
+  "result": "kernel oops on the second run (Oops #5, recursive fault), board unusable"
+ },
+ "after": {
+  "kernel": "0.9 tree plus patch 0062, same .config",
+  "runs": [
+   {
+    "size": 30000,
+    "runs": 20,
+    "passed": 20,
+    "tainted": 0
+   },
+   {
+    "size": 60000,
+    "runs": 10,
+    "passed": 10,
+    "tainted": 0
+   },
+   {
+    "size": 120000,
+    "runs": 5,
+    "passed": 5,
+    "tainted": 0
+   }
+  ]
+ },
+ "mem_available_kb_one_minute_after_boot": {
+  "0.9 kernel": [
+   3764,
+   3832
+  ],
+  "patched kernel": [
+   3788,
+   3788
+  ]
+ },
+ "kitty_ssh_kitten": "debug kernel with a stack watermark: 32 hush subshells re-executed by the kitten bootstrap, least headroom 11044 of 32768 bytes; 0 bytes with the 0.9 kernel"
+}

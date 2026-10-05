@@ -26,7 +26,7 @@ keep them private and separate from distributable build artifacts.
 |---|---|
 | **Root password** | `changeme123` on every flashed board, until the first login replaces it |
 | **Telnet** | off until the first login picks it, **unencrypted** — password and session in clear text |
-| **SSH** | off until the first login picks it (`remote-login ssh` later); slow on this hardware |
+| **SSH** | off until the first login picks it (`remote-login ssh` later); port 22, password or key until `remote-login port`/`auth` say otherwise; slow on this hardware |
 | **Bluetooth LE** | advertises as `Esp32-Linux`, **no pairing, no PIN** |
 | **HTTP status page** | off by default (`web-server on` enables it, and it stays on across reboots); no auth, plain HTTP |
 | **Firewall** | none. No firewall package ships in the image |
@@ -43,6 +43,9 @@ does not hand out a shell until it is changed, and nothing listens on the
 network before that: a board joined to WiFi over Bluetooth is not reachable
 with the factory password. The first login then turns on SSH or Telnet, one
 of them, or neither; `ssh-server on` can still add SSH next to Telnet by hand.
+`remote-login auth key` turns SSH passwords off once a key is in
+`/home/root/.ssh/authorized_keys`, which is the setting to use on any network
+you do not fully trust; a different port only keeps the log quieter.
 
 ### It asks the internet what time it is
 

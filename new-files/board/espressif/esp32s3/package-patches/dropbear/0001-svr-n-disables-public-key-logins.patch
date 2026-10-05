@@ -1,0 +1,75 @@
+--- a/src/runopts.h
++++ b/src/runopts.h
+@@ -105,6 +105,7 @@
+ #endif
+ 
+ 	int noauthpass;
++	int noauthpubkey;
+ 	int norootpass;
+ 	int allowblankpass;
+ 	int multiauthmethod;
+--- a/src/svr-auth.c
++++ b/src/svr-auth.c
+@@ -42,7 +42,9 @@
+ void svr_authinitialise() {
+ 	memset(&ses.authstate, 0, sizeof(ses.authstate));
+ #if DROPBEAR_SVR_PUBKEY_AUTH
+-	ses.authstate.authtypes |= AUTH_TYPE_PUBKEY;
++	if (!svr_opts.noauthpubkey) {
++		ses.authstate.authtypes |= AUTH_TYPE_PUBKEY;
++	}
+ #endif
+ #if DROPBEAR_SVR_PASSWORD_AUTH || DROPBEAR_SVR_PAM_AUTH
+ 	if (!svr_opts.noauthpass) {
+@@ -172,7 +174,8 @@
+ 
+ #if DROPBEAR_SVR_PUBKEY_AUTH
+ 	/* user wants to try pubkey auth */
+-	if (methodlen == AUTH_METHOD_PUBKEY_LEN &&
++	if (!svr_opts.noauthpubkey &&
++			methodlen == AUTH_METHOD_PUBKEY_LEN &&
+ 			strncmp(methodname, AUTH_METHOD_PUBKEY,
+ 				AUTH_METHOD_PUBKEY_LEN) == 0) {
+ 		svr_auth_pubkey(valid_user);
+--- a/src/svr-runopts.c
++++ b/src/svr-runopts.c
+@@ -85,6 +85,9 @@
+ 					"-t		Enable two-factor authentication (both password and public key required)\n"
+ #endif
+ 					"-T		Maximum authentication tries (default %d)\n"
++#if DROPBEAR_SVR_PUBKEY_AUTH
++					"-n		Disable public key logins\n"
++#endif
+ #if DROPBEAR_SVR_LOCALANYFWD
+ 					"-j		Disable local port forwarding\n"
+ #endif
+@@ -164,6 +167,7 @@
+ 	svr_opts.restrict_group_gid = 0;
+ #endif
+ 	svr_opts.noauthpass = 0;
++	svr_opts.noauthpubkey = 0;
+ 	svr_opts.norootpass = 0;
+ 	svr_opts.allowblankpass = 0;
+ 	svr_opts.multiauthmethod = 0;
+@@ -298,6 +302,11 @@
+ 				case 'I':
+ 					next = &idle_timeout_arg;
+ 					break;
++#if DROPBEAR_SVR_PUBKEY_AUTH
++				case 'n':
++					svr_opts.noauthpubkey = 1;
++					break;
++#endif
+ 				case 'T':
+ 					next = &maxauthtries_arg;
+ 					break;
+@@ -446,6 +455,9 @@
+ 	if (svr_opts.multiauthmethod && svr_opts.noauthpass) {
+ 		dropbear_exit("-t and -s are incompatible");
+ 	}
++	if (svr_opts.noauthpubkey && (svr_opts.noauthpass || svr_opts.multiauthmethod)) {
++		dropbear_exit("-n cannot go with -s or -t");
++	}
+ 
+ #if DROPBEAR_PLUGIN
+ 	if (pubkey_plugin) {

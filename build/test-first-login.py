@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
+SH = os.environ.get('BOARD_SH', 'sh')
 SBIN = ROOT / 'new-files/board/espressif/esp32s3/rootfs_overlay/usr/sbin'
 FACTORY = '$5$salt$FACTORY'
 INETD = ('#ssh\tstream\ttcp\tnowait\troot\t/usr/sbin/dropbear\tdropbear -i -R -I 600\n'
@@ -37,7 +38,7 @@ read -r b || exit 1
 [ "$a" = "$b" ] || exit 1
 if [ "$a" = changeme123 ]; then h='{FACTORY}'; else h='$5$salt$NEW'; fi
 echo "root:$h:19000:0:99999:7:::" > {self.etc}/shadow''')
-        (self.bin / 'remote-login').symlink_to(SBIN / 'remote-login')
+        self.fake('remote-login', f'exec {SH} {SBIN / "remote-login"} "$@"')
 
     def fake(self, name, body):
         path = self.bin / name
@@ -52,12 +53,14 @@ echo "root:$h:19000:0:99999:7:::" > {self.etc}/shadow''')
                'FIRST_LOGIN_ETC': str(self.etc), 'REMOTE_LOGIN_ETC': str(self.etc),
                'FIRST_LOGIN_DROPBEAR': str(self.dropbear if dropbear else self.dir / 'none'),
                'REMOTE_LOGIN_DROPBEAR': str(self.dropbear if dropbear else self.dir / 'none')}
-        return subprocess.run(['sh', str(SBIN / 'first-login')], input=answers,
+        return subprocess.run([SH, str(SBIN / 'first-login')], input=answers,
                               capture_output=True, text=True, env=env, timeout=20)
 
     def listening(self):
+        names = {'dropbear': 'ssh', 'telnetd': 'telnet', 'httpd': 'www'}
         lines = (self.etc / 'inetd.conf').read_text().splitlines()
-        return sorted(line.split('\t')[0] for line in lines if not line.startswith('#'))
+        return sorted(names[line.split('\t')[5].rsplit('/', 1)[1]]
+                      for line in lines if line and not line.startswith('#'))
 
     def test_factory_board_changes_the_password_and_picks_ssh(self):
         r = self.run_first_login('hunter22\nhunter22\n1\n')
@@ -119,12 +122,12 @@ echo "root:$h:19000:0:99999:7:::" > {self.etc}/shadow''')
         self.run_first_login('1\n')
         env = {**os.environ, 'PATH': f'{self.bin}:{os.environ["PATH"]}',
                'REMOTE_LOGIN_ETC': str(self.etc), 'REMOTE_LOGIN_DROPBEAR': str(self.dropbear)}
-        r = subprocess.run(['sh', str(SBIN / 'remote-login'), 'telnet'],
+        r = subprocess.run([SH, str(SBIN / 'remote-login'), 'telnet'],
                            capture_output=True, text=True, env=env, timeout=20)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.listening(), ['telnet', 'www'])
         self.assertEqual((self.etc / 'remote-login').read_text(), 'telnet\n')
-        r = subprocess.run(['sh', str(SBIN / 'remote-login'), 'off'],
+        r = subprocess.run([SH, str(SBIN / 'remote-login'), 'off'],
                            capture_output=True, text=True, env=env, timeout=20)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.listening(), ['www'])

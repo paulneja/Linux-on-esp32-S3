@@ -48,7 +48,8 @@ Actions:
   --build        Build everything from clean sources
   --verify       Check the checksums of a build
   --flash        Write the image to the board (ERASES /etc and /home)
-  --test         Run the board test suite
+  --test         Run the board test suite, the extra tests, the network
+                 tests (with WIFI_SSID and WIFI_PASS) and the factory soak
   --all          check, build, verify, flash and test, in that order
   --repro        Two builds of the same commit and a comparison
   --recover      Put the board's /etc and /home back to factory
@@ -61,10 +62,32 @@ Options:
   -p, --port PATH      Serial adapter (default: autodetect)
   -a, --artifacts DIR  Artifacts directory to use
   -h, --help           This help
+
+Environment:
+  WIFI_SSID, WIFI_PASS  join this network for the SSH and port tests
+  SOAK_ROUNDS           factory boots in the soak (default 20, 0 skips it)
 EOF
 }
 
 have() { command -v "$1" >/dev/null 2>&1; }
+
+python_with() {
+	local candidate
+	for candidate in \
+		"${PYSERIAL_PYTHON:-}" \
+		python3 \
+		"$HOME/.local/share/pipx/venvs/esptool/bin/python3" \
+		/usr/bin/python3
+	do
+		[ -n "$candidate" ] || continue
+		have "$candidate" || [ -x "$candidate" ] || continue
+		if "$candidate" -c "import $1" >/dev/null 2>&1; then
+			printf '%s\n' "$candidate"
+			return 0
+		fi
+	done
+	return 1
+}
 
 python_with_pyserial() {
 	local candidate
@@ -321,9 +344,20 @@ do_flash() {
 	return "$rc"
 }
 
+report() {
+	python3 - "$1" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1]))
+bad = [t['name'] for t in r['tests'] if t['status'] != 'pass']
+print(f"  {r['status'].upper()}: {len(r['tests'])} tests, {len(bad)} failed")
+for name in bad:
+    print('    failed:', name)
+PY
+}
+
 do_test() {
 	bold "== Board test suite =="
-	local a port py out n
+	local a port py net out n rc=0 summary="" ip tool rounds
 	a=$(latest_artifacts) || { red "no artifacts"; return 1; }
 	port=$(detect_port) || { red "no board detected"; return 1; }
 	py=$(python_with_pyserial) || { red "no python with pyserial"; info "install with: pipx inject esptool pyserial"; return 1; }
@@ -332,25 +366,56 @@ do_test() {
 	n=2
 	while [ -e "$out" ]; do out="$REPO/build-output/board-check-$n"; n=$((n+1)); done
 	info "output: ${out#$REPO/}"
-	info "36 tests, about 5 minutes"
-	"$py" "$REPO/build/test-board.py" "$port" "$a" --output "$out" --reset-from-bootloader
-	local rc=$?
-	if [ -f "$out/results.json" ]; then
-		python3 - "$out/results.json" <<'PY'
-import json, sys
-r = json.load(open(sys.argv[1]))
-bad = [t['name'] for t in r['tests'] if t['status'] != 'pass']
-print(f"  {r['status'].upper()}: {len(r['tests'])} tests, {len(bad)} failed")
-for name in bad:
-    print('    failed:', name)
-PY
+
+	info "suite: 36 tests, about 5 minutes"
+	"$py" "$REPO/build/test-board.py" "$port" "$a" --output "$out/suite" --reset-from-bootloader
+	if [ $? -eq 0 ]; then summary="$summary suite:pass"; else summary="$summary suite:FAIL"; rc=1; fi
+	[ -f "$out/suite/results.json" ] && report "$out/suite/results.json"
+
+	bold "== Extra board tests =="
+	"$py" "$REPO/build/extra-board-tests.py" "$port" "$out/extra"
+	if [ $? -eq 0 ]; then summary="$summary extra:pass"; else summary="$summary extra:FAIL"; rc=1; fi
+
+	bold "== Network: SSH, ports and auth =="
+	if [ -z "${WIFI_SSID:-}" ] || [ -z "${WIFI_PASS:-}" ]; then
+		warn "WIFI_SSID and WIFI_PASS are not set; the network tests are skipped"
+		summary="$summary network:skipped"
+	elif ! net=$(python_with paramiko); then
+		warn "no python with paramiko; the network tests are skipped"
+		info "install with: pip install --user paramiko"
+		summary="$summary network:skipped"
+	elif ! ip=$("$py" "$REPO/build/board-wifi.py" "$port"); then
+		red "the board did not join $WIFI_SSID"
+		summary="$summary network:FAIL"; rc=1
+	else
+		info "board at $ip"
+		if "$net" "$REPO/build/test-ssh-pty.py" "$port" --output "$out/ssh-pty" &&
+			"$net" "$REPO/build/test-network-services.py" "$port" --output "$out/network-services"; then
+			summary="$summary network:pass"
+		else
+			summary="$summary network:FAIL"; rc=1
+		fi
 	fi
+
+	rounds=${SOAK_ROUNDS:-20}
+	if [ "$rounds" -gt 0 ] 2>/dev/null; then
+		bold "== Factory boot soak: $rounds rounds =="
+		info "each round rewrites /etc and /home, about a minute and a half each"
+		tool=$(have esptool && echo esptool || echo esptool.py)
+		"$py" "$REPO/build/soak-boot.py" "$port" "$a" --output "$out/soak" --rounds "$rounds" --esptool "$tool"
+		if [ $? -eq 0 ]; then summary="$summary soak:pass"; else summary="$summary soak:FAIL"; rc=1; fi
+	else
+		summary="$summary soak:skipped"
+	fi
+
 	info "putting the login back to the factory one"
 	"$py" "$REPO/build/factory-login.py" "$port" ||
 		warn "could not reset it; run: $py build/factory-login.py $port"
+	bold "== Summary =="
+	for item in $summary; do info "${item%%:*}: ${item#*:}"; done
 	if [ "$rc" -ne 0 ]; then
-		red "the suite did not pass"
-		warn "if it was cut short, test users are left on the board;"
+		red "not everything passed"
+		warn "if the suite was cut short, test users are left on the board;"
 		warn "use the recover option before retrying"
 		return 1
 	fi
@@ -419,7 +484,7 @@ menu() {
   2) Build everything from clean sources
   3) Check the checksums of a build
   4) Flash the board
-  5) Run the board test suite
+  5) Run the board tests
   6) EVERYTHING: build, check, flash and test
   7) Reproducibility: two builds and a comparison
   8) Recover the board (restore /etc and /home)

@@ -11,6 +11,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
+SH = os.environ.get('BOARD_SH', 'sh')
 OVERLAY = ROOT / 'new-files/board/espressif/esp32s3/rootfs_overlay'
 BOOTLOG = OVERLAY / 'usr/sbin/bootlog'
 INIT = OVERLAY / 'etc/init.d/S00bootlog'
@@ -35,7 +36,7 @@ class BootlogTests(unittest.TestCase):
                 'PATH': f'{self.dir}/bin:' + os.environ['PATH']}
 
     def run_script(self, script, *args, code=0):
-        result = subprocess.run(['sh', str(script), *args], capture_output=True,
+        result = subprocess.run([SH, str(script), *args], capture_output=True,
                                 text=True, env=self.env(), timeout=30)
         self.assertEqual(result.returncode, code, result.stdout + result.stderr)
         return result.stdout + result.stderr

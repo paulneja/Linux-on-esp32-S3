@@ -4,6 +4,53 @@ Releases carry one flashable `.bin` for a 16 MB / 8 MB-PSRAM ESP32-S3. Full
 notes and the binaries are on the
 [releases page](https://github.com/paulneja/Linux-on-esp32-S3/releases).
 
+## 0.9.1 — a crash over SSH, and SSH on your own port (2026-10-05)
+
+Fixes the kernel crash some logins over SSH ended in, and lets SSH, Telnet
+and the web page move to other ports, with SSH taking a password, a key or
+both. Measured on the images in `images/`: **36 board tests, 0 failed**, 11
+more beyond the suite (11/11), **20 factory boots, 20 clean**, SSH with a
+pty, and SSH on another port in all three modes, Telnet and the web page on
+other ports, from the host over WiFi. MemAvailable is 4248 kB at the start
+of the suite. The kernel is the
+[linux-esp32s3](https://github.com/paulneja/linux-esp32s3) tag
+`v7.2.4-esp32s3.3`.
+
+- **A kernel crash when logging in over SSH from kitty (#22).** On NOMMU the
+  kernel copies a new program's arguments and environment to the top of its
+  stack, and the FDPIC loader sized that stack only by what the program
+  declares: 16 KiB for BusyBox, 32 KiB for the rest. kitty's `ssh` kitten
+  runs a large bootstrap script through `sh`, and each hush subshell
+  re-executes itself with every shell variable as an argument, so the copy
+  ran past the bottom of the stack and over kernel memory. The crash then
+  showed up later and somewhere else: a VMA tree when a process exited, or
+  jffs2's node lists. Kernel patch 62 adds the size of the arguments to the
+  stack. A `sh` with a 30 KiB variable and one subshell brought the 0.9
+  kernel down on its second try; with the patch, 35 runs with 30, 60 and
+  120 KiB passed, and MemAvailable after boot did not move.
+- **SSH and Telnet ports, and how SSH lets you in.** `remote-login port
+  ssh|telnet N` moves either one, `remote-login auth password|both|key`
+  picks what SSH accepts, and `remote-login status` shows all of it. The
+  settings are kept in `/etc/remote-login.conf`, which can be edited by hand
+  and applied with `remote-login apply`, and they survive an update with the
+  rest of the configuration. Key-only is dropbear's own `-s`; password-only
+  needed a small dropbear patch, `-n`, since dropbear has no switch to turn
+  public keys off. `ssh-server on|off` now goes through the same settings.
+- **`web-server port N`** moves the web page off port 80. The server's line
+  in inetd.conf is found by its program now, not by the port number.
+- **More tests.** On the host: `remote-login`, `ssh-server` and
+  `web-server`; the saved clock, the NTP hook, BLE provisioning, the USB
+  console login and `use-shell`; CI runs these and the `bootlog`, bash vfork
+  and soak classifier tests that existed but were not run. On the board:
+  `build/test-network-services.py` checks the ports and all three SSH modes
+  from the host, and the extra tests re-execute a subshell with 30 KiB of
+  arguments. The script tests can also run under the image's own BusyBox
+  hush (`build/host-hush.sh`, `BOARD_SH`), and CI runs them that way too:
+  hush exits a `set -e` script when a `while read` loop ends, which is how
+  the first `remote-login port` worked on the host and did nothing on the
+  board. What ran on which bytes is in
+  [`build/verification/2026-10-05-fix-22.md`](build/verification/2026-10-05-fix-22.md).
+
 ## 0.9.0 — Linux 7.2.4, and fork through the cache MMU (2026-10-04)
 
 The kernel moves from 6.11 to 7.2.4 and becomes this project's own tree,
