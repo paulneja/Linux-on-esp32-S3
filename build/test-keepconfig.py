@@ -194,6 +194,18 @@ class KeepConfigTests(unittest.TestCase):
         self.assertEqual((self.etc / 'remote-login').read_text(), 'telnet\n')
         self.assertIn('\ntelnet\t', '\n' + (self.etc / 'inetd.conf').read_text())
 
+    def test_ports_and_ssh_auth_survive_an_update(self):
+        self.configure()
+        self.write('remote-login', 'ssh\n')
+        self.write('remote-login.conf', 'SSH_PORT=2222\nTELNET_PORT=23\nSSH_AUTH=key\n')
+        self.write('inetd.conf', '2222\tstream\ttcp\tnowait\troot\t/usr/sbin/dropbear\tdropbear -i -R -I 600 -s\n')
+        self.run_script('stop')
+        self.reflash_etc()
+        self.run_script('start')
+        self.assertEqual((self.etc / 'remote-login.conf').read_text(),
+                         'SSH_PORT=2222\nTELNET_PORT=23\nSSH_AUTH=key\n')
+        self.assertIn('2222\t', (self.etc / 'inetd.conf').read_text())
+
     def test_no_choice_saved_means_first_login_asks_again(self):
         self.configure()
         self.run_script('stop')
