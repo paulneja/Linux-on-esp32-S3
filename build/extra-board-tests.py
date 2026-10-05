@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """What test-board.py does not cover: a detached session, cron firing, passwd
 and a fresh login, a reboot that keeps /home, jffs2 written and read back,
-the shell under fork load, the bank exchange's latch under that load, and
-bootlog across reboots. Each check leaves the board as it found it. No WiFi.
+the shell under fork load, the bank exchange's latch under that load, a
+subshell with 30 KiB of arguments (#22), and bootlog across reboots. Each check leaves the board as it found it. No WiFi.
 """
 import hashlib, importlib.util, json, os, re, sys, time
 from pathlib import Path
@@ -84,6 +84,16 @@ def shell_load():
     assert after == before, f'ForkShadow {before} -> {after}: shadow pages leaked'
     return f'40 subshell pipelines, ForkShadow {before}->{after}'
 record('shell-pipelines-and-subshells', shell_load)
+
+def exec_args_fit_the_stack():
+    cmd = "sh -c 'X=$(head -c 30000 /dev/zero | tr \"\\\\0\" a); y=$(echo hi); echo args-$y-${#X}'"
+    for _ in range(5):
+        out = c.command(cmd, 60)
+        assert 'args-hi-30000' in out, out[-200:]
+    t = c.command('cat /proc/sys/kernel/tainted', 10).splitlines()[-1].strip()
+    assert t == '0', f'tainted={t}'
+    return '5 subshells re-executed with 30 KiB of arguments, tainted 0'
+record('exec-args-fit-the-stack', exec_args_fit_the_stack)
 
 # ---- 4. the latch: still clean after all of that ------------------------------
 def latch_clean():
