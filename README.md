@@ -120,7 +120,12 @@ arguments it opens a menu; each step is also a flag.
 ```sh
 ./run.sh                 # menu
 ./run.sh --all -y        # check, build, verify, flash and test, no prompts
+WIFI_SSID=net WIFI_PASS=secret ./run.sh --all -y   # and the SSH tests over WiFi
 ```
+
+The tests are the board suite, the extra tests, a soak of 20 factory boots
+(`SOAK_ROUNDS` changes that, 0 skips it) and, given a network, SSH and the
+port and login settings checked from the host. They take about an hour.
 
 It warns before anything that erases the board and says up front how long
 the build takes and how much disk it needs. `./run.sh --help` lists every

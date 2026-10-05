@@ -103,9 +103,9 @@ the image's busybox ash cannot finish although every host shell can.
 
 Three tools drive the board itself, all through the serial console:
 
-- `build/test-board.py PORT ARTIFACTS --output DIR` is the suite `run.sh --all`
-  runs: 36 checks tied to the exact image by reading the kernel and rootfs
-  partitions back and hashing them.
+- `build/test-board.py PORT ARTIFACTS --output DIR` is the suite: 36 checks
+  tied to the exact image by reading the kernel and rootfs partitions back
+  and hashing them.
 - `build/extra-board-tests.py PORT [DIR]` is what a person does with the
   board and the suite does not: a detached session, cron firing, `passwd` and
   a fresh login, a reboot that keeps `/home`, jffs2 written and read back,
@@ -132,10 +132,17 @@ to `pyserial` and `esptool`.
 with a throwaway key, moves Telnet to 2323 and the web page to 8080, checks
 each from the host, and puts the board's settings back.
 
+`./run.sh --test`, and so `--all`, runs all of them in that order: the
+suite, the extra tests, then the two network ones if `WIFI_SSID` and
+`WIFI_PASS` say which network to join (`build/board-wifi.py` joins it over the
+console; without them they are reported as skipped, not passed), then the
+soak, `SOAK_ROUNDS` rounds, 20 by default. The summary at the end names each
+part.
+
 All of them answer the first login themselves, with the password
 `esp32s3-board-test` and SSH. `./run.sh` runs `build/factory-login.py PORT`
-after the suite, which puts back `changeme123` and nothing listening, so the
-next console login asks again; after the other scripts, run it by hand.
+at the end, which puts back `changeme123` and nothing listening, so the next
+console login asks again; after running a script by hand, run it by hand too.
 
 The fork backend is built by `experiments/mmu-poc/fork/build-kernel-reclaim.sh`
 with the page-set exchange on; `FORK_SWAP_BANKS=0` builds the copying model.
