@@ -154,6 +154,18 @@ jobs:
       - name: First login tests
         run: python3 build/test-first-login.py
 
+      - name: remote-login, ssh-server and web-server tests
+        run: python3 build/test-remote-login.py
+
+      - name: bootlog tests
+        run: python3 build/test-bootlog.py
+
+      - name: bash vfork patch tests
+        run: python3 build/test-bash-vfork.py
+
+      - name: Soak classifier tests
+        run: python3 build/test-soak-boot.py
+
   build:
     name: Full image ${{ matrix.run }}
     needs: host-tests
