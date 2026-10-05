@@ -12,8 +12,6 @@ PORT=$(field 1)
 case $PORT in www|http|'') PORT=80 ;; esac
 enabled() { awk '!/^#/ && $6 == "/usr/sbin/httpd" { f = 1 } END { exit !f }' "$CONF"; }
 restart_inetd() {
-    # SIGHUP, not kill-and-relaunch: relaunching bare left /var/run/inetd.pid
-    # naming a process that no longer exists.
     killall -HUP inetd 2>/dev/null || /etc/init.d/S45inetd start
 }
 rewrite() {
