@@ -166,6 +166,9 @@ jobs:
       - name: Soak classifier tests
         run: python3 build/test-soak-boot.py
 
+      - name: Clock, NTP, BLE, USB console and use-shell tests
+        run: python3 build/test-services.py
+
   build:
     name: Full image ${{ matrix.run }}
     needs: host-tests
