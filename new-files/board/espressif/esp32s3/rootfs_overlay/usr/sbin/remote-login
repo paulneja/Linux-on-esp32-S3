@@ -36,19 +36,20 @@ valid_port() {
 	[ "$1" -le 65535 ]
 }
 
+setting() {
+	sed -n "s/^$1=//p" "$SETTINGS" 2>/dev/null | tail -n 1
+}
+
 load() {
 	[ -r "$SETTINGS" ] || return 0
-	while IFS='=' read -r key value; do
-		case $key in
-		SSH_PORT) if valid_port "$value"; then SSH_PORT=$value; fi ;;
-		TELNET_PORT) if valid_port "$value"; then TELNET_PORT=$value; fi ;;
-		SSH_AUTH)
-			case $value in
-			password|both|key) SSH_AUTH=$value ;;
-			esac
-			;;
-		esac
-	done < "$SETTINGS"
+	value=$(setting SSH_PORT)
+	if valid_port "$value"; then SSH_PORT=$value; fi
+	value=$(setting TELNET_PORT)
+	if valid_port "$value"; then TELNET_PORT=$value; fi
+	value=$(setting SSH_AUTH)
+	case $value in
+	password|both|key) SSH_AUTH=$value ;;
+	esac
 }
 
 store() {

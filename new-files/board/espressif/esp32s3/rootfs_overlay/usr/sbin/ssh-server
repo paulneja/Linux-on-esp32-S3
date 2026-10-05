@@ -17,6 +17,7 @@ others() {
 		*) printf '%s ' "$word" ;;
 		esac
 	done
+	return 0
 }
 
 on() {
