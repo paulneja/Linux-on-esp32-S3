@@ -70,7 +70,7 @@ the console work through the board's UART adapter or the chip's own USB port.
 
 ## Quick start
 
-**1. Flash.** `images/` holds the 0.9 release. With Python 3 and esptool
+**1. Flash.** `images/` holds the 0.9.1 release. With Python 3 and esptool
 installed, and nothing else holding the serial port:
 
 ```sh
@@ -240,7 +240,7 @@ on the board for each release:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/releases-dark.svg">
-  <img alt="Three charts by release. Free RAM when the suite starts: 1340 kB on 0.7, 3744 on 0.8, 3708 on 0.8.1, 4204 on 0.9. Kernel image: 3.43 MB, 2.98, 2.98, 2.42. Slowest switch between forked processes: 21.9 ms on 0.8 and 21.8 ms on 0.8.1 with interrupts off, 5.0 ms on 0.9" src="docs/releases.svg">
+  <img alt="Three charts by release. Free RAM when the suite starts: 1340 kB on 0.7, 3744 on 0.8, 3708 on 0.8.1, 4204 on 0.9, 4248 on 0.9.1. Kernel image: 3.43 MB, 2.98, 2.98, 2.42, 2.42. Slowest switch between forked processes: 21.9 ms on 0.8 and 21.8 ms on 0.8.1 with interrupts off, 5.0 ms on 0.9, 5.8 ms on 0.9.1" src="docs/releases.svg">
 </picture>
 
 The same 0.9 image under load, with the MMU path turned off and on
