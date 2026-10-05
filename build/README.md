@@ -124,13 +124,16 @@ PORT` reads the board's own `wifi status` over the console to find its IP,
 skips cleanly if WiFi is not configured, then opens SSH from the host with
 `get_pty=True` -- the `ssh -tt` equivalent -- and checks a real `/dev/pts/N`
 came back, the regression for issue #9 (dropbear falling back to a `/dev/pty??`
-scan this kernel does not build). It needs `paramiko` on the host in addition
-to `pyserial` and `esptool`.
+scan this kernel does not build). It turns SSH on with password and key on
+whatever port `remote-login` has, and puts the settings back when done. It
+needs `paramiko` on the host in addition to `pyserial` and `esptool`.
 
 `build/test-network-services.py PORT` does the same for `remote-login` and
 `web-server`: it moves SSH to 2222, tries password-only, key-only and both
 with a throwaway key, moves Telnet to 2323 and the web page to 8080, checks
-each from the host, and puts the board's settings back.
+each from the host, and puts the board's settings back. Both log in with the
+password the harness set on the first login; on a board with its own, pass it
+as `MMU_BOARD_PASSWORD`.
 
 `./run.sh --test`, and so `--all`, runs all of them in that order: the
 suite, the extra tests, then the two network ones if `WIFI_SSID` and
