@@ -30,12 +30,14 @@ def switch_ms(name):
             return int(test['detail'].split('=')[1].rstrip('us')) / 1000
 
 
-releases = ['0.7', '0.8', '0.8.1', '0.9']
+releases = ['0.7', '0.8', '0.8.1', '0.9', '0.9.1']
 free_kb = [1340, available('2026-09-14-final-results.json'),
-           available('2026-09-23-results.json'), available('2026-10-04-results.json')]
-kernel_mb = [3432520 / 1e6, 2982440 / 1e6, 2982472 / 1e6, 2419056 / 1e6]
+           available('2026-09-23-results.json'), available('2026-10-04-results.json'),
+           available('2026-10-05-clean-results.json')]
+kernel_mb = [3432520 / 1e6, 2982440 / 1e6, 2982472 / 1e6, 2419056 / 1e6, 2419056 / 1e6]
 switch = [None, switch_ms('2026-09-14-extra-tests.json'),
-          switch_ms('2026-09-23-extra-tests.json'), switch_ms('2026-10-04-extra-tests.json')]
+          switch_ms('2026-09-23-extra-tests.json'), switch_ms('2026-10-04-extra-tests.json'),
+          switch_ms('2026-10-05-clean-extra-tests.json')]
 mmu = results('2026-10-04-fork-mmu.json')
 
 
@@ -68,7 +70,7 @@ def label(ax, bars, texts, pad):
 
 def releases_figure(path, dark):
     fg, grid, old, new = style(dark)
-    colors = [old] * 3 + [new]
+    colors = [old] * 4 + [new]
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.0))
     fig.patch.set_alpha(0)
 
