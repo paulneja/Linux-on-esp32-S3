@@ -84,7 +84,20 @@ This writes the whole 16 MB chip, `/etc` and `/home` included.
 `screen /dev/ttyUSB0 115200`, as `root` with password `changeme123`. The
 first login asks for a new password, then whether the board should answer
 SSH, Telnet or neither. Only the one you pick is turned on;
-`remote-login ssh|telnet|off` switches later.
+`remote-login ssh|telnet|off` switches later. The ports and how SSH lets you
+in can change too:
+
+```sh
+remote-login port ssh 2222            # or telnet; "default" puts 22/23 back
+remote-login auth key                 # password, key, or both (the default)
+remote-login status
+```
+
+Keys go in `/home/root/.ssh/authorized_keys`. The same settings live in
+`/etc/remote-login.conf` (`SSH_PORT=`, `TELNET_PORT=`, `SSH_AUTH=`) if you
+would rather edit them by hand; `remote-login apply` picks them up. They
+survive an update like the WiFi does. `web-server port 8080` moves the web
+page.
 
 **3. Join a network:**
 

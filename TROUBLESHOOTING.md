@@ -262,6 +262,8 @@ web-server on
 
 That setting lives in `/etc/inetd.conf` on the writable `/etc` partition, so it
 survives a reboot — but *not* a reflash, which rewrites that partition.
+`web-server status` also says which port it is on: 80 unless
+`web-server port` moved it.
 
 If `web-server status` says enabled and the page still does not load, inetd is
 the thing to look at (`ps | grep inetd`); `web-server on` restarts it as part of
