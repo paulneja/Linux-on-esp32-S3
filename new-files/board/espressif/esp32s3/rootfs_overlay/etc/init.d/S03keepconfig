@@ -15,7 +15,7 @@
 
 BACKUP=$KEEP_BACKUP
 STAMP=$KEEP_ETC/.keepconfig-generation
-FILES="wpa_supplicant.conf shadow passwd group inetd.conf remote-login"
+FILES="wpa_supplicant.conf shadow passwd group inetd.conf remote-login remote-login.conf"
 KEYS="dropbear/dropbear_rsa_host_key dropbear/dropbear_ecdsa_host_key dropbear/dropbear_ed25519_host_key dropbear/dropbear_dss_host_key"
 
 # A random id. /dev/urandom is always there; the fallback is good enough to
