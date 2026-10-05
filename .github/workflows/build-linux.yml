@@ -71,6 +71,37 @@ jobs:
         run: |
           docker start --attach esp32-linux-builder
 
+      - name: Diagnose build container
+        if: always()
+        run: |
+          echo "=== Container state ==="
+          docker inspect esp32-linux-builder \
+            --format='Status={{.State.Status}} ExitCode={{.State.ExitCode}} OOMKilled={{.State.OOMKilled}} Error={{.State.Error}}'
+
+          echo
+          echo "=== Docker containers ==="
+          docker ps -a
+
+          echo
+          echo "=== Memory ==="
+          free -h
+
+          echo
+          echo "=== Disk ==="
+          df -h
+
+          echo
+          echo "=== Docker disk usage ==="
+          docker system df || true
+
+          echo
+          echo "=== Kernel / OOM messages ==="
+          sudo dmesg | tail -100 || true
+
+      - name: Copy build output from container
+        run: |
+          mkdir -p build-output
+
       - name: Copy build output from container
         run: |
           mkdir -p build-output
