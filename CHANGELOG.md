@@ -34,7 +34,12 @@ notes and the binaries are on the
   and soak classifier tests that existed but were not run. On the board:
   `build/test-network-services.py` checks the ports and all three SSH modes
   from the host, and the extra tests re-execute a subshell with 30 KiB of
-  arguments.
+  arguments. The script tests can also run under the image's own BusyBox
+  hush (`build/host-hush.sh`, `BOARD_SH`), and CI runs them that way too:
+  hush exits a `set -e` script when a `while read` loop ends, which is how
+  the first `remote-login port` worked on the host and did nothing on the
+  board. What ran on which bytes is in
+  [`build/verification/2026-10-05-fix-22.md`](build/verification/2026-10-05-fix-22.md).
 
 ## 0.9.0 — Linux 7.2.4, and fork through the cache MMU (2026-10-04)
 
