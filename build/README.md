@@ -91,7 +91,8 @@ rebuilding that path; it is not the pipeline that produces the released image.
 
 Run the host-only regression tests with `python3 build/test-*.py` -- flash,
 shell fallback, keepconfig, kernel config, bash's vfork patch, `bootlog`, the
-`wifi` script, the first login, and the soak runner's classifier. They use temporary images, a
+`wifi` script, the first login, `remote-login`/`ssh-server`/`web-server`, the
+clock, NTP, BLE and USB console services, and the soak runner's classifier. They use temporary images, a
 simulated esptool and stub shells, never a serial device. `test-wifi-script.py`
 also refuses one shell shape outright: a heredoc inside a `( subshell )`, which
 the image's busybox ash cannot finish although every host shell can.
@@ -104,7 +105,8 @@ Three tools drive the board itself, all through the serial console:
 - `build/extra-board-tests.py PORT [DIR]` is what a person does with the
   board and the suite does not: a detached session, cron firing, `passwd` and
   a fresh login, a reboot that keeps `/home`, jffs2 written and read back,
-  the shell under fork load, `bootlog` across reboots.
+  the shell under fork load, a subshell with 30 KiB of arguments (#22),
+  `bootlog` across reboots.
 - `build/soak-boot.py PORT ARTIFACTS --output DIR --rounds N` measures the
   factory-boot fault rate: each round rewrites `/etc` and `/home`, holds the
   board in reset until the port is listening, watches the boot, then logs in
@@ -120,6 +122,11 @@ skips cleanly if WiFi is not configured, then opens SSH from the host with
 came back, the regression for issue #9 (dropbear falling back to a `/dev/pty??`
 scan this kernel does not build). It needs `paramiko` on the host in addition
 to `pyserial` and `esptool`.
+
+`build/test-network-services.py PORT` does the same for `remote-login` and
+`web-server`: it moves SSH to 2222, tries password-only, key-only and both
+with a throwaway key, moves Telnet to 2323 and the web page to 8080, checks
+each from the host, and puts the board's settings back.
 
 All of them answer the first login themselves, with the password
 `esp32s3-board-test` and SSH. `./run.sh` runs `build/factory-login.py PORT`
