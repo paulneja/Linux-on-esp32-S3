@@ -69,8 +69,8 @@ connect_and_report() {
 		say "Connected to '$_ssid'"
 		say "IP address: $_ip"
 		case $(cat /etc/remote-login 2>/dev/null) in
-		ssh)    say "You can ssh root@$_ip from your LAN now." ;;
-		telnet) say "You can telnet to it from your LAN now." ;;
+		*ssh*)  say "You can ssh root@$_ip from your LAN now (remote-login status shows the port)." ;;
+		*telnet*) say "You can telnet to it from your LAN now." ;;
 		*)      say "Log in once on the serial or USB console to set a password and pick SSH or Telnet." ;;
 		esac
 	else
