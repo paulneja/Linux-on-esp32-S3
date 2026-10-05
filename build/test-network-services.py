@@ -36,7 +36,7 @@ spec.loader.exec_module(probe)
 
 c = probe.Console(args.port)
 c.login()
-password = args.password or os.environ['MMU_BOARD_PASSWORD']
+password = args.password or os.environ.get('MMU_BOARD_PASSWORD', probe.TEST_PASSWORD)
 status = c.command('wifi status', 15, check=False)
 m = re.search(r'inet (\d+\.\d+\.\d+\.\d+)/\d+.*scope global espsta0', status)
 if not m:
