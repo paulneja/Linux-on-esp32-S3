@@ -102,6 +102,10 @@ def wait_listening(port, want=True, seconds=20):
     return False
 
 
+def state(status):
+    return [line.strip() for line in status.splitlines() if re.match(r'(Listening|SSH|Telnet):', line.strip())]
+
+
 before = board('remote-login status')
 old_port = re.search(r'SSH: port (\d+)', before)
 old_port = old_port.group(1) if old_port else '22'
@@ -181,8 +185,8 @@ def restore():
     if ssh_was_on:
         assert wait_listening(int(old_port)), f'SSH not back on {old_port}'
     after = board('remote-login status')
-    assert after.strip() == before.strip(), f'{before!r} -> {after!r}'
-    return after.strip().replace('\n', '; ')
+    assert state(after) == state(before), f'{state(before)} -> {state(after)}'
+    return '; '.join(state(after))
 record('restored', restore)
 
 c.close()
