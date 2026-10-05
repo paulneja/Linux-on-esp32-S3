@@ -4,7 +4,17 @@ Releases carry one flashable `.bin` for a 16 MB / 8 MB-PSRAM ESP32-S3. Full
 notes and the binaries are on the
 [releases page](https://github.com/paulneja/Linux-on-esp32-S3/releases).
 
-## Unreleased
+## 0.9.1 — a crash over SSH, and SSH on your own port (2026-10-05)
+
+Fixes the kernel crash some logins over SSH ended in, and lets SSH, Telnet
+and the web page move to other ports, with SSH taking a password, a key or
+both. Measured on the images in `images/`: **36 board tests, 0 failed**, 11
+more beyond the suite (11/11), **20 factory boots, 20 clean**, SSH with a
+pty, and SSH on another port in all three modes, Telnet and the web page on
+other ports, from the host over WiFi. MemAvailable is 4248 kB at the start
+of the suite. The kernel is the
+[linux-esp32s3](https://github.com/paulneja/linux-esp32s3) tag
+`v7.2.4-esp32s3.3`.
 
 - **A kernel crash when logging in over SSH from kitty (#22).** On NOMMU the
   kernel copies a new program's arguments and environment to the top of its
