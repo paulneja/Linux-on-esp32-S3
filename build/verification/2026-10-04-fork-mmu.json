@@ -1,0 +1,12 @@
+{
+ "bash": {
+  "label": "3 busy Bash children",
+  "copy_ms": 29.319,
+  "mmu_ms": 5.595
+ },
+ "micropython": {
+  "label": "4 MicroPython processes,\n192 KiB each",
+  "copy_ms": 33.513,
+  "mmu_ms": 9.593
+ }
+}

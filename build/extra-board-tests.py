@@ -123,6 +123,7 @@ record('cron-runs-a-job', cron_fires)
 
 # ---- 7. passwd, then log in with the new one, then put it back ---------------
 def passwd_roundtrip():
+    before = os.environ.get('MMU_BOARD_PASSWORD', 'changeme123')
     o = c.command('printf "tmp-pw-1\\ntmp-pw-1\\n" | passwd root 2>&1; echo PW_$?', 30)
     assert 'PW_0' in o, o[-200:]
     logout(c)
@@ -131,9 +132,9 @@ def passwd_roundtrip():
         c.login()
         who = c.command('id -un', 10).splitlines()[-1].strip()
     finally:
-        # whatever happened, put the factory password back before anything else runs
-        c.command('printf "changeme123\\nchangeme123\\n" | passwd root >/dev/null 2>&1; sync', 30, check=False)
-        os.environ['MMU_BOARD_PASSWORD'] = 'changeme123'
+        # whatever happened, put the password it had back before anything else runs
+        c.command(f'printf "{before}\\n{before}\\n" | passwd root >/dev/null 2>&1; sync', 30, check=False)
+        os.environ['MMU_BOARD_PASSWORD'] = before
     assert who == 'root', who
     return 'changed, logged out, logged in with it, restored'
 record('passwd-and-relogin', passwd_roundtrip)
@@ -170,7 +171,7 @@ record('bootlog-across-reboots', bootlog_roundtrip)
 # ---- 10. final health --------------------------------------------------------
 def final():
     t = c.command('cat /proc/sys/kernel/tainted', 10).splitlines()[-1].strip()
-    # "panic=10 panic_print=0x20" is in the command line; that is not a panic.
+    # "panic=10 panic_console_replay" is in the command line; that is not a panic.
     d = c.command('dmesg | grep -v "Kernel command line" | grep -cE "Oops|BUG:|panic|inconsist" || true', 10).splitlines()[-1].strip()
     m = meminfo(c, 'MemAvailable')
     assert t == '0' and d == '0', f'tainted={t} bad-lines={d}'

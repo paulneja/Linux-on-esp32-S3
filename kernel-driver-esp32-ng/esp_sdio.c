@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD */
+/*
+ * Espressif Systems Wireless LAN device driver
+ *
+ * SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD
+ *
+ */
 #include "utils.h"
 #include <linux/mutex.h>
 #include <linux/mmc/sdio.h>
@@ -40,6 +45,7 @@ volatile u8 host_sleep;
 static int init_context(struct esp_sdio_context *context);
 static struct sk_buff *read_packet(struct esp_adapter *adapter);
 static int write_packet(struct esp_adapter *adapter, struct sk_buff *skb);
+/*int deinit_context(struct esp_adapter *adapter);*/
 
 static const struct sdio_device_id esp_devices[] = {
 	{ SDIO_DEVICE(ESP_VENDOR_ID, ESP_DEVICE_ID_1) },
@@ -83,12 +89,14 @@ static void esp_handle_isr(struct sdio_func *func)
 		return;
 	}
 
+	/* Read interrupt status register */
 	ret = esp_read_reg(context, ESP_SLAVE_INT_ST_REG,
 			(u8 *) int_status, sizeof(*int_status), ACQUIRE_LOCK);
 	CHECK_SDIO_RW_ERROR(ret);
 
 	esp_process_interrupt(context, *int_status);
 
+	/* Clear interrupt status */
 	ret = esp_write_reg(context, ESP_SLAVE_INT_CLR_REG,
 			(u8 *) int_status, sizeof(*int_status), ACQUIRE_LOCK);
 	CHECK_SDIO_RW_ERROR(ret);
@@ -123,7 +131,9 @@ int generate_slave_intr(struct esp_sdio_context *context, u8 data)
 static void deinit_sdio_func(struct sdio_func *func)
 {
 	sdio_claim_host(func);
+	/* Release IRQ */
 	sdio_release_irq(func);
+	/* Disable sdio function */
 	sdio_disable_func(func);
 	sdio_release_host(func);
 	sdio_set_drvdata(func, NULL);
@@ -158,6 +168,10 @@ static int esp_slave_get_tx_buffer_num(struct esp_sdio_context *context, u32 *tx
 
 int esp_deinit_module(struct esp_adapter *adapter)
 {
+	/* Second & onward bootup cleanup is not required for SDIO:
+	 * As Removal of SDIO triggers complete Deinit and SDIO insertion/
+	 * detection, triggers probing which does initialization.
+	 */
 
 	return 0;
 }
@@ -187,6 +201,7 @@ static int esp_get_len_from_slave(struct esp_sdio_context *context, u32 *rx_size
 	if (*len >= context->rx_byte_count)
 		*len = (*len + ESP_RX_BYTE_MAX - context->rx_byte_count) % ESP_RX_BYTE_MAX;
 	else {
+		/* Handle a case of roll over */
 		temp = ESP_RX_BYTE_MAX - context->rx_byte_count;
 		*len = temp + *len;
 
@@ -285,6 +300,7 @@ static int get_firmware_data(struct esp_sdio_context *context)
 		return -ENOMEM;
 	}
 
+	/* Initialize rx_byte_count */
 	ret = esp_read_reg(context, ESP_SLAVE_PACKET_LEN_REG,
 			(u8 *) val, sizeof(*val), ACQUIRE_LOCK);
 	if (ret) {
@@ -296,6 +312,7 @@ static int get_firmware_data(struct esp_sdio_context *context)
 	context->rx_byte_count = *val & ESP_SLAVE_LEN_MASK;
 	esp_info("Rx Pos ======  %d\n", context->rx_byte_count);
 
+	/* Initialize tx_buffer_count */
 	ret = esp_read_reg(context, ESP_SLAVE_TOKEN_RDATA, (u8 *) val,
 			sizeof(*val), ACQUIRE_LOCK);
 
@@ -369,6 +386,7 @@ static struct sk_buff *read_packet(struct esp_adapter *adapter)
 
 	data_left = len_to_read = len_from_slave = num_blocks = 0;
 
+	/* Read length */
 	ret = esp_get_len_from_slave(context, &len_from_slave, LOCK_ALREADY_ACQUIRED);
 
 	if (ret || !len_from_slave) {
@@ -411,6 +429,7 @@ static struct sk_buff *read_packet(struct esp_adapter *adapter)
 					pos, len_to_read, LOCK_ALREADY_ACQUIRED);
 		} else {
 			len_to_read = data_left;
+			/* 4 byte aligned length */
 			ret = esp_read_block(context,
 					ESP_SLAVE_CMD53_END_ADDR - len_to_read,
 					pos, (len_to_read + 3) & (~3), LOCK_ALREADY_ACQUIRED);
@@ -466,11 +485,14 @@ static int write_packet(struct esp_adapter *adapter, struct sk_buff *skb)
 		esp_tx_pause(cb->priv);
 		dev_kfree_skb(skb);
 		skb = NULL;
+/*		esp_err("TX Pause busy");*/
 		return -EBUSY;
 	}
 
+	/* Enqueue SKB in tx_q */
 	atomic_inc(&tx_pending);
 
+	/* Notify to process queue */
 	if (payload_header->if_type == ESP_INTERNAL_IF)
 		prio = PRIO_Q_HIGH;
 	else if (payload_header->if_type == ESP_HCI_IF)
@@ -494,12 +516,15 @@ static int is_sdio_write_buffer_available(u32 buf_needed)
 	struct esp_sdio_context *context = &sdio_context;
 	u8 retry = MAX_WRITE_RETRIES;
 
+	/*If buffer needed are less than buffer available
+	  then only read for available buffer number from slave*/
 	if (buf_available < buf_needed) {
 		while (retry) {
 			ret = esp_slave_get_tx_buffer_num(context, &buf_available, ACQUIRE_LOCK);
 
 			if (buf_available < buf_needed) {
 
+				/* Release SDIO and retry after delay*/
 				retry--;
 				usleep_range(10, 50);
 				continue;
@@ -513,6 +538,7 @@ static int is_sdio_write_buffer_available(u32 buf_needed)
 		buf_available -= buf_needed;
 
 	if (!retry) {
+		/* No buffer available at slave */
 		return BUFFER_UNAVAILABLE;
 	}
 
@@ -543,6 +569,7 @@ static int tx_process(void *data)
 		}
 
 		if (host_sleep) {
+			/* TODO: Use wait_event_interruptible_timeout */
 			msleep(100);
 			continue;
 		}
@@ -580,6 +607,7 @@ static int tx_process(void *data)
 
 		retry = MAX_WRITE_RETRIES;
 
+		/* resume network tx queue if bearable load */
 		cb = (struct esp_skb_cb *)tx_skb->cb;
 		if (cb && cb->priv && atomic_read(&tx_pending) < TX_RESUME_THRESHOLD) {
 			esp_tx_resume(cb->priv);
@@ -592,6 +620,8 @@ static int tx_process(void *data)
 
 		buf_needed = (tx_skb->len + ESP_RX_BUFFER_SIZE - 1) / ESP_RX_BUFFER_SIZE;
 
+		/*If SDIO slave buffer is available to write then only write data
+		else wait till buffer is available*/
 		ret = is_sdio_write_buffer_available(buf_needed);
 		if (!ret) {
 			dev_kfree_skb(tx_skb);
@@ -622,6 +652,7 @@ static int tx_process(void *data)
 		} while (data_left);
 
 		if (ret) {
+			/* drop the packet */
 			dev_kfree_skb(tx_skb);
 			continue;
 		}
@@ -651,6 +682,7 @@ static struct esp_sdio_context *init_sdio_func(struct sdio_func *func, int *sdio
 
 	sdio_claim_host(func);
 
+	/* Enable Function */
 	ret = sdio_enable_func(func);
 	if (ret) {
 		esp_err("sdio_enable_func ret: %d\n", ret);
@@ -661,6 +693,7 @@ static struct esp_sdio_context *init_sdio_func(struct sdio_func *func, int *sdio
 		return NULL;
 	}
 
+	/* Register IRQ */
 	ret = sdio_claim_irq(func, esp_handle_isr);
 	if (ret) {
 		esp_err("sdio_claim_irq ret: %d\n", ret);
@@ -673,6 +706,7 @@ static struct esp_sdio_context *init_sdio_func(struct sdio_func *func, int *sdio
 		return NULL;
 	}
 
+	/* Set private data */
 	sdio_set_drvdata(func, context);
 
 	context->state = ESP_CONTEXT_INIT;
@@ -723,6 +757,7 @@ static int monitor_process(void *data)
 				if (skb->len)
 					esp_dbg("Flushed %d bytes\n", skb->len);
 
+				/* drop the packet */
 				dev_kfree_skb(skb);
 				skb = NULL;
 			}
@@ -760,6 +795,7 @@ static int esp_probe(struct sdio_func *func,
 	if (sdio_context.sdio_clk_mhz) {
 		struct mmc_host *host = func->card->host;
 		u32 hz = sdio_context.sdio_clk_mhz * NUMBER_1M;
+		/* Expansion of mmc_set_clock that isnt exported */
 		if (hz < host->f_min)
 			hz = host->f_min;
 		if (hz > host->f_max)
@@ -826,6 +862,7 @@ static int esp_suspend(struct device *dev)
 
 	sdio_set_host_pm_flags(func, MMC_PM_KEEP_POWER);
 #if 0
+	/* Enale OOB IRQ and host wake up */
 	enable_irq(SDIO_OOB_IRQ);
 	enable_irq_wake(SDIO_OOB_IRQ);
 #endif
@@ -846,6 +883,7 @@ static int esp_resume(struct device *dev)
 
 	esp_info("-----> Host Awake\n");
 #if 0
+	/* Host woke up.. Disable OOB IRQ */
 	disable_irq_wake(SDIO_OOB_IRQ);
 	disable_irq(SDIO_OOB_IRQ);
 #endif
@@ -858,6 +896,7 @@ static int esp_resume(struct device *dev)
 		return -1;
 	}
 
+	/*     generate_slave_intr(context, BIT(ESP_RESET));*/
 	get_firmware_data(context);
 	msleep(100);
 	generate_slave_intr(context, BIT(ESP_POWER_SAVE_OFF));
@@ -872,10 +911,11 @@ static const struct dev_pm_ops esp_pm_ops = {
 
 static const struct of_device_id esp_sdio_of_match[] = {
 	{ .compatible = "espressif,esp_sdio", },
-	{                }
+	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, esp_sdio_of_match);
 
+/* SDIO driver structure to be registered with kernel */
 static struct sdio_driver esp_sdio_driver = {
 	.name		= KBUILD_MODNAME,
 	.id_table	= esp_devices,
@@ -930,6 +970,7 @@ int esp_validate_chipset(struct esp_adapter *adapter, u8 chipset)
 
 int esp_adjust_spi_clock(struct esp_adapter *adapter, u8 spi_clk_mhz)
 {
+	/* SPI bus specific call, silently discard */
 	return 0;
 }
 

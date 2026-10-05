@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Sun, 18 Feb 2024 17:26:56 -0800
+Subject: [PATCH 33/61] esp_wifi: don't free queued skb in process_rx_packet
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit aff39712e1d22a32c9cf8f4bb717fb0d140e5d63)
+---
+ drivers/net/wireless/espressif/esp32-ng/main.c | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/net/wireless/espressif/esp32-ng/main.c b/drivers/net/wireless/espressif/esp32-ng/main.c
+index 35e58a5bde9f0..f05a2b1483d15 100644
+--- a/drivers/net/wireless/espressif/esp32-ng/main.c
++++ b/drivers/net/wireless/espressif/esp32-ng/main.c
+@@ -781,12 +781,13 @@ static void process_rx_packet(struct esp_adapter *adapter, struct sk_buff *skb)
+ 	} else if (payload_header->if_type == ESP_INTERNAL_IF) {
+ 
+ 		/* Queue event skb for processing in events workqueue */
+-		skb_queue_tail(&adapter->events_skb_q, skb);
+ 
+-		if (adapter->events_wq)
++		if (adapter->events_wq) {
++			skb_queue_tail(&adapter->events_skb_q, skb);
+ 			queue_work(adapter->events_wq, &adapter->events_work);
+-		else
++		} else {
+ 			dev_kfree_skb_any(skb);
++		}
+ 
+ 	} else if (payload_header->if_type == ESP_TEST_IF) {
+ #if TEST_RAW_TP
+-- 
+2.55.0
+

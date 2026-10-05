@@ -156,6 +156,7 @@ int main(int argc, char **argv)
                (unsigned long)WINDOW_SIZE);
         return 0;
     }
+    static uint32_t ram[MMU_COUNT];
     test = argc == 2 && !strcmp(argv[1], "self-test");
     execmode = argc >= 3 && !strcmp(argv[1], "exec");
     if (!test && !execmode && !(argc == 4 && !strcmp(argv[1], "run"))) {
@@ -183,10 +184,11 @@ int main(int argc, char **argv)
         if (REG32(MMU_TABLE + 4 * (ALIAS_SLOT + i)) != INVALID) {
             fputs("STOP: alias already mapped\n", stderr); goto done;
         }
-    for (i = 0x180; i < MMU_COUNT; ++i)
-        if (REG32(MMU_TABLE + 4 * i) != (PSRAM | (i - 0x180))) {
-            fputs("STOP: expected 8 MiB PSRAM layout not found\n", stderr); goto done;
-        }
+    for (i = MMU_COUNT - RAM_PAGES; i < MMU_COUNT; ++i)
+        ram[i] = REG32(MMU_TABLE + 4 * i);
+    if (!ram_layout_ok(ram)) {
+        fputs("STOP: expected 8 MiB PSRAM layout not found\n", stderr); goto done;
+    }
     count = test ? 2 : 1;
     calls = test ? 4 : 1;
     for (i = 0; i < count; ++i) {

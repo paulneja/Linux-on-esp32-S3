@@ -5,7 +5,7 @@ repo_dir=$(cd -- "$task_dir/../../.." && pwd)
 build_dir="$repo_dir/../refs/esp32-linux-build/build"
 TARGET="${TARGET:-esp32s3_16m}"
 source "$repo_dir/build/load-target.sh"
-source_dir="$build_dir/build-buildroot-$PROFILE/build/linux-xtensa-6.11-esp32-tag"
+source_dir="$build_dir/build-buildroot-$PROFILE/build/linux-7.2.4"
 kernel_dir="$task_dir/../out/linux-fork"
 prefix="$build_dir/crosstool-NG/builds/xtensa-esp32s3-linux-uclibcfdpic/bin/xtensa-esp32s3-linux-uclibcfdpic-"
 export XTENSA_GNU_CONFIG="$build_dir/xtensa-dynconfig/esp32s3.so"

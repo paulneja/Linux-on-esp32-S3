@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="640" viewBox="0 0 960 640">
+<style>@keyframes cs0 { 0% { opacity: 1 } 12.500% { opacity: 1 } 13.438% { opacity: 0 } 71.812% { opacity: 0 } 72.812% { opacity: 1 } 100% { opacity: 1 } }
+@keyframes cs1 { 0% { opacity: 0 } 12.438% { opacity: 0 } 13.438% { opacity: 1 } 34.375% { opacity: 1 } 35.312% { opacity: 0 } 49.938% { opacity: 0 } 50.938% { opacity: 1 } 71.875% { opacity: 1 } 72.812% { opacity: 0 } 100% { opacity: 0 } }
+@keyframes cs2 { 0% { opacity: 0 } 34.312% { opacity: 0 } 35.312% { opacity: 1 } 50.000% { opacity: 1 } 50.938% { opacity: 0 } 100% { opacity: 0 } }
+@keyframes cm00 { 0%, 12.500% { transform: translateY(0) } 15.125%, 50.000% { transform: translateY(74px) } 52.625%, 100% { transform: translateY(0) } }
+@keyframes cm01 { 0%, 12.500% { transform: translateY(0) } 15.125%, 50.000% { transform: translateY(-74px) } 52.625%, 100% { transform: translateY(0) } }
+@keyframes cm10 { 0%, 15.625% { transform: translateY(0) } 18.250%, 53.125% { transform: translateY(74px) } 55.750%, 100% { transform: translateY(0) } }
+@keyframes cm11 { 0%, 15.625% { transform: translateY(0) } 18.250%, 53.125% { transform: translateY(-74px) } 55.750%, 100% { transform: translateY(0) } }
+@keyframes cm20 { 0%, 18.750% { transform: translateY(0) } 21.375%, 56.250% { transform: translateY(74px) } 58.875%, 100% { transform: translateY(0) } }
+@keyframes cm21 { 0%, 18.750% { transform: translateY(0) } 21.375%, 56.250% { transform: translateY(-74px) } 58.875%, 100% { transform: translateY(0) } }
+@keyframes cm30 { 0%, 21.875% { transform: translateY(0) } 24.500%, 59.375% { transform: translateY(74px) } 62.000%, 100% { transform: translateY(0) } }
+@keyframes cm31 { 0%, 21.875% { transform: translateY(0) } 24.500%, 59.375% { transform: translateY(-74px) } 62.000%, 100% { transform: translateY(0) } }
+@keyframes cm40 { 0%, 25.000% { transform: translateY(0) } 27.625%, 62.500% { transform: translateY(74px) } 65.125%, 100% { transform: translateY(0) } }
+@keyframes cm41 { 0%, 25.000% { transform: translateY(0) } 27.625%, 62.500% { transform: translateY(-74px) } 65.125%, 100% { transform: translateY(0) } }
+@keyframes cm50 { 0%, 28.125% { transform: translateY(0) } 30.750%, 65.625% { transform: translateY(74px) } 68.250%, 100% { transform: translateY(0) } }
+@keyframes cm51 { 0%, 28.125% { transform: translateY(0) } 30.750%, 65.625% { transform: translateY(-74px) } 68.250%, 100% { transform: translateY(0) } }
+@keyframes cm60 { 0%, 31.250% { transform: translateY(0) } 33.875%, 68.750% { transform: translateY(74px) } 71.375%, 100% { transform: translateY(0) } }
+@keyframes cm61 { 0%, 31.250% { transform: translateY(0) } 33.875%, 68.750% { transform: translateY(-74px) } 71.375%, 100% { transform: translateY(0) } }
+@keyframes ms0 { 0% { opacity: 1 } 12.500% { opacity: 1 } 13.438% { opacity: 0 } 61.188% { opacity: 0 } 62.188% { opacity: 1 } 100% { opacity: 1 } }
+@keyframes ms1 { 0% { opacity: 0 } 12.438% { opacity: 0 } 13.438% { opacity: 1 } 23.750% { opacity: 1 } 24.688% { opacity: 0 } 49.938% { opacity: 0 } 50.938% { opacity: 1 } 61.250% { opacity: 1 } 62.188% { opacity: 0 } 100% { opacity: 0 } }
+@keyframes ms2 { 0% { opacity: 0 } 23.688% { opacity: 0 } 24.688% { opacity: 1 } 50.000% { opacity: 1 } 50.938% { opacity: 0 } 100% { opacity: 0 } }
+@keyframes mapa { 0% { opacity: 1 } 12.500% { opacity: 1 } 13.438% { opacity: 0 } 50.875% { opacity: 0 } 51.875% { opacity: 1 } 100% { opacity: 1 } }
+@keyframes mapb { 0% { opacity: 0 } 13.375% { opacity: 0 } 14.375% { opacity: 1 } 50.000% { opacity: 1 } 50.938% { opacity: 0 } 100% { opacity: 0 } }
+@keyframes ms00 { 0%, 14.375% { transform: translate(0, 0) } 17.000%, 51.875% { transform: translate(42px, 98px) } 54.500%, 100% { transform: translate(0, 0) } }
+@keyframes ms01 { 0%, 14.375% { transform: translate(0, 0) } 17.000%, 51.875% { transform: translate(-42px, -98px) } 54.500%, 100% { transform: translate(0, 0) } }
+@keyframes ms10 { 0%, 17.500% { transform: translate(0, 0) } 20.125%, 55.000% { transform: translate(42px, 98px) } 57.625%, 100% { transform: translate(0, 0) } }
+@keyframes ms11 { 0%, 17.500% { transform: translate(0, 0) } 20.125%, 55.000% { transform: translate(-42px, -98px) } 57.625%, 100% { transform: translate(0, 0) } }
+@keyframes ms20 { 0%, 20.625% { transform: translate(0, 0) } 23.250%, 58.125% { transform: translate(42px, 98px) } 60.750%, 100% { transform: translate(0, 0) } }
+@keyframes ms21 { 0%, 20.625% { transform: translate(0, 0) } 23.250%, 58.125% { transform: translate(-42px, -98px) } 60.750%, 100% { transform: translate(0, 0) } }</style>
+<rect x="1" y="1" width="958" height="638" rx="14" fill="#151b23" stroke="#3d444d"/>
+<rect x="24" y="24" width="912" height="220" rx="10" fill="#0d1117" stroke="#3d444d"/>
+<text x="48" y="58" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#f0f6fc" text-anchor="start">Copying every page</text>
+<g style="animation: cs0 16.0s linear infinite"><text x="930" y="58" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#4493f8" text-anchor="end">process A running</text></g>
+<g style="animation: cs1 16.0s linear infinite"><text x="930" y="58" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#9198a1" text-anchor="end">switching</text></g>
+<g style="animation: cs2 16.0s linear infinite"><text x="930" y="58" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#db6d28" text-anchor="end">process B running</text></g>
+<text x="214" y="109" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#9198a1" text-anchor="end">process memory</text>
+<text x="214" y="183" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#9198a1" text-anchor="end">saved copy</text>
+<rect x="230" y="86" width="84" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="230" y="86" width="84" height="36" rx="5" fill="#4493f8" style="animation: cm00 16.0s ease-in-out infinite"/>
+<rect x="230" y="160" width="84" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="230" y="160" width="84" height="36" rx="5" fill="#db6d28" style="animation: cm01 16.0s ease-in-out infinite"/>
+<rect x="322" y="86" width="84" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="322" y="86" width="84" height="36" rx="5" fill="#4493f8" style="animation: cm10 16.0s ease-in-out infinite"/>
+<rect x="322" y="160" width="84" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="322" y="160" width="84" height="36" rx="5" fill="#db6d28" style="animation: cm11 16.0s ease-in-out infinite"/>
+<rect x="414" y="86" width="84" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="414" y="86" width="84" height="36" rx="5" fill="#4493f8" style="animation: cm20 16.0s ease-in-out infinite"/>
+<rect x="414" y="160" width="84" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="414" y="160" width="84" height="36" rx="5" fill="#db6d28" style="animation: cm21 16.0s ease-in-out infinite"/>
+<rect x="506" y="86" width="84" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="506" y="86" width="84" height="36" rx="5" fill="#4493f8" style="animation: cm30 16.0s ease-in-out infinite"/>
+<rect x="506" y="160" width="84" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="506" y="160" width="84" height="36" rx="5" fill="#db6d28" style="animation: cm31 16.0s ease-in-out infinite"/>
+<rect x="598" y="86" width="26" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="598" y="86" width="26" height="36" rx="5" fill="#4493f8" style="animation: cm40 16.0s ease-in-out infinite"/>
+<rect x="598" y="160" width="26" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="598" y="160" width="26" height="36" rx="5" fill="#db6d28" style="animation: cm41 16.0s ease-in-out infinite"/>
+<rect x="632" y="86" width="26" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="632" y="86" width="26" height="36" rx="5" fill="#4493f8" style="animation: cm50 16.0s ease-in-out infinite"/>
+<rect x="632" y="160" width="26" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="632" y="160" width="26" height="36" rx="5" fill="#db6d28" style="animation: cm51 16.0s ease-in-out infinite"/>
+<rect x="666" y="86" width="26" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="666" y="86" width="26" height="36" rx="5" fill="#4493f8" style="animation: cm60 16.0s ease-in-out infinite"/>
+<rect x="666" y="160" width="26" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="666" y="160" width="26" height="36" rx="5" fill="#db6d28" style="animation: cm61 16.0s ease-in-out infinite"/>
+<text x="48" y="226" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#9198a1" text-anchor="start">Every page of both processes crosses the memory bus on every switch.</text>
+<rect x="24" y="268" width="912" height="250" rx="10" fill="#0d1117" stroke="#3d444d"/>
+<text x="48" y="302" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#f0f6fc" text-anchor="start">Aligned 64 KiB pages through the cache MMU</text>
+<g style="animation: ms0 16.0s linear infinite"><text x="930" y="302" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#4493f8" text-anchor="end">process A running</text></g>
+<g style="animation: ms1 16.0s linear infinite"><text x="930" y="302" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#9198a1" text-anchor="end">switching</text></g>
+<g style="animation: ms2 16.0s linear infinite"><text x="930" y="302" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#db6d28" text-anchor="end">process B running</text></g>
+<text x="214" y="353" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#9198a1" text-anchor="end">addresses in use</text>
+<text x="214" y="451" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#9198a1" text-anchor="end">PSRAM pages</text>
+<rect x="230" y="428" width="40" height="36" rx="5" fill="#4493f8"/>
+<rect x="276" y="428" width="40" height="36" rx="5" fill="#4493f8"/>
+<rect x="322" y="428" width="40" height="36" rx="5" fill="#4493f8"/>
+<rect x="368" y="428" width="40" height="36" rx="5" fill="#4493f8"/>
+<rect x="432" y="428" width="40" height="36" rx="5" fill="#db6d28"/>
+<rect x="478" y="428" width="40" height="36" rx="5" fill="#db6d28"/>
+<rect x="524" y="428" width="40" height="36" rx="5" fill="#db6d28"/>
+<rect x="570" y="428" width="40" height="36" rx="5" fill="#db6d28"/>
+<g style="animation: mapa 16.0s linear infinite"><path d="M 272 366 C 272 400, 250 394, 250 428" fill="none" stroke="#4493f8" stroke-width="1.6"/><path d="M 364 366 C 364 400, 296 394, 296 428" fill="none" stroke="#4493f8" stroke-width="1.6"/><path d="M 456 366 C 456 400, 342 394, 342 428" fill="none" stroke="#4493f8" stroke-width="1.6"/><path d="M 548 366 C 548 400, 388 394, 388 428" fill="none" stroke="#4493f8" stroke-width="1.6"/></g>
+<g style="animation: mapa 16.0s linear infinite"><rect x="230" y="330" width="84" height="36" rx="5" fill="#4493f8" fill-opacity="0.18" stroke="#4493f8"/><rect x="322" y="330" width="84" height="36" rx="5" fill="#4493f8" fill-opacity="0.18" stroke="#4493f8"/><rect x="414" y="330" width="84" height="36" rx="5" fill="#4493f8" fill-opacity="0.18" stroke="#4493f8"/><rect x="506" y="330" width="84" height="36" rx="5" fill="#4493f8" fill-opacity="0.18" stroke="#4493f8"/></g>
+<g style="animation: mapb 16.0s linear infinite"><path d="M 272 366 C 272 400, 452 394, 452 428" fill="none" stroke="#db6d28" stroke-width="1.6"/><path d="M 364 366 C 364 400, 498 394, 498 428" fill="none" stroke="#db6d28" stroke-width="1.6"/><path d="M 456 366 C 456 400, 544 394, 544 428" fill="none" stroke="#db6d28" stroke-width="1.6"/><path d="M 548 366 C 548 400, 590 394, 590 428" fill="none" stroke="#db6d28" stroke-width="1.6"/></g>
+<g style="animation: mapb 16.0s linear infinite"><rect x="230" y="330" width="84" height="36" rx="5" fill="#db6d28" fill-opacity="0.18" stroke="#db6d28"/><rect x="322" y="330" width="84" height="36" rx="5" fill="#db6d28" fill-opacity="0.18" stroke="#db6d28"/><rect x="414" y="330" width="84" height="36" rx="5" fill="#db6d28" fill-opacity="0.18" stroke="#db6d28"/><rect x="506" y="330" width="84" height="36" rx="5" fill="#db6d28" fill-opacity="0.18" stroke="#db6d28"/></g>
+<rect x="598" y="330" width="26" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="640" y="428" width="26" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="598" y="330" width="26" height="36" rx="5" fill="#4493f8" style="animation: ms00 16.0s ease-in-out infinite"/>
+<rect x="640" y="428" width="26" height="36" rx="5" fill="#db6d28" style="animation: ms01 16.0s ease-in-out infinite"/>
+<rect x="632" y="330" width="26" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="674" y="428" width="26" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="632" y="330" width="26" height="36" rx="5" fill="#4493f8" style="animation: ms10 16.0s ease-in-out infinite"/>
+<rect x="674" y="428" width="26" height="36" rx="5" fill="#db6d28" style="animation: ms11 16.0s ease-in-out infinite"/>
+<rect x="666" y="330" width="26" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="708" y="428" width="26" height="36" rx="5" fill="none" stroke="#3d444d" stroke-dasharray="3 3"/>
+<rect x="666" y="330" width="26" height="36" rx="5" fill="#4493f8" style="animation: ms20 16.0s ease-in-out infinite"/>
+<rect x="708" y="428" width="26" height="36" rx="5" fill="#db6d28" style="animation: ms21 16.0s ease-in-out infinite"/>
+<text x="640" y="484" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">small pages, still copied</text>
+<text x="48" y="504" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#9198a1" text-anchor="start">The big pages stay where they are; two MMU entries per page are rewritten.</text>
+<rect x="48" y="540" width="14" height="14" rx="3" fill="#4493f8"/>
+<text x="70" y="552" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#f0f6fc" text-anchor="start">process A</text>
+<rect x="168" y="540" width="14" height="14" rx="3" fill="#db6d28"/>
+<text x="190" y="552" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#f0f6fc" text-anchor="start">process B</text>
+<text x="48" y="588" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#f0f6fc" text-anchor="start">Slowest switch measured with three busy Bash children on the 0.9 image: 29.3 ms copying, 5.6 ms through the MMU.</text>
+<text x="48" y="610" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#9198a1" text-anchor="start">The animation shows the order of the work, not its duration.</text>
+</svg>

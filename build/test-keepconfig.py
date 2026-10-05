@@ -182,5 +182,24 @@ class KeepConfigTests(unittest.TestCase):
         self.assertEqual(leftovers, [])
 
 
+    def test_remote_login_choice_survives_an_update(self):
+        self.configure()
+        self.write('inetd.conf', '#ssh\tstream\ttcp\tnowait\troot\t/usr/sbin/dropbear\tdropbear -i -R -I 600\n'
+                                 'telnet\tstream\ttcp\tnowait\troot\t/usr/sbin/telnetd\ttelnetd -i\n')
+        self.write('remote-login', 'telnet\n')
+        self.run_script('stop')
+        self.reflash_etc()
+        self.write('inetd.conf', '#ssh\tstream\n#telnet\tstream\n')
+        self.run_script('start')
+        self.assertEqual((self.etc / 'remote-login').read_text(), 'telnet\n')
+        self.assertIn('\ntelnet\t', '\n' + (self.etc / 'inetd.conf').read_text())
+
+    def test_no_choice_saved_means_first_login_asks_again(self):
+        self.configure()
+        self.run_script('stop')
+        self.reflash_etc()
+        self.run_script('start')
+        self.assertFalse((self.etc / 'remote-login').exists())
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

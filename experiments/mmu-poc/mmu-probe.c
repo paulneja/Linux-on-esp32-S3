@@ -25,11 +25,7 @@ static int extends(uint32_t first, uint32_t next, unsigned distance)
 
 static int expected_ram(const uint32_t *map)
 {
-    unsigned i;
-    for (i = 0x180; i < MMU_COUNT; ++i)
-        if (map[i] != (PSRAM | (i - 0x180)))
-            return 0;
-    return 1;
+    return ram_layout_ok(map);
 }
 
 static int owned_page(uintptr_t address, const uint32_t *map)
@@ -39,7 +35,7 @@ static int owned_page(uintptr_t address, const uint32_t *map)
         address % PAGE_SIZE)
         return 0;
     slot = (unsigned)((address - DATA_BASE) / PAGE_SIZE);
-    return map[slot] == (PSRAM | (slot - 0x180));
+    return (map[slot] & ~PAGE_MASK) == PSRAM;
 }
 
 #ifdef __XTENSA__
@@ -91,6 +87,13 @@ static int self_test(void)
     CHECK(!owned_page(RAM_START - PAGE_SIZE, map));
     CHECK(!owned_page(RAM_END, map));
     CHECK(!owned_page(UINTPTR_MAX, map));
+    map[0x180] = PSRAM | 1;
+    map[0x181] = PSRAM | 0;
+    CHECK(expected_ram(map));
+    CHECK(owned_page(RAM_START, map));
+    map[0x181] = PSRAM | 1;
+    CHECK(!expected_ram(map));
+    map[0x181] = PSRAM | 0;
     map[0x180] = INVALID;
     CHECK(!expected_ram(map));
     CHECK(!owned_page(RAM_START, map));

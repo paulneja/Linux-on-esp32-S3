@@ -24,9 +24,9 @@ keep them private and separate from distributable build artifacts.
 
 | | |
 |---|---|
-| **Root password** | `changeme123`, the same on every flashed board |
-| **Telnet** | on by default, **unencrypted** — password and session in clear text |
-| **SSH** | off by default (`ssh-server on` enables it); slow on this hardware |
+| **Root password** | `changeme123` on every flashed board, until the first login replaces it |
+| **Telnet** | off until the first login picks it, **unencrypted** — password and session in clear text |
+| **SSH** | off until the first login picks it (`remote-login ssh` later); slow on this hardware |
 | **Bluetooth LE** | advertises as `Esp32-Linux`, **no pairing, no PIN** |
 | **HTTP status page** | off by default (`web-server on` enables it, and it stays on across reboots); no auth, plain HTTP |
 | **Firewall** | none. No firewall package ships in the image |
@@ -38,8 +38,11 @@ nothing until you wrote rules; 0.8 removed it entirely to reclaim flash (see
 the changelog), and there is no other firewall tool on the image.
 
 The password is deliberately an obvious `changeme` rather than a plausible-looking
-one, so there is no chance of mistaking it for a real secret. Change it with
-`passwd` before the board is on any network you care about.
+one, so there is no chance of mistaking it for a real secret. The first login
+does not hand out a shell until it is changed, and nothing listens on the
+network before that: a board joined to WiFi over Bluetooth is not reachable
+with the factory password. The first login then turns on SSH or Telnet, one
+of them, or neither; `ssh-server on` can still add SSH next to Telnet by hand.
 
 ### It asks the internet what time it is
 

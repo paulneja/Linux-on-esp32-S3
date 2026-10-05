@@ -24,7 +24,7 @@ ESP32-S3 (single chip, two Xtensa LX7 cores)
 │   └── NimBLE peripheral — advertises as "Esp32-Linux" (Nordic UART
 │       Service). A byte pipe only: it never drives the WiFi radio itself.
 │
-└── Core 1 — Linux 6.11 (real, native Xtensa binary)
+└── Core 1 — Linux 7.2.4 (real, native Xtensa binary)
     ├── esp32-ng driver (drivers/net/wireless/espressif/esp32-ng/)
     │   ├── espsta0 — STA netdev, joins the home WiFi (wpa_supplicant).
     │   │             STA only: the AP side was removed (see below).
@@ -51,7 +51,7 @@ this edition exists at all.
    Core 0's firmware → `esp_wifi_set_mode(WIFI_MODE_STA)` +
    `esp_wifi_start()`. The driver never creates an AP interface (see below),
    so the firmware stays in plain STA mode.
-3. userspace: `S45inetd` (telnet; ssh only if enabled with `ssh-server on`)
+3. userspace: `S45inetd` (nothing until the first login picks ssh or telnet)
    → `wpa_supplicant` on `espsta0` (via `/etc/network/interfaces`, joining the
    WiFi set with the interactive `wifi` command or `wifi connect "SSID" "PASS"`).
    That step runs in the **background** so it does not hold the login prompt
@@ -175,13 +175,13 @@ flashed board.
 ## Security model
 
 - SSH (`dropbear`) and Telnet (`telnetd`) both require a real login
-  (`/etc/shadow`, SHA-256). Default password `changeme123` — **must be
-  changed** via `passwd` on first login, it's deliberately obvious rather
-  than plausible-looking.
+  (`/etc/shadow`, SHA-256). Default password `changeme123`, deliberately
+  obvious rather than plausible-looking. `first-login` runs from root's login
+  shell and does not give a shell until it is changed.
 - No session timeout, no brute-force throttling yet.
-- Telnet is plaintext on the wire; SSH is not. Telnet is on by default for
-  convenience on a trusted local network, not because it is recommended
-  beyond one; SSH ships disabled and is enabled with `ssh-server on`.
+- Nothing listens on the network until that first login, which then turns on
+  SSH or Telnet, one of them, or neither (`remote-login ssh|telnet|off`). Telnet is plaintext
+  on the wire; SSH is not.
 
 ## Known gaps
 

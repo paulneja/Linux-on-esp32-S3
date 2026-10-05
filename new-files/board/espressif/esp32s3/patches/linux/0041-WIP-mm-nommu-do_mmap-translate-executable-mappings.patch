@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Max Filippov <jcmvbkbc@gmail.com>
+Date: Mon, 7 Aug 2023 08:03:28 -0700
+Subject: [PATCH 41/61] WIP: mm/nommu: do_mmap: translate executable mappings
+
+When executable mapping is backed by regular RAM translate the address
+from the DRAM region to IRAM region. This is totally experimental, hacky
+and incomplete, but at least this change shouldn't break any existing
+functionality.
+
+Signed-off-by: Max Filippov <jcmvbkbc@gmail.com>
+(cherry picked from commit 5145a8ddc267d161a6f634cda7f10c99f4f34780)
+---
+ mm/nommu.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/mm/nommu.c b/mm/nommu.c
+index 7c4d1b7689e2a..12e936aa4b9ba 100644
+--- a/mm/nommu.c
++++ b/mm/nommu.c
+@@ -1213,6 +1213,10 @@ unsigned long do_mmap(struct file *file,
+ 
+ 	up_write(&nommu_region_sem);
+ 
++	if (IS_ENABLED(CONFIG_XTENSA_PLATFORM_ESP32) &&
++	    (vma->vm_flags & VM_EXEC) && result >= 0x3c000000 && result < 0x3e000000) {
++		result += 0x42000000 - 0x3c000000;
++	}
+ 	return result;
+ 
+ error_just_free:
+-- 
+2.55.0
+

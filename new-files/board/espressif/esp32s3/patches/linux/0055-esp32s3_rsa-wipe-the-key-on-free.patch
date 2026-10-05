@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: paulneja <207793167+paulneja@users.noreply.github.com>
+Date: Tue, 22 Sep 2026 21:27:29 -0300
+Subject: [PATCH 55/61] esp32s3_rsa: wipe the key on free
+
+---
+ drivers/crypto/esp32s3_rsa.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/drivers/crypto/esp32s3_rsa.c b/drivers/crypto/esp32s3_rsa.c
+index 388dabcd32014..920aa735a8ddd 100644
+--- a/drivers/crypto/esp32s3_rsa.c
++++ b/drivers/crypto/esp32s3_rsa.c
+@@ -3,6 +3,7 @@
+ #include <linux/delay.h>
+ #include <linux/io.h>
+ #include <linux/kernel.h>
++#include <linux/string.h>
+ #include <linux/module.h>
+ #include <linux/moduleparam.h>
+ #include <linux/mutex.h>
+@@ -196,6 +197,10 @@ static void esp_rsa_free_key(struct esp_rsa_key *k)
+ {
+ 	mpi_free(k->n_mpi);
+ 	k->n_mpi = NULL;
++	memzero_explicit(k->n, sizeof(k->n));
++	memzero_explicit(k->e, sizeof(k->e));
++	memzero_explicit(k->d, sizeof(k->d));
++	memzero_explicit(k->rr, sizeof(k->rr));
+ 	k->have_e = k->have_d = false;
+ 	k->nwords = 0;
+ }
+-- 
+2.55.0
+

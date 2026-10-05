@@ -174,7 +174,7 @@ else
 
 		sed -i "s/^CONFIG_VECTORS_ADDR=.*/CONFIG_VECTORS_ADDR=0x$FW_VEC/" "$KCONF" \
 			|| die "could not update $KCONF"
-		KDOTCONF="$BUILD/build-buildroot-$PROFILE/build/linux-xtensa-6.11-esp32-tag/.config"
+		KDOTCONF="$BUILD/build-buildroot-$PROFILE/build/linux-7.2.4/.config"
 		[ -f "$KDOTCONF" ] && \
 			sed -i "s/^CONFIG_VECTORS_ADDR=.*/CONFIG_VECTORS_ADDR=0x$FW_VEC/" "$KDOTCONF"
 

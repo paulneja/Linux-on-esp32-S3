@@ -126,7 +126,7 @@ def verify_installed():
         device = re.search(r'(?m)^mtd([0-9]+):[^\n]*"' + label + r'"$', table)
         assert device, (label, table)
         size = (args.artifacts / filename).stat().st_size
-        output = command(f'head -c {size} /dev/mtdblock{device.group(1)} | sha256sum', 180)
+        output = command(f'head -c {size} /dev/mtd{device.group(1)} | sha256sum', 180)
         assert re.search(r'(?m)^' + manifest['sha256'][filename] + r'\s', output), filename
 
 def external(name):
@@ -380,8 +380,12 @@ try:
 
     checks = [
         ('boot', 'uname -a && id && mount && free && dmesg',
-         ('6.11.0-forkbank', 'Mounted root (cramfs filesystem) readonly')),
-        ('hardware-rsa-registered', 'grep -A2 "^name *: rsa$" /proc/crypto | grep -B2 esp32s3 || grep -c rsa-esp32s3 /proc/crypto', 'esp32s3'),
+        ('7.2.4-forkbank', 'Mounted root (cramfs filesystem) readonly')),
+        # The self-test no longer runs on every boot (esp32s3_rsa.selftest=1
+        # brings it back). What matters is that the driver came up and
+        # registered, which is what the crypto API reports.
+        ('hardware-rsa-registered', 'grep -A2 "^name *: rsa$" /proc/crypto | grep -B2 esp32s3 || grep -c rsa-esp32s3 /proc/crypto',
+         'esp32s3'),
         ('no-driver-timeout', '! dmesg | grep -q "accelerator did not report ready" && echo RSA_OK', 'RSA_OK'),
         ('shell-policy', 'test -n "$BASH_VERSION" && test "$(readlink /bin/sh)" = busybox && test "$HOME" = /home/root', None),
         ('first-boot-home', 'test -f /home/root/README.txt && test "$(stat -c %a /home/root)" = 700 && test -f /home/www/index.html && test -x /home/www/cgi-bin/status && test ! -e /www && set -- /home/.www-seed.* && test ! -e "$1"', None),

@@ -55,6 +55,60 @@ class WifiScriptTests(unittest.TestCase):
             r = self.run_function(f'write_conf_psk "net" {bad!r}; echo rc=$?')
             self.assertIn('rc=1', r.stdout, f'{bad!r} was accepted')
 
+    def connect_with(self, ifup_body, ip_out=''):
+        log = self.dir / 'wpa.log'
+        calls = self.dir / 'calls'
+        fakes = f'''
+WPALOG={log}
+CONNECT_WAIT=3
+ifup() {{ {ifup_body}; }}
+ifdown() {{ echo ifdown >> {calls}; }}
+killall() {{ echo "killall $*" >> {calls}; }}
+ip() {{ printf '%s' "{ip_out}"; }}
+sleep() {{ :; }}
+'''
+        r = self.run_function(fakes + 'apply_conf "Home"; echo rc=$?')
+        return r, calls.read_text() if calls.exists() else ''
+
+    def test_wrong_password_is_reported_and_the_retries_stop(self):
+        r, calls = self.connect_with(
+            f'echo "espsta0: CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid=\\"Home\\" reason=WRONG_KEY" > {self.dir}/wpa.log')
+        self.assertIn('rc=2', r.stdout, r.stderr)
+        self.assertIn('Wrong password', r.stderr)
+        self.assertGreaterEqual(calls.count('killall -q wpa_supplicant'), 2, calls)
+
+    def test_connect_prints_the_address(self):
+        r, _ = self.connect_with(':', '    inet 192.168.1.86/24 brd 192.168.1.255 scope global espsta0\n')
+        self.assertIn('rc=0', r.stdout, r.stderr)
+        self.assertIn('192.168.1.86', r.stdout)
+
+    def test_connect_gives_up_waiting_but_leaves_it_running(self):
+        r, calls = self.connect_with(':')
+        self.assertIn('rc=3', r.stdout, r.stderr)
+        self.assertEqual(calls.count('killall -q wpa_supplicant'), 1, calls)
+
+    def test_scan_stops_a_wrong_password_loop_first(self):
+        log = self.dir / 'wpa.log'
+        log.write_text('reason=WRONG_KEY\n')
+        calls = self.dir / 'calls'
+        fakes = f'''
+WPALOG={log}
+ifdown() {{ echo ifdown >> {calls}; }}
+killall() {{ echo "killall $*" >> {calls}; }}
+ip() {{ :; }}
+mktemp() {{ echo {self.dir}/raw; }}
+iw() {{
+    case "$*" in
+    *link*) echo "Not connected." ;;
+    *scan*) printf 'BSS 00:11 (on espsta0)\\n\\tsignal: -50.00 dBm\\n\\tSSID: Home\\n\\tRSN:\\t * Version: 1\\n' ;;
+    esac
+}}
+'''
+        r = self.run_function(fakes + 'raw_scan')
+        self.assertIn('-50\tSEC\tHome', r.stdout, r.stderr)
+        self.assertIn('killall -q wpa_supplicant', calls.read_text())
+        self.assertFalse((self.dir / 'raw').exists())
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
