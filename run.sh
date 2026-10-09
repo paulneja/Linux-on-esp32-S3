@@ -107,8 +107,12 @@ python_with_pyserial() {
 	return 1
 }
 
-disk_free_gb() { df -PBG "$REPO" 2>/dev/null | awk 'NR==2 {gsub("G","",$4); print $4}'; }
-
+disk_free_gb() {
+    local available_kb
+    available_kb=$(df -Pk "$REPO" | awk 'NR==2 {print $4}')
+    [[ "$available_kb" =~ ^[0-9]+$ ]] || return 1
+    echo $((available_kb / 1024 / 1024))
+}
 detect_port() {
 	local p
 	if [ -n "$PORT" ]; then printf '%s\n' "$PORT"; return 0; fi
