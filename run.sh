@@ -14,6 +14,99 @@ ACTION=""
 LOGDIR=${LOGDIR:-$(dirname "$REPO")}
 BOARD_ID_HINT="usb-1a86"
 
+# External targets are built from independent snapshots; the original N16 path
+# below is deliberately left unchanged.
+TARGET="n16"
+TARGET_REFRESH=0
+TARGET_BUILD_ROOT=${TARGET_BUILD_ROOT:-"$REPO/target-builds"}
+TARGET_PATCH_ROOT=${TARGET_PATCH_ROOT:-"$REPO/targets-patches"}
+external_target() {
+    case "$1" in generic-n8|xiao-n8|xiao-n8-sd) return 0 ;; *) return 1 ;; esac
+}
+
+target_snapshot() {
+    local target=$1 dir="$TARGET_BUILD_ROOT/$1" patch_dir="$TARGET_PATCH_ROOT/$1"
+    local source_commit patch_hash state_dir existing staging patch rc
+    command -v git >/dev/null 2>&1 || die "git is required for external targets"
+    command -v python3 >/dev/null 2>&1 || die "python3 is required for external targets"
+    [ -d "$REPO/.git" ] || die "source repository must have a .git directory"
+    [ -f "$patch_dir/series" ] || die "missing patch list: $patch_dir/series"
+    source_commit=$(git -C "$REPO" rev-parse HEAD) || return 1
+    # Hash the actual patches and their application order, not merely filenames.
+    patch_hash=$(python3 - "$patch_dir" <<'PYHASH'
+import hashlib, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+series = [x.strip() for x in (root / 'series').read_text().splitlines()
+          if x.strip() and not x.lstrip().startswith('#')]
+if not series:
+    raise SystemExit('error: patch series is empty')
+h = hashlib.sha256()
+for name in series:
+    rel = pathlib.PurePosixPath(name)
+    if rel.is_absolute() or '..' in rel.parts:
+        raise SystemExit(f'error: invalid patch path: {name}')
+    patch = root / name
+    if not patch.is_file():
+        raise SystemExit(f'error: missing patch: {patch}')
+    h.update(name.encode() + b'\0' + patch.read_bytes() + b'\0')
+print(h.hexdigest())
+PYHASH
+    ) || return 1
+    state_dir="$dir/.git"
+    if [ -d "$dir" ] && [ "$TARGET_REFRESH" -eq 0 ]; then
+        if [ -f "$state_dir/target-source" ] && [ -f "$state_dir/target-patches" ] &&
+           [ "$(cat "$state_dir/target-source")" = "$source_commit" ] &&
+           [ "$(cat "$state_dir/target-patches")" = "$patch_hash" ]; then
+            printf '  Reusing target environment: %s\n' "$dir"
+            TARGET_DIR=$dir
+            return 0
+        fi
+        die "target environment is out of date: $dir (use --refresh-target to recreate it)"
+    fi
+    if [ -e "$dir" ] && [ "$TARGET_REFRESH" -eq 1 ]; then
+        printf '  Target refresh will delete its previous build outputs: %s\n' "$dir"
+        ask "  Recreate target environment?" || return 1
+        rm -rf -- "$dir" || return 1
+    fi
+    mkdir -p "$TARGET_BUILD_ROOT" || return 1
+    staging=$(mktemp -d "$TARGET_BUILD_ROOT/.${target}.tmp.XXXXXXXX") || return 1
+    if ! (git -C "$REPO" archive "$source_commit" | tar -xf - -C "$staging"); then
+        rm -rf -- "$staging"
+        die "could not export baseline source"
+    fi
+    if ! git -C "$staging" init -q; then rm -rf -- "$staging"; return 1; fi
+    if ! (cd "$staging" && git add -A &&
+          git -c user.name='Target Builder' -c user.email='target-builder@localhost' commit -qm 'Baseline source snapshot'); then
+        rm -rf -- "$staging"; die "could not commit baseline snapshot"
+    fi
+    while IFS= read -r patch || [ -n "$patch" ]; do
+        patch=${patch%$'\r'}
+        [[ -z "$patch" || "$patch" =~ ^[[:space:]]*# ]] && continue
+        patch="${patch_dir}/${patch}"
+        if ! git -C "$staging" apply --check "$patch" || ! git -C "$staging" apply "$patch"; then
+            rm -rf -- "$staging"
+            die "patch failed: $patch"
+        fi
+    done < "$patch_dir/series"
+    if ! (cd "$staging" && git add -A &&
+          git -c user.name='Target Builder' -c user.email='target-builder@localhost' commit --allow-empty -qm "Apply $target patches"); then
+        rm -rf -- "$staging"; die "could not commit target patches"
+    fi
+    printf '%s\n' "$source_commit" > "$staging/.git/target-source"
+    printf '%s\n' "$patch_hash" > "$staging/.git/target-patches"
+    if ! mv "$staging" "$dir"; then rm -rf -- "$staging"; return 1; fi
+    printf '  Prepared target environment: %s\n' "$dir"
+    TARGET_DIR=$dir
+}
+
+launch_target() {
+    local target=$1
+    shift
+    target_snapshot "$target" || return 1
+    # No external-target selection inside a generated snapshot (avoids recursion).
+    (cd "$TARGET_DIR" && ESP32_TARGET_ISOLATED=1 bash ./run.sh "$@")
+}
+
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
 bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
@@ -61,6 +154,8 @@ Options:
   -j, --jobs N         Parallel build jobs (default: nproc)
   -p, --port PATH      Serial adapter (default: autodetect)
   -a, --artifacts DIR  Artifacts directory to use
+  --target ID          n16 (default), generic-n8, xiao-n8, xiao-n8-sd
+  --refresh-target     Recreate selected external target (deletes its outputs)
   -h, --help           This help
 
 Environment:
@@ -479,6 +574,18 @@ do_all() {
 	green "complete path finished"
 }
 
+choose_external_target() {
+    [ "${ESP32_TARGET_ISOLATED:-}" != 1 ] || { warn "already in an isolated target"; return 1; }
+    printf '\n  1) Generic N8\n  2) XIAO N8\n  3) XIAO N8 + SD\n  0) Back\nChoice: '
+    local choice="" target=""
+    read_reply choice || return 1
+    case "$choice" in
+        1) target=generic-n8 ;; 2) target=xiao-n8 ;; 3) target=xiao-n8-sd ;;
+        0) return 0 ;; *) warn "invalid target"; return 1 ;;
+    esac
+    launch_target "$target"
+}
+
 menu() {
 	while true; do
 		echo
@@ -493,6 +600,7 @@ menu() {
   7) Reproducibility: two builds and a comparison
   8) Recover the board (restore /etc and /home)
   9) Status
+  10) External target (N8 / XIAO)
   0) Quit
 EOF
 		printf 'Choice: '
@@ -508,6 +616,7 @@ EOF
 			7) do_repro ;;
 			8) do_recover ;;
 			9) do_status ;;
+			10) choose_external_target ;;
 			0|q|Q) return 0 ;;
 			*) warn "invalid choice" ;;
 		esac
@@ -521,12 +630,31 @@ while [ $# -gt 0 ]; do
 		-j|--jobs)       JOBS="${2:?-j needs a number}"; shift 2 ;;
 		-p|--port)       PORT="${2:?-p needs a path}"; shift 2 ;;
 		-a|--artifacts)  ARTIFACTS="${2:?-a needs a directory}"; shift 2 ;;
+		--target)         TARGET="${2:?--target needs an ID}"; shift 2 ;;
+		--refresh-target) TARGET_REFRESH=1; shift ;;
 		-h|--help)       usage; exit 0 ;;
 		--check|--build|--verify|--flash|--test|--all|--repro|--recover|--status)
 		                 ACTION="${1#--}"; shift ;;
 		*)               red "unknown option: $1"; usage; exit 1 ;;
 	esac
 done
+
+if [ "${ESP32_TARGET_ISOLATED:-}" != 1 ]; then
+    if [ "$TARGET" != n16 ]; then
+        external_target "$TARGET" || die "unsupported target: $TARGET"
+        forwarded=()
+        [ "$ASSUME_YES" -eq 0 ] || forwarded+=(--yes)
+        [ "$QUIET" -eq 0 ] || forwarded+=(--quiet)
+        forwarded+=(--jobs "$JOBS")
+        [ -z "$PORT" ] || forwarded+=(--port "$PORT")
+        [ -z "$ARTIFACTS" ] || forwarded+=(--artifacts "$ARTIFACTS")
+        [ -z "$ACTION" ] || forwarded+=("--$ACTION")
+        launch_target "$TARGET" "${forwarded[@]}"
+        exit $?
+    fi
+elif [ "$TARGET" != n16 ]; then
+    die "nested external target selection is disabled"
+fi
 
 if [ -n "$ARTIFACTS" ] && [ ! -d "$ARTIFACTS" ]; then
 	die "artifacts directory does not exist: $ARTIFACTS"

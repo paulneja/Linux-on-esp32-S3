@@ -1,2 +1,4 @@
 build-output/
 __pycache__/
+# Target-specific build environments
+/target-builds/
