@@ -1,1 +1,6 @@
-001-generic-n8.patch
+001-build.patch
+002-package.patch
+003-flash.patch
+004-test.patch
+005-config.patch
+006-ci.patch

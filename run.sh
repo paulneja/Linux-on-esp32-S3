@@ -20,6 +20,7 @@ TARGET="n16"
 TARGET_REFRESH=0
 TARGET_BUILD_ROOT=${TARGET_BUILD_ROOT:-"$REPO/target-builds"}
 TARGET_PATCH_ROOT=${TARGET_PATCH_ROOT:-"$REPO/targets-patches"}
+
 external_target() {
     case "$1" in generic-n8|xiao-n8|xiao-n8-sd) return 0 ;; *) return 1 ;; esac
 }
@@ -104,11 +105,12 @@ launch_target() {
     shift
     target_snapshot "$target" || return 1
     # No external-target selection inside a generated snapshot (avoids recursion).
-    (cd "$TARGET_DIR" && ESP32_TARGET_ISOLATED=1 bash ./run.sh "$@")
+    (cd "$TARGET_DIR" && ESP32_TARGET_ISOLATED=1 ESP32_TARGET_NAME="$target" bash ./run.sh "$@")
 }
 
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
+blue()  { printf '\033[34m%s\033[0m\n' "$*"; }
 bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
 warn()  { printf '  ! %s\n' "$*" >&2; }
 info()  { printf '  %s\n' "$*"; }
@@ -587,10 +589,18 @@ choose_external_target() {
 }
 
 menu() {
-	while true; do
-		echo
-		bold "=== Linux on ESP32-S3 ==="
-		cat <<'EOF'
+    while true; do
+        echo
+        bold "=== Linux on ESP32-S3 ==="
+        if [ "${ESP32_TARGET_ISOLATED:-}" = 1 ]; then
+            blue "  Active Target: ${ESP32_TARGET_NAME:-External target}"
+            info "Build Directory: $REPO"
+        else
+            green "  Active Target: Generic N16 (Upstream)"
+            info "Build Directory: Original Repository"
+        fi
+        echo
+        cat <<'EOF'
   1) Check the environment
   2) Build everything from clean sources
   3) Check the checksums of a build
@@ -600,27 +610,38 @@ menu() {
   7) Reproducibility: two builds and a comparison
   8) Recover the board (restore /etc and /home)
   9) Status
-  10) External target (N8 / XIAO)
-  0) Quit
 EOF
-		printf 'Choice: '
-		local choice=""
-		read_reply choice || { echo; return 0; }
-		case "$choice" in
-			1) check_env ;;
-			2) do_build ;;
-			3) do_verify ;;
-			4) do_flash ;;
-			5) do_test ;;
-			6) do_all ;;
-			7) do_repro ;;
-			8) do_recover ;;
-			9) do_status ;;
-			10) choose_external_target ;;
-			0|q|Q) return 0 ;;
-			*) warn "invalid choice" ;;
-		esac
-	done
+        if [ "${ESP32_TARGET_ISOLATED:-}" = 1 ]; then
+            echo "  10) Switch to N16 (Upstream)"
+        else
+            echo "  10) Select N8 / XIAO target"
+        fi
+        echo "  0) Quit"
+        printf 'Choice: '
+        local choice=""
+        read_reply choice || { echo; return 0; }
+        case "$choice" in
+            1) check_env ;;
+            2) do_build ;;
+            3) do_verify ;;
+            4) do_flash ;;
+            5) do_test ;;
+            6) do_all ;;
+            7) do_repro ;;
+            8) do_recover ;;
+            9) do_status ;;
+            10)
+                if [ "${ESP32_TARGET_ISOLATED:-}" = 1 ]; then
+                    green "  Switching to Generic N16 (Upstream)"
+                    return 0
+                else
+                    choose_external_target
+                fi
+                ;;
+            0|q|Q) return 0 ;;
+            *) warn "invalid choice" ;;
+        esac
+    done
 }
 
 while [ $# -gt 0 ]; do
