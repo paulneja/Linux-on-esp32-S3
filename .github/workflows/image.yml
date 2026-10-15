@@ -17,7 +17,8 @@ on:
         default: n16
         options:
           - n16
-          - generic-n8
+          - generic-n8-server
+          - generic-n8-client
 
 permissions:
   contents: read
@@ -37,11 +38,17 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Check Generic N8 target patches (when present)
-        if: hashFiles('targets-patches/generic-n8/series') != ''
         run: |
-          bash ./run.sh --yes --target generic-n8 --status
-          test -d target-builds/generic-n8/.git
-          git -C target-builds/generic-n8 diff --exit-code
+          set -euo pipefail
+          for target in generic-n8-server generic-n8-client; do
+            if [ ! -f "targets-patches/$target/series" ]; then
+              echo "Skipping $target (no series file)"
+              continue
+            fi
+            bash ./run.sh --yes --target "$target" --status
+            test -d "target-builds/$target/.git"
+            git -C "target-builds/$target" diff --exit-code
+          done
 
       - name: Check the shell scripts parse
         run: |
@@ -235,9 +242,9 @@ jobs:
             n16)
               echo "build_dir=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
               ;;
-            generic-n8)
-              bash ./run.sh --yes --target generic-n8 --status
-              echo "build_dir=$GITHUB_WORKSPACE/target-builds/generic-n8" >> "$GITHUB_ENV"
+            generic-n8-server|generic-n8-client)
+              bash ./run.sh --yes --target "$BUILD_TARGET" --status
+              echo "build_dir=$GITHUB_WORKSPACE/target-builds/$BUILD_TARGET" >> "$GITHUB_ENV"
               ;;
             *)
               echo "Unsupported target: $BUILD_TARGET" >&2

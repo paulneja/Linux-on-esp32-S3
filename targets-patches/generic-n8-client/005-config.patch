@@ -2,6 +2,10 @@ diff --git a/new-files/configs/esp32s3_devkit_c1_16m_defconfig b/new-files/confi
 index 4e68f68..dfe049c 100644
 --- a/new-files/configs/esp32s3_devkit_c1_16m_defconfig
 +++ b/new-files/configs/esp32s3_devkit_c1_16m_defconfig
+@@ -29,2 +29,2 @@
+-BR2_PACKAGE_DROPBEAR=y
++# BR2_PACKAGE_DROPBEAR is not set
+ BR2_PACKAGE_DROPBEAR_LOCALOPTIONS_FILE="board/espressif/esp32s3/dropbear-localoptions.h"
 @@ -30,7 +30,6 @@ BR2_PACKAGE_DROPBEAR_LOCALOPTIONS_FILE="board/espressif/esp32s3/dropbear-localop
  BR2_PACKAGE_IW=y
  BR2_PACKAGE_WIRELESS_REGDB=y
@@ -10,13 +14,13 @@ index 4e68f68..dfe049c 100644
  # BR2_PACKAGE_URANDOM_SCRIPTS is not set
  BR2_TARGET_GENERIC_ROOT_PASSWD="changeme123"
  BR2_TARGET_ROOTFS_CRAMFS=y
-@@ -39,6 +38,4 @@ BR2_TARGET_ROOTFS_JFFS2=y
+@@ -39,6 +38,7 @@ BR2_TARGET_ROOTFS_JFFS2=y
  BR2_TARGET_ROOTFS_JFFS2_FLASH_64=y
  # BR2_TARGET_ROOTFS_TAR is not set
  BR2_PACKAGE_MBEDTLS=y
--BR2_PACKAGE_LIBCURL=y
--BR2_PACKAGE_LIBCURL_CURL=y
--BR2_PACKAGE_LIBCURL_MBEDTLS=y
+ BR2_PACKAGE_LIBCURL=y
+ BR2_PACKAGE_LIBCURL_CURL=y
+ BR2_PACKAGE_LIBCURL_MBEDTLS=y
 +BR2_PACKAGE_NCURSES=y
 diff --git a/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r b/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r
 index 9c8aa25..21d9d5c 100644
