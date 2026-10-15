@@ -64,7 +64,7 @@ index 7fe9485..24f133c 100644
  HOST = BUILD / 'build-buildroot-esp32s3_devkit_c1_16m/host'
  LIMIT = 0x780000
 -PROFILES = {'all': ['bash', 'dash', 'make', 'micropython', 'socat'],
-+PROFILES = {'all': ['dash', 'socat'],
++PROFILES = {'all': [],
              'bash-red': ['bash', 'dash', 'make', 'socat'],
              'python-automatizacion': ['dash', 'make', 'micropython'], 'base': []}
  PACKAGES = {
