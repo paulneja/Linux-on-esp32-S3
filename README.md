@@ -326,7 +326,7 @@ is in the [changelog](CHANGELOG.md).
 | [SECURITY.md](SECURITY.md)                                                | the login, SSH and Telnet, what is and is not protected                                                    |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md)                                  | when something does not work                                                                               |
 | [CHANGELOG.md](CHANGELOG.md)                                              | every release, with causes and measurements                                                                |
-| [TARGET-PATCHES.md](TARGET-PATCHES.md)                                    | Generic N8 derivative build and target-specific patch management (experimental, not yet in production use) |
+| [N8-TARGET-PATCHES.md](N8-TARGET-PATCHES.md)                              | Generic N8 derivative build and target-specific patch management (experimental, not yet in production use) |
 
 <details>
 <summary><b>Earlier releases</b></summary>
