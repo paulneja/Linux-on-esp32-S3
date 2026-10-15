@@ -1,5 +1,5 @@
---- a/new-files/board/espressif/esp32s3/busybox.config	2026-10-14 13:34:02.299912006 +0000
-+++ b/new-files/board/espressif/esp32s3/busybox.config	2026-10-14 13:34:02.302075883 +0000
+--- a/new-files/board/espressif/esp32s3/busybox.config
++++ b/new-files/board/espressif/esp32s3/busybox.config
 @@ -375,7 +375,7 @@
  # CONFIG_ED is not set
  CONFIG_PATCH=y
@@ -9,3 +9,36 @@
  CONFIG_FEATURE_VI_MAX_LEN=4096
  CONFIG_FEATURE_VI_8BIT=y
  CONFIG_FEATURE_VI_COLON=y
+--- a/experiments/mmu-poc/programs/build-netcat.sh
++++ b/experiments/mmu-poc/programs/build-netcat.sh
+@@ -28,8 +28,21 @@
+ if ! patch -d "$source_dir" -p1 -R --force --dry-run < "$cron_patch" >/dev/null 2>&1; then
+     patch -d "$source_dir" -p1 --forward --batch < "$cron_patch"
+ fi
++# Generic N8: enable vi in the BusyBox variant actually installed in rootfs.
++# This source tree is copied from Buildroot and has its own .config.
++if grep -qx '# CONFIG_VI is not set' "$source_dir/.config"; then
++    sed -i 's/^# CONFIG_VI is not set$/CONFIG_VI=y/' "$source_dir/.config"
++fi
++grep -qx 'CONFIG_VI=y' "$source_dir/.config" || {
++    echo 'ERROR: BusyBox CONFIG_VI was not enabled' >&2
++    exit 1
++}
+ unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS LIBS
+ make -C "$source_dir" ARCH=xtensa CROSS_COMPILE="$host_dir/bin/xtensa-esp32s3-linux-uclibcfdpic-" \
+     HOSTCC='cc -std=gnu17' oldconfig < /dev/null
++grep -qx 'CONFIG_VI=y' "$source_dir/.config" || {
++    echo 'ERROR: BusyBox oldconfig disabled CONFIG_VI' >&2
++    exit 1
++}
+ make -C "$source_dir" -j"${JOBS:-4}" ARCH=xtensa \
+     CROSS_COMPILE="$host_dir/bin/xtensa-esp32s3-linux-uclibcfdpic-" HOSTCC='cc -std=gnu17' "${extra[@]}"
+--- a/experiments/mmu-poc/programs/image-profiles.py
++++ b/experiments/mmu-poc/programs/image-profiles.py
+@@ -76,5 +76,5 @@
+         install(PROGRAMS / 'busybox-with-netcat', tree / 'bin/busybox')
+-        for name in ('nc', 'netcat', 'stat'):
++        for name in ('nc', 'netcat', 'stat', 'vi'):
+             path = tree / 'bin' / name
+             remove(path)
+             path.symlink_to('busybox')
