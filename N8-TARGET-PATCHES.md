@@ -58,13 +58,49 @@ The paths above reflect the adopted target-patch approach; refer to the current 
 
 ## Build and patch workflow
 
-1. Start from a clean checkout of the selected upstream N16 source revision.
-2. Copy the upstream source to `target-builds/generic-n8/`.
-3. Apply the patches from `targets-patches/generic-n8/` in the intended order, to the Generic N8 copy only.
-4. Build Generic N8 from the resulting derivative tree.
-5. Verify both Generic N8 and the unchanged N16 path.
+Use the interactive menu provided by `./run.sh`. The commands below describe the **Generic N8 selection and build workflow** rather than a separate manual copy-and-patch procedure.
 
-**Important:** Patch application should be deterministic, fail on mismatch, and must never partially modify the upstream N16 source. The concrete commands and patch order are governed by the implementation in `run.sh` and the patch files.
+1. Run `./run.sh` from the repository root. The initial menu shows **Active Target: Generic N16 (Upstream)** and **Build Directory: Original Repository** when the default N16 target is selected.
+2. Enter **`10) Select N8 / XIAO target`**.
+3. In the target menu, enter **`1) Generic N8`**. The other entries, **`2) XIAO N8`** and **`3) XIAO N8 + SD`**, are displayed but marked **`[Not available yet]`**.
+4. The script selects the Generic N8 environment under `target-builds/generic-n8/`. If this environment already exists, it may report **`Reusing target environment: .../target-builds/generic-n8`**. This means the existing target environment is being reused; it does **not** by itself establish that the upstream source was freshly copied or that patches were reapplied.
+5. Return to the main menu and use **`2) Build everything from clean sources`** to request a clean build for the selected target. The main menu also provides **`3) Check the checksums of a build`**, **`4) Flash the board`**, **`5) Run the board tests`**, and **`9) Status`** for the subsequent steps. **`6) EVERYTHING: build, check, flash and test`** is the combined operation.
+6. Confirm the active target and build status, and verify the resulting image on Generic N8 hardware. When checking N16 compatibility, select the upstream N16 path and build/test it separately without applying Generic N8 patches to the original repository.
+
+Example selection shown by `run.sh`:
+
+```text
+=== Linux on ESP32-S3 ===
+  Active Target: Generic N16 (Upstream)
+  Build Directory: Original Repository
+
+  1) Check the environment
+  2) Build everything from clean sources
+  3) Check the checksums of a build
+  4) Flash the board
+  5) Run the board tests
+  6) EVERYTHING: build, check, flash and test
+  7) Reproducibility: two builds and a comparison
+  8) Recover the board (restore /etc and /home)
+  9) Status
+  10) Select N8 / XIAO target
+  0) Quit
+Choice: 10
+
+  1) Generic N8
+  2) XIAO N8       [Not available yet]
+  3) XIAO N8 + SD  [Not available yet]
+  0) Back
+Choice: 1
+
+Reusing target environment: /Volumes/ESP32Linux/Linux-on-esp32-S3-fresh/target-builds/generic-n8
+```
+
+### How patches fit into the menu workflow
+
+The architectural policy remains to copy the upstream N16 source into `target-builds/generic-n8/` and apply the ordered patches from `targets-patches/generic-n8/` **only to that derivative tree**. Users should operate through `run.sh` rather than patching the original N16 files manually.
+
+**Important:** The example confirms that `run.sh` can select and reuse a Generic N8 target environment. It does not show the internal source-copy or patch-application steps. Confirm those details, including behavior on a new environment or a clean rebuild, against the current `run.sh` implementation and its output. Patch failures must stop the N8 build rather than be ignored.
 
 ## Patch maintenance rules
 
