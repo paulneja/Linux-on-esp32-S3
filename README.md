@@ -179,21 +179,21 @@ the time.
 
 ## What runs on it
 
-| Feature | Status | Notes |
-|---|---|---|
-| WiFi client | works | WPA2, DHCP, `wifi` menu, survives 100 link resets and 25 reconnects in a row |
-| Setup over Bluetooth | works | any BLE serial app on a phone, see [BLE.md](BLE.md) |
-| SSH | works | dropbear with a pty; `scp -O`, since there is no SFTP server |
-| Telnet | works | clear text, for a trusted LAN only |
-| fork() | works | up to 2 MiB per process, of which at most 512 KiB is copied on a switch; single core |
-| Bash 5.2, Dash, BusyBox | works | Bash is the login shell, BusyBox is `/bin/sh` |
-| MicroPython | works | fork through the `posix` module, pipes, sockets; not CPython, no `pip` |
-| GNU Make, cron, dtach sessions | works | per-user crontabs, `session` to detach and reattach |
-| Web page | works | edit `/home/www/index.html`, then `web-server on` |
-| Hardware RSA | works | `rsa-esp32s3` in the kernel crypto API, self-tested at boot |
-| HTTPS with curl | experimental | TLS 1.2 with a trimmed CA bundle, tight on RAM |
-| WiFi access point | not supported | removed; the board joins networks, it does not host one |
-| Other architectures' binaries | not supported | programs must be built for Xtensa FDPIC |
+| Feature                        | Status        | Notes                                                                                |
+| ------------------------------ | ------------- | ------------------------------------------------------------------------------------ |
+| WiFi client                    | works         | WPA2, DHCP, `wifi` menu, survives 100 link resets and 25 reconnects in a row         |
+| Setup over Bluetooth           | works         | any BLE serial app on a phone, see [BLE.md](BLE.md)                                  |
+| SSH                            | works         | dropbear with a pty; `scp -O`, since there is no SFTP server                         |
+| Telnet                         | works         | clear text, for a trusted LAN only                                                   |
+| fork()                         | works         | up to 2 MiB per process, of which at most 512 KiB is copied on a switch; single core |
+| Bash 5.2, Dash, BusyBox        | works         | Bash is the login shell, BusyBox is `/bin/sh`                                        |
+| MicroPython                    | works         | fork through the `posix` module, pipes, sockets; not CPython, no `pip`               |
+| GNU Make, cron, dtach sessions | works         | per-user crontabs, `session` to detach and reattach                                  |
+| Web page                       | works         | edit `/home/www/index.html`, then `web-server on`                                    |
+| Hardware RSA                   | works         | `rsa-esp32s3` in the kernel crypto API, self-tested at boot                          |
+| HTTPS with curl                | experimental  | TLS 1.2 with a trimmed CA bundle, tight on RAM                                       |
+| WiFi access point              | not supported | removed; the board joins networks, it does not host one                              |
+| Other architectures' binaries  | not supported | programs must be built for Xtensa FDPIC                                              |
 
 Things to try once logged in: `micropython /home/root/script.py`,
 `crontab -e`, `session work` (detach with Ctrl-]), or
@@ -260,27 +260,27 @@ All of it read off the board. The records are in
 Each release gets flashed and run on a real board before it's tagged. The
 records name the image hash they ran on.
 
-| Release | Board suite | Extra checks | Cold boots | Also checked | Record |
-|---|---|---|---|---|---|
-| 0.9.1 | 36 of 36 | 11 of 11 | 20 of 20 | SSH with a pty, SSH and Telnet on other ports, keys only, password only; the #22 crash before and after the fix | [release](build/verification/2026-10-05-fix-22.md) |
-| 0.9 | 36 of 36 | 10 of 10 | 20 of 20 | WiFi stress, SSH with a pty, fork with the MMU on and off; BLE from a phone and the update from 0.8.1 on an earlier build | [release](build/verification/2026-10-04-release.md) |
-| 0.8.1 | 36 of 36 | 10 of 10 | 20 of 20 | the WiFi stress that used to panic the kernel, SSH with a pty | [release](build/verification/2026-09-23-release.md) |
-| 0.8 | 36 of 36 | 10 of 10 | 10 of 10 | 55 clean boots on the flash cache fix, against 10 faults in 17 before it | [release](build/verification/2026-09-14-release.md) |
+| Release | Board suite | Extra checks | Cold boots | Also checked                                                                                                              | Record                                              |
+| ------- | ----------- | ------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| 0.9.1   | 36 of 36    | 11 of 11     | 20 of 20   | SSH with a pty, SSH and Telnet on other ports, keys only, password only; the #22 crash before and after the fix           | [release](build/verification/2026-10-05-fix-22.md)  |
+| 0.9     | 36 of 36    | 10 of 10     | 20 of 20   | WiFi stress, SSH with a pty, fork with the MMU on and off; BLE from a phone and the update from 0.8.1 on an earlier build | [release](build/verification/2026-10-04-release.md) |
+| 0.8.1   | 36 of 36    | 10 of 10     | 20 of 20   | the WiFi stress that used to panic the kernel, SSH with a pty                                                             | [release](build/verification/2026-09-23-release.md) |
+| 0.8     | 36 of 36    | 10 of 10     | 10 of 10   | 55 clean boots on the flash cache fix, against 10 faults in 17 before it                                                  | [release](build/verification/2026-09-14-release.md) |
 
 A boot counts as clean only if `dmesg` and the taint flags are clean. 0.8
 found out the hard way that a quiet console isn't enough.
 
 ## Limits
 
-| Limit | Why |
-|---|---|
-| 8 MB of RAM | fork() copies private memory up front instead of on write, so several Bash sessions or big pipelines can run out. Detached sessions use Dash for that reason. A forked process can hold up to 2 MiB of private memory. |
-| Switching between forked processes costs time | the kernel swaps their memory on every switch. The MMU handles aligned 64 KiB chunks in about 80 µs each, but small mappings such as shared library data are copied, so the slowest switches take 5 to 10 ms. |
-| No copy-on-write | a write the hardware refuses raises an asynchronous interrupt, so there is no fault to resume after copying a page. |
-| No memory protection between processes | without an MMU, Unix permissions are all there is. Run trusted programs. |
-| One core for Linux | the fork backend is single-core and refuses multithreaded processes. |
-| Writes to `/etc` and `/home` can slow down | older releases saw jffs2 writes collapse under heavy rewriting. A benchmark on 0.8.1 kept 43 to 50 KB/s up to 92 % full, but the cause is not confirmed; keep backups. See the [investigation](build/verification/2026-09-06-jffs2-erase.md). |
-| Read-only root filesystem | the root is cramfs executed from flash, which is what makes it fit. Change it through the build, not on the board. |
+| Limit                                         | Why                                                                                                                                                                                                                                           |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 8 MB of RAM                                   | fork() copies private memory up front instead of on write, so several Bash sessions or big pipelines can run out. Detached sessions use Dash for that reason. A forked process can hold up to 2 MiB of private memory.                        |
+| Switching between forked processes costs time | the kernel swaps their memory on every switch. The MMU handles aligned 64 KiB chunks in about 80 µs each, but small mappings such as shared library data are copied, so the slowest switches take 5 to 10 ms.                                 |
+| No copy-on-write                              | a write the hardware refuses raises an asynchronous interrupt, so there is no fault to resume after copying a page.                                                                                                                           |
+| No memory protection between processes        | without an MMU, Unix permissions are all there is. Run trusted programs.                                                                                                                                                                      |
+| One core for Linux                            | the fork backend is single-core and refuses multithreaded processes.                                                                                                                                                                          |
+| Writes to `/etc` and `/home` can slow down    | older releases saw jffs2 writes collapse under heavy rewriting. A benchmark on 0.8.1 kept 43 to 50 KB/s up to 92 % full, but the cause is not confirmed; keep backups. See the [investigation](build/verification/2026-09-06-jffs2-erase.md). |
+| Read-only root filesystem                     | the root is cramfs executed from flash, which is what makes it fit. Change it through the build, not on the board.                                                                                                                            |
 
 ## History
 
@@ -304,28 +304,29 @@ is in the [changelog](CHANGELOG.md).
 
 ## Repository layout
 
-| Path | What is there |
-|---|---|
-| [`build/`](build/) | the container build, `reproduce.sh`, board tests, verification records |
-| [`new-files/board/espressif/esp32s3/`](new-files/board/espressif/esp32s3/) | kernel config and series, BusyBox config, the root filesystem overlay |
-| [`new-files/esp-hosted/`](new-files/esp-hosted/), [`patches/`](patches/) | the core 0 firmware: partition table, sdkconfig, patches |
-| [`new-files/toolchain-patches/`](new-files/toolchain-patches/) | the uClibc-ng patch applied when the toolchain is built |
-| [`experiments/mmu-poc/`](experiments/mmu-poc/) | the fork backend, the userspace programs and their tests |
-| [`images/`](images/) | the flashable images of the current release |
-| [`flash.sh`](flash.sh), [`run.sh`](run.sh) | flash a board, or drive the whole build and test path |
+| Path                                                                       | What is there                                                          |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| [`build/`](build/)                                                         | the container build, `reproduce.sh`, board tests, verification records |
+| [`new-files/board/espressif/esp32s3/`](new-files/board/espressif/esp32s3/) | kernel config and series, BusyBox config, the root filesystem overlay  |
+| [`new-files/esp-hosted/`](new-files/esp-hosted/), [`patches/`](patches/)   | the core 0 firmware: partition table, sdkconfig, patches               |
+| [`new-files/toolchain-patches/`](new-files/toolchain-patches/)             | the uClibc-ng patch applied when the toolchain is built                |
+| [`experiments/mmu-poc/`](experiments/mmu-poc/)                             | the fork backend, the userspace programs and their tests               |
+| [`images/`](images/)                                                       | the flashable images of the current release                            |
+| [`flash.sh`](flash.sh), [`run.sh`](run.sh)                                 | flash a board, or drive the whole build and test path                  |
 
 ## Documentation
 
-| File | What it covers |
-|---|---|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | how the chip is shared, the boot, the flash layout |
-| [build/README.md](build/README.md) | clean builds, artifacts and the board tests |
-| [DEVELOPMENT.md](DEVELOPMENT.md) | patches, upstream sources, past incidents in detail |
-| [USERSPACE-UPGRADE.md](experiments/mmu-poc/programs/USERSPACE-UPGRADE.md) | the programs, the fork implementation, measured limits |
-| [BLE.md](BLE.md) | WiFi setup from a phone |
-| [SECURITY.md](SECURITY.md) | the login, SSH and Telnet, what is and is not protected |
-| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | when something does not work |
-| [CHANGELOG.md](CHANGELOG.md) | every release, with causes and measurements |
+| File                                                                      | What it covers                                                                                             |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| [ARCHITECTURE.md](ARCHITECTURE.md)                                        | how the chip is shared, the boot, the flash layout                                                         |
+| [build/README.md](build/README.md)                                        | clean builds, artifacts and the board tests                                                                |
+| [DEVELOPMENT.md](DEVELOPMENT.md)                                          | patches, upstream sources, past incidents in detail                                                        |
+| [USERSPACE-UPGRADE.md](experiments/mmu-poc/programs/USERSPACE-UPGRADE.md) | the programs, the fork implementation, measured limits                                                     |
+| [BLE.md](BLE.md)                                                          | WiFi setup from a phone                                                                                    |
+| [SECURITY.md](SECURITY.md)                                                | the login, SSH and Telnet, what is and is not protected                                                    |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md)                                  | when something does not work                                                                               |
+| [CHANGELOG.md](CHANGELOG.md)                                              | every release, with causes and measurements                                                                |
+| [TARGET-PATCHES.md](docs/TARGET-PATCHES.md)                               | Generic N8 derivative build and target-specific patch management (experimental, not yet in production use) |
 
 <details>
 <summary><b>Earlier releases</b></summary>
