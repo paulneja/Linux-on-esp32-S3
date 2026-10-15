@@ -18,6 +18,7 @@ BOARD_ID_HINT="usb-1a86"
 # below is deliberately left unchanged.
 TARGET="n16"
 TARGET_REFRESH=0
+TARGET_AUTO_REFRESH=0
 TARGET_BUILD_ROOT=${TARGET_BUILD_ROOT:-"$REPO/target-builds"}
 TARGET_PATCH_ROOT=${TARGET_PATCH_ROOT:-"$REPO/targets-patches"}
 
@@ -62,7 +63,12 @@ PYHASH
             TARGET_DIR=$dir
             return 0
         fi
-        die "target environment is out of date: $dir (use --refresh-target to recreate it)"
+        if [ "$TARGET_AUTO_REFRESH" -eq 1 ]; then
+            info "Target environment is out of date; preparing a fresh $target snapshot."
+            TARGET_REFRESH=1
+        else
+            die "target environment is out of date: $dir (use --refresh-target to recreate it)"
+        fi
     fi
     if [ -e "$dir" ] && [ "$TARGET_REFRESH" -eq 1 ]; then
         printf '  Target refresh will delete its previous build outputs: %s\n' "$dir"
@@ -586,7 +592,14 @@ choose_external_target() {
         2|3) warn "this target is not available yet"; return 0 ;;
         0) return 0 ;; *) warn "invalid target"; return 1 ;;
     esac
+    # Menu selection automatically refreshes a stale target, with confirmation
+    # before deleting any existing build outputs. CLI stays explicit.
+    TARGET_AUTO_REFRESH=1
     launch_target "$target"
+    local rc=$?
+    TARGET_AUTO_REFRESH=0
+    TARGET_REFRESH=0
+    return "$rc"
 }
 
 menu() {
