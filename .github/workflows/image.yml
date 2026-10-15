@@ -83,12 +83,19 @@ jobs:
       - name: Check the patches are well formed
         run: |
           status=0
-          for p in new-files/board/espressif/esp32s3/patches/linux/*.patch \
-                   patches/*.patch experiments/mmu-poc/fork/*.patch; do
+          # Ignore unmatched patterns; include both isolated N8 patch sets.
+          shopt -s nullglob
+          patches=(
+            new-files/board/espressif/esp32s3/patches/linux/*.patch
+            patches/*.patch
+            experiments/mmu-poc/fork/*.patch
+            targets-patches/generic-n8-server/*.patch
+            targets-patches/generic-n8-client/*.patch
+          )
+          for p in "${patches[@]}"; do
             grep -q '^--- ' "$p" || { echo "$p: no diff header"; status=1; }
             grep -q '^+++ ' "$p" || { echo "$p: no diff header"; status=1; }
-            # A binary hunk cannot be reconstructed by git apply and is
-            # rejected in full; incident 5 in DEVELOPMENT.md is this.
+            # Reject unsupported binary hunks.
             if grep -q '^Binary files' "$p"; then
               echo "$p: carries a binary hunk, which git apply cannot replay"
               status=1
