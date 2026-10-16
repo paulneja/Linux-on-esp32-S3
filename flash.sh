@@ -183,7 +183,7 @@ PY
 FLASH_ARG=16MB
 
 check_chip() {
-	out=$($ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 --before default_reset --after no_reset flash_id 2>&1) || {
+	out=$($ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 --before default_reset --after hard_reset flash_id 2>&1) || {
 		printf '%s\n' "$out" >&2
 		echo "error: could not read the board's flash id; no board data was changed" >&2
 		exit 1
