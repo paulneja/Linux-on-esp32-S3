@@ -16,14 +16,17 @@ BOARD_ID_HINT="usb-1a86"
 
 # External targets are built from independent snapshots; the original N16 path
 # below is deliberately left unchanged.
-TARGET="n16"
+TARGET=""
+TARGET_FILE="$REPO/.target"
+CACHE=${CACHE:-}
+ESP32_CACHE_DIR=${ESP32_CACHE_DIR:-"$REPO/.cache"}
 TARGET_REFRESH=0
 TARGET_AUTO_REFRESH=0
 TARGET_BUILD_ROOT=${TARGET_BUILD_ROOT:-"$REPO/target-builds"}
 TARGET_PATCH_ROOT=${TARGET_PATCH_ROOT:-"$REPO/targets-patches"}
 
 external_target() {
-    case "$1" in generic-n8-server|generic-n8-client) return 0 ;; *) return 1 ;; esac
+    case "$1" in generic-n8|xiao-n8) return 0 ;; *) return 1 ;; esac
 }
 
 target_snapshot() {
@@ -111,7 +114,49 @@ launch_target() {
     shift
     target_snapshot "$target" || return 1
     # No external-target selection inside a generated snapshot (avoids recursion).
-    (cd "$TARGET_DIR" && ESP32_TARGET_ISOLATED=1 ESP32_TARGET_NAME="$target" bash ./run.sh "$@")
+    (cd "$TARGET_DIR" && ESP32_TARGET_ISOLATED=1 ESP32_TARGET_NAME="$target" \
+        ESP32_CACHE_DIR="$ESP32_CACHE_DIR" CACHE="$CACHE" bash ./run.sh "$@")
+}
+
+target_label() {
+    case "$1" in
+        n16)               echo "ESP32-S3 N16R8 (16 MB flash)" ;;
+        generic-n8)        echo "Generic N8R8 (8 MB flash)" ;;
+        xiao-n8)           echo "XIAO ESP32S3 and XIAO ESP32S3 Sense (8 MB flash)" ;;
+        *)                 echo "$1" ;;
+    esac
+}
+
+choose_target() {
+    local choice=""
+    echo
+    bold "Which board is this for?"
+    cat <<'EOF'
+  1) ESP32-S3 N16R8 (16 MB flash)
+  2) Generic N8R8 (8 MB flash)
+  3) XIAO ESP32S3 or XIAO ESP32S3 Sense (8 MB flash, login on its USB port)
+  4) XIAO ESP32S3 + SD   [not available yet]
+  0) Quit
+EOF
+    while true; do
+        printf 'Board: '
+        read_reply choice || return 1
+        case "$choice" in
+            1) TARGET=n16 ;;
+            2) TARGET=generic-n8 ;;
+            3) TARGET=xiao-n8 ;;
+            4) warn "not available yet"; continue ;;
+            0|q|Q) return 1 ;;
+            *) warn "invalid choice"; continue ;;
+        esac
+        break
+    done
+    printf '%s\n' "$TARGET" > "$TARGET_FILE"
+    info "saved in .target; change it from the menu or with --target"
+}
+
+interactive() {
+    [ "$ASSUME_YES" = 0 ] && { : < /dev/tty; } 2>/dev/null
 }
 
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
@@ -162,13 +207,16 @@ Options:
   -j, --jobs N         Parallel build jobs (default: nproc)
   -p, --port PATH      Serial adapter (default: autodetect)
   -a, --artifacts DIR  Artifacts directory to use
-  --target ID          n16 (default), generic-n8-server, generic-n8-client
+  --target ID          n16, generic-n8 or xiao-n8; asked the
+                       first time and kept in .target
   --refresh-target     Recreate selected external target (deletes its outputs)
+  --cache              Reuse the build cache in .cache/ (not for releases)
   -h, --help           This help
 
 Environment:
   WIFI_SSID, WIFI_PASS  join this network for the SSH and port tests
   SOAK_ROUNDS           factory boots in the soak (default 20, 0 skips it)
+  CACHE                 dev reuses .cache/, clean builds from nothing
 EOF
 }
 
@@ -398,15 +446,25 @@ do_build() {
 	bold "about 21 GB. The build output scrolls below as it happens."
 	echo
 	[ "$QUIET" = 1 ] && info "(quiet: output only goes to the log)"
+	if [ -z "$CACHE" ]; then
+		CACHE=clean
+		if interactive; then
+			info "The cache in .cache/ keeps the toolchain, the downloads and the"
+			info "ESP-IDF tools, so the next builds skip the longest part."
+			info "Leave it off for a build you are going to release."
+			ask "  Use the cache?" && CACHE=dev
+		fi
+	fi
+	info "cache: $CACHE"
 	ask "  Start the build?" || { info "cancelled"; return 1; }
 	echo
 	local started rc elapsed
 	started=$(date +%s)
 	if [ "$QUIET" = 1 ]; then
-		JOBS="$JOBS" bash "$REPO/build/reproduce.sh" > "$log" 2>&1
+		JOBS="$JOBS" CACHE="$CACHE" ESP32_CACHE_DIR="$ESP32_CACHE_DIR" bash "$REPO/build/reproduce.sh" > "$log" 2>&1
 		rc=$?
 	else
-		JOBS="$JOBS" bash "$REPO/build/reproduce.sh" 2>&1 | tee "$log"
+		JOBS="$JOBS" CACHE="$CACHE" ESP32_CACHE_DIR="$ESP32_CACHE_DIR" bash "$REPO/build/reproduce.sh" 2>&1 | tee "$log"
 		rc=${PIPESTATUS[0]}
 	fi
 	elapsed=$(( $(date +%s) - started ))
@@ -543,12 +601,16 @@ do_recover() {
 	# The hyphenated spellings are esptool 5 only, and build/Dockerfile pins
 	# 4.8.1, which rejects them -- so this failed against the very version the
 	# project builds with. The underscore forms work in both: esptool 5 takes
-	# them with a deprecation warning. The offsets are the etc and home
-	# partitions; flash.sh reads those from the CSV instead of hardcoding them.
-	local tool; tool=$(have esptool && echo esptool || echo esptool.py)
+	# them with a deprecation warning.
+	local tool offsets
+	tool=$(have esptool && echo esptool || echo esptool.py)
+	offsets=$(awk -F', *' '$1 == "etc" {e = $4} $1 == "home" {h = $4} END {if (e && h) print e, h}' \
+		"$REPO/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r")
+	[ -n "$offsets" ] || { red "no etc or home partition in the partition table"; return 1; }
+	set -- $offsets
 	"$tool" --chip esp32s3 --port "$port" --baud 460800 \
 		--before default_reset --after hard_reset \
-		write_flash 0xd0000 "$a/etc.jffs2" 0xcc0000 "$a/home.jffs2"
+		write_flash "$1" "$a/etc.jffs2" "$2" "$a/home.jffs2"
 	local rc=$?
 	[ "$rc" -eq 0 ] && green "partitions restored; the board was reset" || red "the restore failed"
 	return "$rc"
@@ -557,6 +619,7 @@ do_recover() {
 do_repro() {
 	bold "== Reproducibility: two builds of the same commit =="
 	local first second
+	CACHE=clean
 	first=$(builds | head -1)
 	if [ -z "$first" ]; then
 		info "no build yet; making the first one"
@@ -582,36 +645,15 @@ do_all() {
 	green "complete path finished"
 }
 
-choose_external_target() {
-    [ "${ESP32_TARGET_ISOLATED:-}" != 1 ] || { warn "already in an isolated target"; return 1; }
-    printf '\n  1) Generic N8 Server\n  2) Generic N8 Client\n  3) XIAO N8             [Not available yet]\n  4) XIAO N8 + SD        [Not available yet]\n  0) Back\nChoice: '
-    local choice="" target=""
-    read_reply choice || return 1
-    case "$choice" in
-        1) target=generic-n8-server ;;
-        2) target=generic-n8-client ;;
-        3|4) warn "this target is not available yet"; return 0 ;;
-        0) return 0 ;; *) warn "invalid target"; return 1 ;;
-    esac
-    # Menu selection automatically refreshes a stale target, with confirmation
-    # before deleting any existing build outputs. CLI stays explicit.
-    TARGET_AUTO_REFRESH=1
-    launch_target "$target"
-    local rc=$?
-    TARGET_AUTO_REFRESH=0
-    TARGET_REFRESH=0
-    return "$rc"
-}
-
 menu() {
     while true; do
         echo
         bold "=== Linux on ESP32-S3 ==="
         if [ "${ESP32_TARGET_ISOLATED:-}" = 1 ]; then
-            blue "  Active Target: ${ESP32_TARGET_NAME:-External target}"
+            blue "  Board: $(target_label "${ESP32_TARGET_NAME:-}")"
             info "Build Directory: $REPO"
         else
-            green "  Active Target: Generic N16 (Upstream)"
+            green "  Board: $(target_label n16)"
             info "Build Directory: Original Repository"
         fi
         echo
@@ -626,11 +668,7 @@ menu() {
   8) Recover the board (restore /etc and /home)
   9) Status
 EOF
-        if [ "${ESP32_TARGET_ISOLATED:-}" = 1 ]; then
-            echo "  10) Switch to N16 (Upstream)"
-        else
-            echo "  10) Select N8 / XIAO target"
-        fi
+        echo "  10) Change the board"
         echo "  0) Quit"
         printf 'Choice: '
         local choice=""
@@ -645,14 +683,7 @@ EOF
             7) do_repro ;;
             8) do_recover ;;
             9) do_status ;;
-            10)
-                if [ "${ESP32_TARGET_ISOLATED:-}" = 1 ]; then
-                    green "  Switching to Generic N16 (Upstream)"
-                    return 0
-                else
-                    choose_external_target
-                fi
-                ;;
+            10) return 3 ;;
             0|q|Q) return 0 ;;
             *) warn "invalid choice" ;;
         esac
@@ -668,6 +699,7 @@ while [ $# -gt 0 ]; do
 		-a|--artifacts)  ARTIFACTS="${2:?-a needs a directory}"; shift 2 ;;
 		--target)         TARGET="${2:?--target needs an ID}"; shift 2 ;;
 		--refresh-target) TARGET_REFRESH=1; shift ;;
+		--cache)          CACHE=dev; shift ;;
 		-h|--help)       usage; exit 0 ;;
 		--check|--build|--verify|--flash|--test|--all|--repro|--recover|--status)
 		                 ACTION="${1#--}"; shift ;;
@@ -675,21 +707,50 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-if [ "${ESP32_TARGET_ISOLATED:-}" != 1 ]; then
-    if [ "$TARGET" != n16 ]; then
-        external_target "$TARGET" || die "unsupported target: $TARGET"
-        forwarded=()
-        [ "$ASSUME_YES" -eq 0 ] || forwarded+=(--yes)
-        [ "$QUIET" -eq 0 ] || forwarded+=(--quiet)
-        forwarded+=(--jobs "$JOBS")
-        [ -z "$PORT" ] || forwarded+=(--port "$PORT")
-        [ -z "$ARTIFACTS" ] || forwarded+=(--artifacts "$ARTIFACTS")
-        [ -z "$ACTION" ] || forwarded+=("--$ACTION")
+forward_args() {
+    forwarded=()
+    [ "$ASSUME_YES" -eq 0 ] || forwarded+=(--yes)
+    [ "$QUIET" -eq 0 ] || forwarded+=(--quiet)
+    forwarded+=(--jobs "$JOBS")
+    [ -z "$PORT" ] || forwarded+=(--port "$PORT")
+    [ -z "$ARTIFACTS" ] || forwarded+=(--artifacts "$ARTIFACTS")
+    [ -z "$ACTION" ] || forwarded+=("--$ACTION")
+}
+
+if [ "${ESP32_TARGET_ISOLATED:-}" = 1 ]; then
+    [ -z "$TARGET" ] || die "nested external target selection is disabled"
+    TARGET=n16
+else
+    if [ -z "$TARGET" ] && [ -f "$TARGET_FILE" ]; then
+        TARGET=$(head -n1 "$TARGET_FILE")
+    fi
+    if [ -z "$TARGET" ]; then
+        interactive || die "no board chosen yet; run ./run.sh once or pass --target n16|generic-n8|xiao-n8"
+        choose_target || exit 0
+    fi
+    [ "$TARGET" = n16 ] || external_target "$TARGET" || die "unsupported target: $TARGET"
+    if [ -n "$ACTION" ] && [ "$TARGET" != n16 ]; then
+        forward_args
         launch_target "$TARGET" "${forwarded[@]}"
         exit $?
     fi
-elif [ "$TARGET" != n16 ]; then
-    die "nested external target selection is disabled"
+    if [ -z "$ACTION" ]; then
+        while true; do
+            if [ "$TARGET" = n16 ]; then
+                menu
+                rc=$?
+            else
+                forward_args
+                TARGET_AUTO_REFRESH=1
+                launch_target "$TARGET" "${forwarded[@]}"
+                rc=$?
+                TARGET_AUTO_REFRESH=0
+                TARGET_REFRESH=0
+            fi
+            [ "$rc" -eq 3 ] || exit "$rc"
+            choose_target || exit 0
+        done
+    fi
 fi
 
 if [ -n "$ARTIFACTS" ] && [ ! -d "$ARTIFACTS" ]; then
