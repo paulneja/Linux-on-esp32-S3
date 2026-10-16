@@ -180,6 +180,24 @@ except (OSError, ValueError, struct.error) as error:
     sys.exit(f'error: preflight failed: {error}; no board data was changed')
 PY
 )
+FLASH_ARG=16MB
+
+check_chip() {
+	out=$($ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 --before default_reset --after no_reset flash_id 2>&1) || {
+		printf '%s\n' "$out" >&2
+		echo "error: could not read the board's flash id; no board data was changed" >&2
+		exit 1
+	}
+	chip=$(printf '%s\n' "$out" | sed -n 's/^Detected flash size: *\([0-9][0-9]*MB\).*/\1/p' | head -n 1)
+	if [ -z "$chip" ]; then
+		echo "Warning: esptool did not report the flash size; it was not checked."
+	elif [ "$chip" != "$FLASH_ARG" ]; then
+		echo "error: the board has $chip of flash and this image is for $FLASH_ARG; no board data was changed" >&2
+		exit 1
+	else
+		echo "==> Board flash: $chip"
+	fi
+}
 
 if [ "$PARTS" = 1 ]; then
 	# shellcheck disable=SC2086
@@ -213,6 +231,8 @@ if [ -f "$IMG/SHA256SUMS" ] && command -v sha256sum >/dev/null 2>&1; then
 	}
 fi
 
+check_chip
+
 if [ "$ERASE" = 1 ]; then
 	echo "==> Erasing the whole chip (this wipes /home too)"
 	# shellcheck disable=SC2086
@@ -222,7 +242,7 @@ fi
 echo "==> Flashing validated images"
 # shellcheck disable=SC2086
 $ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 --before default_reset --after hard_reset \
-	write_flash --flash_mode dio --flash_size 16MB --flash_freq 80m "$@"
+	write_flash --flash_mode dio --flash_size "$FLASH_ARG" --flash_freq 80m "$@"
 
 cat <<'EOF'
 
