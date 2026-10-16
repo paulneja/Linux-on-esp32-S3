@@ -102,6 +102,12 @@ jobs:
               echo "$p: carries a binary hunk, which git apply cannot replay"
               status=1
             fi
+            case "$p" in targets-patches/*)
+              if grep -qE '^(old|new) mode ' "$p"; then
+                echo "$p: changes a file mode; a target patch must not"
+                status=1
+              fi ;;
+            esac
           done
           exit "$status"
 
