@@ -1,6 +1,4 @@
 diff --git a/flash.sh b/flash.sh
-old mode 100755
-new mode 100644
 index c33909d..1407ff0
 --- a/flash.sh
 +++ b/flash.sh
