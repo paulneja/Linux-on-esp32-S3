@@ -133,7 +133,7 @@ record('cron-runs-a-job', cron_fires)
 
 # ---- 7. passwd, then log in with the new one, then put it back ---------------
 def passwd_roundtrip():
-    before = os.environ.get('MMU_BOARD_PASSWORD', 'changeme123')
+    before = os.environ.get('MMU_BOARD_PASSWORD', probe.TEST_PASSWORD)
     o = c.command('printf "tmp-pw-1\\ntmp-pw-1\\n" | passwd root 2>&1; echo PW_$?', 30)
     assert 'PW_0' in o, o[-200:]
     logout(c)
