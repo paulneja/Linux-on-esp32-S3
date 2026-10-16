@@ -1,5 +1,7 @@
 diff --git a/flash.sh b/flash.sh
-index 32e21f8..9defa2a 100755
+old mode 100755
+new mode 100644
+index c33909d..1407ff0
 --- a/flash.sh
 +++ b/flash.sh
 @@ -117,7 +117,27 @@ import sys
@@ -72,7 +74,7 @@ index 32e21f8..9defa2a 100755
 +echo "==> Target flash size: $FLASH_ARG"
  
  check_chip() {
- 	out=$($ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 --before default_reset --after no_reset flash_id 2>&1) || {
+ 	out=$($ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 --before default_reset --after hard_reset flash_id 2>&1) || {
 @@ -200,8 +231,6 @@ check_chip() {
  }
  
