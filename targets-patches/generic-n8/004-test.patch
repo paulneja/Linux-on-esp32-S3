@@ -1,5 +1,5 @@
 diff --git a/build/extra-board-tests.py b/build/extra-board-tests.py
-index 31384f7..f030f69 100644
+index 31384f7..a7f7170 100644
 --- a/build/extra-board-tests.py
 +++ b/build/extra-board-tests.py
 @@ -65,13 +65,13 @@ record('swap-model-is-live', swap_is_the_model)
@@ -7,14 +7,14 @@ index 31384f7..f030f69 100644
  # ---- 2. jffs2: write big, read back byte for byte, twice ---------------------
  def jffs2_roundtrip():
 -    c.command('dd if=/dev/urandom of=/home/.rt bs=4096 count=96 2>/dev/null; sync', 60)
-+    c.command('dd if=/dev/urandom of=/home/.rt bs=4096 count=1 2>/dev/null; sync', 60)
++    c.command('dd if=/dev/urandom of=/home/.rt bs=4096 count=8 2>/dev/null; sync', 60)
      h1 = c.command('sha256sum /home/.rt | cut -c1-64', 60).splitlines()[-1].strip()
      c.command('cp /home/.rt /home/.rt2; sync; rm /home/.rt; sync', 60)
      h2 = c.command('sha256sum /home/.rt2 | cut -c1-64', 60).splitlines()[-1].strip()
      c.command('rm -f /home/.rt2; sync', 30)
      assert h1 == h2 and len(h1) == 64, f'{h1} != {h2}'
 -    return '384 KiB written, copied, read back identical'
-+    return '4 KiB written, copied, read back identical'
++    return '32 KiB written, copied, read back identical'
  record('jffs2-write-copy-readback', jffs2_roundtrip)
  
  # ---- 3. bash under fork load --------------------------------------------------
@@ -31,7 +31,7 @@ index 31384f7..f030f69 100644
      o = c.command('cat /tmp/sess.out 2>/dev/null; echo', 20)
      c.command('session stop t1 >/dev/null 2>&1 || true; rm -f /tmp/sess.out', 20)
 diff --git a/build/soak-boot.py b/build/soak-boot.py
-index 26076b8..5e53925 100644
+index 26076b8..626efde 100644
 --- a/build/soak-boot.py
 +++ b/build/soak-boot.py
 @@ -45,9 +45,16 @@ RESET_BANNER = re.compile(rb'ESP-ROM:esp32s3')
@@ -47,7 +47,7 @@ index 26076b8..5e53925 100644
  # Kernel and firmware partitions, read back to identify what actually booted.
 -IDENTITY = {'linux': ('0x140000', 0x400000), 'factory': ('0x10000', 0xc0000)}
 +IDENTITY = {
-+    'linux': ('0x140000', 0x260000),
++    'linux': ('0x120000', 0x260000),
 +    'factory': ('0x10000', 0xc0000),
 +}
  

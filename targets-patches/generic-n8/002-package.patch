@@ -4,7 +4,7 @@ index 2d777cb..1f3ba31 100755
 +++ b/build/package-final.py
 @@ -159,14 +159,15 @@ for partition, filename in files.items():
      assert (out / filename).stat().st_size <= parts[partition]['size'], (partition, filename)
-
+ 
  run('esptool', '--chip', 'esp32s3', 'merge_bin', '-o', out / 'linux-esp32s3-native-full.bin',
 -    '--flash_mode', 'dio', '--flash_freq', '80m', '--flash_size', '16MB', '--fill-flash-size', '16MB',
 +    '--flash_mode', 'dio', '--flash_freq', '80m', '--flash_size', '8MB', '--fill-flash-size', '8MB',
@@ -23,40 +23,8 @@ index 2d777cb..1f3ba31 100755
  for partition, filename in files.items():
      payload = (out / filename).read_bytes()
      start = parts[partition]['offset']
-diff --git a/experiments/mmu-poc/programs/build-netcat.sh b/experiments/mmu-poc/programs/build-netcat.sh
---- a/experiments/mmu-poc/programs/build-netcat.sh
-+++ b/experiments/mmu-poc/programs/build-netcat.sh
-@@ -19,6 +19,16 @@
- if [[ ! -d "$source_dir" ]]; then
-     cp -a --reflink=auto "$original" "$source_dir"
- fi
-+# Generic N8 Client: disable server applets in the separate BusyBox tree.
-+# Do not depend on the Buildroot BusyBox config: this tree is reused between builds.
-+for applet in HTTPD TELNETD INETD DNSD; do
-+    sed -i -E "s/^CONFIG_${applet}=y$/# CONFIG_${applet} is not set/" "$source_dir/.config"
-+    grep -qx "# CONFIG_${applet} is not set" "$source_dir/.config" || {
-+        echo "ERROR: failed to disable BusyBox CONFIG_${applet}" >&2
-+        exit 1
-+    }
-+done
-+
- apply_program_patch "$source_dir" busybox-nc.patch
- apply_program_patch "$source_dir" busybox-login.patch
- apply_program_patch "$source_dir" busybox-users.patch
-@@ -38,4 +48,11 @@
- install -m 755 "$source_dir/busybox_unstripped" "$programs_out/$output.debug"
- "$prefix-strip" --strip-unneeded -R .xt.prop -R .xt.lit \
-     -o "$programs_out/$output" "$source_dir/busybox_unstripped"
-+# Reject builds if oldconfig or later steps re-enabled any server applet.
-+for applet in HTTPD TELNETD INETD DNSD; do
-+    grep -qx "# CONFIG_${applet} is not set" "$source_dir/.config" || {
-+        echo "ERROR: BusyBox CONFIG_${applet} re-enabled during build" >&2
-+        exit 1
-+    }
-+done
- "$prefix-size" "$programs_out/$output"
 diff --git a/experiments/mmu-poc/programs/image-profiles.py b/experiments/mmu-poc/programs/image-profiles.py
-index 7fe9485..24f133c 100644
+index 7fe9485..0bb381e 100644
 --- a/experiments/mmu-poc/programs/image-profiles.py
 +++ b/experiments/mmu-poc/programs/image-profiles.py
 @@ -17,7 +17,7 @@ REPO = EXP.parent.parent
@@ -68,14 +36,39 @@ index 7fe9485..24f133c 100644
              'bash-red': ['bash', 'dash', 'make', 'socat'],
              'python-automatizacion': ['dash', 'make', 'micropython'], 'base': []}
  PACKAGES = {
-@@ -99,6 +99,10 @@
-             path = tree / directory / name
+@@ -74,7 +74,7 @@ def pack(selected, output):
+             for name in ('make-test.sh', 'peer.sh', 'Makefile.test'):
+                 install(EXP / 'fork/real' / name, tree / 'usr/share/fork-real' / name, 0o644)
+         install(PROGRAMS / 'busybox-with-netcat', tree / 'bin/busybox')
+-        for name in ('nc', 'netcat', 'stat'):
++        for name in ('nc', 'netcat', 'stat', 'vi'):
+             path = tree / 'bin' / name
              remove(path)
-             path.symlink_to('../../bin/busybox')
-+        # Remove stale launcher links after replacing BusyBox with the Client build.
-+        for name in ('httpd', 'telnetd', 'inetd', 'dnsd'):
-+            for directory in ('bin', 'sbin', 'usr/bin', 'usr/sbin'):
-+                remove(tree / directory / name)
-         install(PROGRAMS / 'dtach', tree / 'usr/bin/dtach')
-         install(PROGRAMS / 'dtach-b027c27b2439081064d07a86883c8e0b20a183c9/COPYING',
-                 tree / 'usr/share/licenses/dtach/COPYING', 0o644)
+             path.symlink_to('busybox')
+diff --git a/experiments/mmu-poc/programs/build-netcat.sh b/experiments/mmu-poc/programs/build-netcat.sh
+index 10fdda3..968923f 100644
+--- a/experiments/mmu-poc/programs/build-netcat.sh
++++ b/experiments/mmu-poc/programs/build-netcat.sh
+@@ -30,9 +30,22 @@ cron_patch="$repo_dir/new-files/board/espressif/esp32s3/package-patches/busybox/
+ if ! patch -d "$source_dir" -p1 -R --force --dry-run < "$cron_patch" >/dev/null 2>&1; then
+     patch -d "$source_dir" -p1 --forward --batch < "$cron_patch"
+ fi
++# Generic N8: enable vi in the BusyBox variant actually installed in rootfs.
++# This source tree is copied from Buildroot and has its own .config.
++if grep -qx '# CONFIG_VI is not set' "$source_dir/.config"; then
++    sed -i 's/^# CONFIG_VI is not set$/CONFIG_VI=y/' "$source_dir/.config"
++fi
++grep -qx 'CONFIG_VI=y' "$source_dir/.config" || {
++    echo 'ERROR: BusyBox CONFIG_VI was not enabled' >&2
++    exit 1
++}
+ unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS LIBS
+ make -C "$source_dir" ARCH=xtensa CROSS_COMPILE="$host_dir/bin/xtensa-esp32s3-linux-uclibcfdpic-" \
+     HOSTCC='cc -std=gnu17' oldconfig < /dev/null
++grep -qx 'CONFIG_VI=y' "$source_dir/.config" || {
++    echo 'ERROR: BusyBox oldconfig disabled CONFIG_VI' >&2
++    exit 1
++}
+ make -C "$source_dir" -j"${JOBS:-4}" ARCH=xtensa \
+     CROSS_COMPILE="$host_dir/bin/xtensa-esp32s3-linux-uclibcfdpic-" HOSTCC='cc -std=gnu17' "${extra[@]}"
+ install -m 755 "$source_dir/busybox_unstripped" "$programs_out/$output.debug"
