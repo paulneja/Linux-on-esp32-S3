@@ -197,6 +197,7 @@ Actions:
   --test         Run the board test suite, the extra tests, the network
                  tests (with WIFI_SSID and WIFI_PASS) and the factory soak
   --all          check, build, verify, flash and test, in that order
+  --bypass       --all without a single question; stops only on a failure
   --repro        Two builds of the same commit and a comparison
   --recover      Put the board's /etc and /home back to factory
   --status       Show existing builds and the state of the board
@@ -645,6 +646,29 @@ do_all() {
 	green "complete path finished"
 }
 
+do_bypass() {
+	local log rc started elapsed
+	log="$LOGDIR/esp32-bypass-$(date +%Y%m%d-%H%M%S).log"
+	bold "== Bypass: everything, no questions =="
+	info "closes whatever holds the port, erases and flashes the board without asking"
+	info "stops at the first failure or when everything is done"
+	info "log: $log"
+	ASSUME_YES=1
+	CACHE=${CACHE:-dev}
+	started=$(date +%s)
+	{ check_env && do_build && do_verify && do_flash && do_test; } 2>&1 | tee "$log"
+	rc=${PIPESTATUS[0]}
+	ASSUME_YES=0
+	elapsed=$(( $(date +%s) - started ))
+	info "elapsed: $((elapsed / 3600))h $((elapsed % 3600 / 60))m"
+	if [ "$rc" -eq 0 ]; then
+		green "bypass finished: built, flashed and every test passed"
+	else
+		red "bypass stopped on a failure; the log is $log"
+	fi
+	return "$rc"
+}
+
 menu() {
     while true; do
         echo
@@ -669,6 +693,7 @@ menu() {
   9) Status
 EOF
         echo "  10) Change the board"
+        echo "  11) Bypass: everything with no questions, stops only on a failure"
         echo "  0) Quit"
         printf 'Choice: '
         local choice=""
@@ -684,6 +709,7 @@ EOF
             8) do_recover ;;
             9) do_status ;;
             10) return 3 ;;
+            11) do_bypass ;;
             0|q|Q) return 0 ;;
             *) warn "invalid choice" ;;
         esac
@@ -701,7 +727,7 @@ while [ $# -gt 0 ]; do
 		--refresh-target) TARGET_REFRESH=1; shift ;;
 		--cache)          CACHE=dev; shift ;;
 		-h|--help)       usage; exit 0 ;;
-		--check|--build|--verify|--flash|--test|--all|--repro|--recover|--status)
+		--check|--build|--verify|--flash|--test|--all|--bypass|--repro|--recover|--status)
 		                 ACTION="${1#--}"; shift ;;
 		*)               red "unknown option: $1"; usage; exit 1 ;;
 	esac
@@ -764,6 +790,7 @@ case "$ACTION" in
 	flash)   do_flash ;;
 	test)    do_test ;;
 	all)     do_all ;;
+	bypass)  do_bypass ;;
 	repro)   do_repro ;;
 	recover) do_recover ;;
 	status)  do_status ;;
