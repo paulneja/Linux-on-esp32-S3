@@ -18,7 +18,7 @@ index 4e68f68..002b532 100644
 +# BR2_PACKAGE_LIBCURL_COOKIES_SUPPORT is not set
 +# BR2_PACKAGE_LIBCURL_EXTRA_PROTOCOLS_FEATURES is not set
 diff --git a/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r b/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r
-index 9c8aa25..b4c7ef4 100644
+index 9c8aa25..3c89561 100644
 --- a/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r
 +++ b/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r
 @@ -1,7 +1,7 @@
@@ -31,8 +31,8 @@ index 9c8aa25..b4c7ef4 100644
 -home,             0x40, 0x1,     0x00cc0000, 0x00340000
 +etc,              0x40, 0x1,     0x000d0000, 0x00050000
 +linux,            0x40, 0x0,     0x00120000, 0x00260000
-+rootfs,           0x40, 0x1,     0x00380000, 0x00430000
-+home,             0x40, 0x1,     0x007b0000, 0x00050000
++rootfs,           0x40, 0x1,     0x00380000, 0x00420000
++home,             0x40, 0x1,     0x007a0000, 0x00060000
 diff --git a/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config b/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config
 index 8f333ea..e22ed3f 100644
 --- a/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config

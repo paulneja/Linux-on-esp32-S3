@@ -27,8 +27,8 @@ picks one for a single run.
 | factory   | `0x010000` | 768 KiB    |
 | etc       | `0x0d0000` | 320 KiB    |
 | linux     | `0x120000` | 2432 KiB   |
-| rootfs    | `0x380000` | 4288 KiB   |
-| home      | `0x7b0000` | 320 KiB    |
+| rootfs    | `0x380000` | 4224 KiB   |
+| home      | `0x7a0000` | 384 KiB    |
 
 The firmware jumps to `0x42000000` plus the offset of `linux`, and the kernel
 runs in place from there, so `CONFIG_KERNEL_LOAD_ADDRESS` has to follow the

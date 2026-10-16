@@ -17,42 +17,9 @@ index 0393e39..90ac730 100755
      bash "$exp/programs/build-netcat.sh"
      curl -fL --retry 2 "https://codeload.github.com/crigler/dtach/tar.gz/$DTACH_REV" -o "$exp/out/programs/dtach-b027c27.tar.gz"
 diff --git a/make-images.sh b/make-images.sh
-index 62b2726..e78ac9d 100755
+index 62b2726..45c7c98 100755
 --- a/make-images.sh
 +++ b/make-images.sh
-@@ -8,15 +8,15 @@ PROFILE=esp32s3_devkit_c1_16m
- 
- die() { echo "error: $*" >&2; exit 1; }
- 
--SRC="${1:-}"
-+SRC="${1:-${ESP32_LINUX_BUILD:-}}"
-+
- if [ -z "$SRC" ]; then
--	for d in ../esp32-linux-build ./esp32-linux-build ./build-output; do
--		if [ -d "$d/build" ] || [ -d "$d/buildroot" ]; then
--			SRC="$d"
--			break
--		fi
--	done
--	[ -n "$SRC" ] || die "cannot find a build tree; pass esp32-linux-build/ or build-output/ as an argument"
-+    for d in ../esp32-linux-build ./esp32-linux-build ./build-output /work/refs/esp32-linux-build; do
-+        if [ -d "$d/build" ] || [ -d "$d/buildroot" ]; then
-+            SRC="$d"
-+            break
-+        fi
-+    done
- fi
- [ -d "$SRC" ] || die "$SRC does not exist"
- SRC=$(CDPATH= cd -- "$SRC" && pwd -P)
-@@ -58,7 +58,7 @@ eval "$(awk -F', *' '
- 		if ($1 == "rootfs") printf "OFF_ROOTFS=%s SIZE_ROOTFS=%s ", $4, $5
- 		if ($1 == "etc")    printf "OFF_ETC=%s SIZE_ETC=%s ",       $4, $5
- 		if ($1 == "factory")printf "OFF_APP=%s SIZE_APP=%s ",       $4, $5
--		if ($1 == "home")   printf "OFF_HOME=%s SIZE_HOME=%s ",     $4, $5
-+		if ($1 == "home") printf "OFF_HOME=%s SIZE_HOME=%s ",       $4, $5
- 	}' "$CSV")"
- 
- echo "==> collecting build outputs"
 @@ -67,30 +67,6 @@ cp -v "$NA/build/network_adapter.bin"       "$OUT/network_adapter.bin"
  cp -v "$BR/etc.jffs2"                        "$OUT/etc.jffs2"
  cp -v "$BR/xipImage"                         "$OUT/xipImage"
