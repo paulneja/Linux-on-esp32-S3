@@ -26,7 +26,7 @@ TARGET_BUILD_ROOT=${TARGET_BUILD_ROOT:-"$REPO/target-builds"}
 TARGET_PATCH_ROOT=${TARGET_PATCH_ROOT:-"$REPO/targets-patches"}
 
 external_target() {
-    case "$1" in generic-n8|xiao-n8) return 0 ;; *) return 1 ;; esac
+    case "$1" in generic-n8|xiao-n8|xiao-n8-sd) return 0 ;; *) return 1 ;; esac
 }
 
 target_snapshot() {
@@ -123,6 +123,7 @@ target_label() {
         n16)               echo "ESP32-S3 N16R8 (16 MB flash)" ;;
         generic-n8)        echo "Generic N8R8 (8 MB flash)" ;;
         xiao-n8)           echo "XIAO ESP32S3 and XIAO ESP32S3 Sense (8 MB flash)" ;;
+        xiao-n8-sd)        echo "XIAO ESP32S3 Sense, /home on the SD card" ;;
         *)                 echo "$1" ;;
     esac
 }
@@ -135,7 +136,7 @@ choose_target() {
   1) ESP32-S3 N16R8 (16 MB flash)
   2) Generic N8R8 (8 MB flash)
   3) XIAO ESP32S3 or XIAO ESP32S3 Sense (8 MB flash, login on its USB port)
-  4) XIAO ESP32S3 + SD   [not available yet]
+  4) XIAO ESP32S3 Sense with /home on the SD card (ext2, first partition)
   0) Quit
 EOF
     while true; do
@@ -145,7 +146,7 @@ EOF
             1) TARGET=n16 ;;
             2) TARGET=generic-n8 ;;
             3) TARGET=xiao-n8 ;;
-            4) warn "not available yet"; continue ;;
+            4) TARGET=xiao-n8-sd ;;
             0|q|Q) return 1 ;;
             *) warn "invalid choice"; continue ;;
         esac
@@ -208,7 +209,7 @@ Options:
   -j, --jobs N         Parallel build jobs (default: nproc)
   -p, --port PATH      Serial adapter (default: autodetect)
   -a, --artifacts DIR  Artifacts directory to use
-  --target ID          n16, generic-n8 or xiao-n8; asked the
+  --target ID          n16, generic-n8, xiao-n8 or xiao-n8-sd; asked the
                        first time and kept in .target
   --refresh-target     Recreate selected external target (deletes its outputs)
   --cache              Reuse the build cache in .cache/ (not for releases)
@@ -751,7 +752,7 @@ else
         TARGET=$(head -n1 "$TARGET_FILE")
     fi
     if [ -z "$TARGET" ]; then
-        interactive || die "no board chosen yet; run ./run.sh once or pass --target n16|generic-n8|xiao-n8"
+        interactive || die "no board chosen yet; run ./run.sh once or pass --target n16|generic-n8|xiao-n8|xiao-n8-sd"
         choose_target || exit 0
     fi
     [ "$TARGET" = n16 ] || external_target "$TARGET" || die "unsupported target: $TARGET"

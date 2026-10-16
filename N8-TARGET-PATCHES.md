@@ -9,10 +9,11 @@ builds that copy.
 | ------------ | --------------------------------------------- | ----------------------------- |
 | `generic-n8` | ESP32-S3 N8R8 (8 MB flash, 8 MB octal PSRAM)  | `targets-patches/generic-n8/` |
 | `xiao-n8`    | Seeed XIAO ESP32S3 and XIAO ESP32S3 Sense     | `targets-patches/xiao-n8/`    |
+| `xiao-n8-sd` | XIAO ESP32S3 Sense with `/home` on the SD     | `targets-patches/xiao-n8-sd/` |
 
 `xiao-n8` is `generic-n8` plus one patch that turns on the login on the chip's
 own USB port, since the XIAO has no UART adapter. Its other patches are
-symlinks to the `generic-n8` ones. The SD card variant is not done yet.
+symlinks to the `generic-n8` ones. `xiao-n8-sd` adds one more on top of that.
 
 ## Choosing one
 
@@ -34,6 +35,28 @@ The firmware jumps to `0x42000000` plus the offset of `linux`, and the kernel
 runs in place from there, so `CONFIG_KERNEL_LOAD_ADDRESS` has to follow the
 partition: `0x42120000` here, `0x42140000` on N16. Moving `linux` without it
 gives a board that never starts Linux.
+
+## xiao-n8-sd
+
+The Sense's expansion board has a microSD slot on SPI: CS on GPIO21, SCK on
+GPIO7, MISO on GPIO8, MOSI on GPIO9. This target turns on SPI, MMC over SPI,
+the block layer and ext2 in the kernel, and mounts the card's first partition
+as `/home`. The card has to be formatted as ext2 first, on a PC:
+
+```sh
+sudo mkfs.ext2 -L home /dev/sdX1
+```
+
+Without a card `/home` is not mounted and the login has no home directory.
+The kernel grows, so `linux` takes 2688 KiB and `/home` on flash shrinks to a
+64 KiB stub the tools still expect:
+
+| Partition | Offset     | Size       |
+| --------- | ---------- | ---------- |
+| etc       | `0x0d0000` | 320 KiB    |
+| linux     | `0x120000` | 2688 KiB   |
+| rootfs    | `0x3c0000` | 4288 KiB   |
+| home      | `0x7f0000` | 64 KiB     |
 
 ## What is left out
 
