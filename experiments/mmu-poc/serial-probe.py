@@ -115,7 +115,7 @@ class Console:
         token = "MMU_DONE_" + secrets.token_hex(12)
         wire = f"{text}; echo {token}:$?\r"
         self.port.write(wire.encode())
-        data, match = self.until(rb"\n" + token.encode() + rb":([0-9]+)\r?\n", seconds)
+        data, match = self.until(token.encode() + rb":([0-9]+)\r?\n", seconds)
         result = data[:match.start()].decode(errors="replace").strip()
         status = int(match.group(1))
         if check and status:
