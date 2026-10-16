@@ -596,7 +596,15 @@ choose_external_target() {
     # Menu selection automatically refreshes a stale target, with confirmation
     # before deleting any existing build outputs. CLI stays explicit.
     TARGET_AUTO_REFRESH=1
-    launch_target "$target"
+    # Carry the original command-line options into the selected target menu.
+    # Without these, -a/--artifacts and -p/--port are lost on menu switching.
+    local forwarded=()
+    [ "$ASSUME_YES" -eq 0 ] || forwarded+=(--yes)
+    [ "$QUIET" -eq 0 ] || forwarded+=(--quiet)
+    forwarded+=(--jobs "$JOBS")
+    [ -z "$PORT" ] || forwarded+=(--port "$PORT")
+    [ -z "$ARTIFACTS" ] || forwarded+=(--artifacts "$ARTIFACTS")
+    launch_target "$target" "${forwarded[@]}"
     local rc=$?
     TARGET_AUTO_REFRESH=0
     TARGET_REFRESH=0
