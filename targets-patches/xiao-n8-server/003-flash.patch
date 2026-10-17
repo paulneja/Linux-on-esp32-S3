@@ -1,0 +1,88 @@
+diff --git a/flash.sh b/flash.sh
+index e52930c..6c3aba2 100755
+--- a/flash.sh
++++ b/flash.sh
+@@ -117,7 +117,27 @@ import sys
+ 
+ image_dir, table = map(Path, sys.argv[1:3])
+ parts_mode, erase = sys.argv[3:5]
+-flash_size = 16 * 1024 * 1024
++full = image_dir / 'linux-esp32s3-native-full.bin'
++if full.exists():
++    full_size = full.stat().st_size
++    if full_size == 8 * 1024 * 1024:
++        flash_size = 8 * 1024 * 1024
++    elif full_size == 16 * 1024 * 1024:
++        flash_size = 16 * 1024 * 1024
++    else:
++        raise ValueError(f'{full}: invalid full-image size {full_size}; expected 8 or 16 MiB')
++else:
++    # Separate-image mode: derive the target capacity from the CSV layout.
++    rows = []
++    with table.open() as stream:
++        for row in csv.reader(stream):
++            if not row or not row[0].strip() or row[0].lstrip().startswith('#'):
++                continue
++            rows.append((int(row[3].strip(), 0), int(row[4].strip(), 0)))
++    end = max(offset + size for offset, size in rows)
++    flash_size = 8 * 1024 * 1024 if end <= 8 * 1024 * 1024 else 16 * 1024 * 1024
++if flash_size not in (8 * 1024 * 1024, 16 * 1024 * 1024):
++    raise ValueError('unsupported flash size')
+ 
+ def check_image(name, limit, exact=False):
+     path = image_dir / name
+@@ -132,6 +152,7 @@ def check_image(name, limit, exact=False):
+ try:
+     if parts_mode == '0':
+         check_image('linux-esp32s3-native-full.bin', flash_size, exact=True)
++        print(str(flash_size))
+     else:
+         parts = {}
+         with table.open() as stream:
+@@ -145,7 +166,7 @@ try:
+                 if offset < 0x9000 or size <= 0 or (offset | size) % 4096:
+                     raise ValueError(f'{name}: invalid partition offset or size')
+                 if offset + size > flash_size:
+-                    raise ValueError(f'{name}: partition exceeds 16 MiB flash')
++                    raise ValueError(f'{name}: partition exceeds {flash_size // (1024 * 1024)} MiB flash')
+                 parts[name] = (offset, size)
+         end = 0x9000
+         for name, (offset, size) in sorted(parts.items(), key=lambda item: item[1][0]):
+@@ -175,15 +196,25 @@ try:
+                 check_image(filename, parts[name][1])
+             elif erase == '1' and (image_dir / filename).exists():
+                 check_image(filename, parts[name][1], exact=True)
+-        print(' '.join(str(parts[name][0]) for name in required))
++        print(str(flash_size) + ' ' + ' '.join(str(parts[name][0]) for name in required))
+ except (OSError, ValueError, struct.error) as error:
+     sys.exit(f'error: preflight failed: {error}; no board data was changed')
+ PY
+ )
+ 
++# First preflight value is the detected target flash size in bytes.
++# shellcheck disable=SC2086
++set -- $OFFSETS
++FLASH_BYTES=$1
++shift
++case "$FLASH_BYTES" in
++	8388608)  FLASH_ARG=8MB ;;
++	16777216) FLASH_ARG=16MB ;;
++	*) echo "error: unsupported flash size $FLASH_BYTES" >&2; exit 1 ;;
++esac
++echo "==> Target flash size: $FLASH_ARG"
++
+ if [ "$PARTS" = 1 ]; then
+-	# shellcheck disable=SC2086
+-	set -- $OFFSETS
+ 	OFF_APP=$1; OFF_ETC=$2; OFF_LINUX=$3; OFF_ROOTFS=$4; OFF_HOME=$5
+ 	set -- 0x0 "$IMG/bootloader.bin" 0x8000 "$IMG/partition-table.bin" \
+ 		"$OFF_APP" "$IMG/network_adapter.bin" "$OFF_ETC" "$IMG/etc.jffs2" \
+@@ -222,7 +253,7 @@ fi
+ echo "==> Flashing validated images"
+ # shellcheck disable=SC2086
+ $ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 --before default_reset --after hard_reset \
+-	write_flash --flash_mode dio --flash_size 16MB --flash_freq 80m "$@"
++	write_flash --flash_mode dio --flash_size "$FLASH_ARG" --flash_freq 80m "$@"
+ 
+ cat <<'EOF'
+ 

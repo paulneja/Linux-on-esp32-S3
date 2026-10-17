@@ -23,7 +23,7 @@ TARGET_BUILD_ROOT=${TARGET_BUILD_ROOT:-"$REPO/target-builds"}
 TARGET_PATCH_ROOT=${TARGET_PATCH_ROOT:-"$REPO/targets-patches"}
 
 external_target() {
-    case "$1" in generic-n8-server|generic-n8-client) return 0 ;; *) return 1 ;; esac
+    case "$1" in generic-n8-server|generic-n8-client|xiao-n8-server|xiao-n8-client) return 0 ;; *) return 1 ;; esac
 }
 
 target_snapshot() {
@@ -162,7 +162,8 @@ Options:
   -j, --jobs N         Parallel build jobs (default: nproc)
   -p, --port PATH      Serial adapter (default: autodetect)
   -a, --artifacts DIR  Artifacts directory to use
-  --target ID          n16 (default), generic-n8-server, generic-n8-client
+  --target ID          n16 (default), generic-n8-server, generic-n8-client,
+                  xiao-n8-server, xiao-n8-client
   --refresh-target     Recreate selected external target (deletes its outputs)
   -h, --help           This help
 
@@ -584,13 +585,14 @@ do_all() {
 
 choose_external_target() {
     [ "${ESP32_TARGET_ISOLATED:-}" != 1 ] || { warn "already in an isolated target"; return 1; }
-    printf '\n  1) Generic N8 Server\n  2) Generic N8 Client\n  3) XIAO N8             [Not available yet]\n  4) XIAO N8 + SD        [Not available yet]\n  0) Back\nChoice: '
+    printf '\n  1) Generic N8 Server\n  2) Generic N8 Client\n  3) XIAO N8 Server\n  4) XIAO N8 Client\n  0) Back\nChoice: '
     local choice="" target=""
     read_reply choice || return 1
     case "$choice" in
         1) target=generic-n8-server ;;
         2) target=generic-n8-client ;;
-        3|4) warn "this target is not available yet"; return 0 ;;
+        3) target=xiao-n8-server ;;
+        4) target=xiao-n8-client ;;
         0) return 0 ;; *) warn "invalid target"; return 1 ;;
     esac
     # Menu selection automatically refreshes a stale target, with confirmation

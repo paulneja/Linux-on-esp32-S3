@@ -1,0 +1,81 @@
+diff --git a/build/package-final.py b/build/package-final.py
+index 2d777cb..1f3ba31 100755
+--- a/build/package-final.py
++++ b/build/package-final.py
+@@ -159,14 +159,15 @@ for partition, filename in files.items():
+     assert (out / filename).stat().st_size <= parts[partition]['size'], (partition, filename)
+
+ run('esptool', '--chip', 'esp32s3', 'merge_bin', '-o', out / 'linux-esp32s3-native-full.bin',
+-    '--flash_mode', 'dio', '--flash_freq', '80m', '--flash_size', '16MB', '--fill-flash-size', '16MB',
++    '--flash_mode', 'dio', '--flash_freq', '80m', '--flash_size', '8MB', '--fill-flash-size', '8MB',
+     '0x0', out / 'bootloader.bin', '0x8000', out / 'partition-table.bin',
+     *[arg for partition, filename in files.items() for arg in (hex(parts[partition]['offset']), out / filename)])
+ full = (out / 'linux-esp32s3-native-full.bin').read_bytes()
+-assert len(full) == 16 * 1024 * 1024
+-for offset, filename in ((0, 'bootloader.bin'), (0x8000, 'partition-table.bin')):
+-    payload = (out / filename).read_bytes()
+-    assert full[offset:offset + len(payload)] == payload, filename
++assert len(full) == 8 * 1024 * 1024
++# esptool rewrites flash parameters and the SHA digest in the bootloader
++# while merging, so only verify the partition table byte-for-byte here.
++payload = (out / 'partition-table.bin').read_bytes()
++assert full[0x8000:0x8000 + len(payload)] == payload, 'partition-table.bin'
+ for partition, filename in files.items():
+     payload = (out / filename).read_bytes()
+     start = parts[partition]['offset']
+diff --git a/experiments/mmu-poc/programs/build-netcat.sh b/experiments/mmu-poc/programs/build-netcat.sh
+--- a/experiments/mmu-poc/programs/build-netcat.sh
++++ b/experiments/mmu-poc/programs/build-netcat.sh
+@@ -19,6 +19,16 @@
+ if [[ ! -d "$source_dir" ]]; then
+     cp -a --reflink=auto "$original" "$source_dir"
+ fi
++# Generic N8 Client: disable server applets in the separate BusyBox tree.
++# Do not depend on the Buildroot BusyBox config: this tree is reused between builds.
++for applet in HTTPD TELNETD INETD DNSD; do
++    sed -i -E "s/^CONFIG_${applet}=y$/# CONFIG_${applet} is not set/" "$source_dir/.config"
++    grep -qx "# CONFIG_${applet} is not set" "$source_dir/.config" || {
++        echo "ERROR: failed to disable BusyBox CONFIG_${applet}" >&2
++        exit 1
++    }
++done
++
+ apply_program_patch "$source_dir" busybox-nc.patch
+ apply_program_patch "$source_dir" busybox-login.patch
+ apply_program_patch "$source_dir" busybox-users.patch
+@@ -38,4 +48,11 @@
+ install -m 755 "$source_dir/busybox_unstripped" "$programs_out/$output.debug"
+ "$prefix-strip" --strip-unneeded -R .xt.prop -R .xt.lit \
+     -o "$programs_out/$output" "$source_dir/busybox_unstripped"
++# Reject builds if oldconfig or later steps re-enabled any server applet.
++for applet in HTTPD TELNETD INETD DNSD; do
++    grep -qx "# CONFIG_${applet} is not set" "$source_dir/.config" || {
++        echo "ERROR: BusyBox CONFIG_${applet} re-enabled during build" >&2
++        exit 1
++    }
++done
+ "$prefix-size" "$programs_out/$output"
+diff --git a/experiments/mmu-poc/programs/image-profiles.py b/experiments/mmu-poc/programs/image-profiles.py
+index 7fe9485..24f133c 100644
+--- a/experiments/mmu-poc/programs/image-profiles.py
++++ b/experiments/mmu-poc/programs/image-profiles.py
+@@ -17,7 +17,7 @@ REPO = EXP.parent.parent
+ BUILD = (REPO.parent / 'refs/esp32-linux-build/build').resolve()
+ HOST = BUILD / 'build-buildroot-esp32s3_devkit_c1_16m/host'
+ LIMIT = 0x780000
+-PROFILES = {'all': ['bash', 'dash', 'make', 'micropython', 'socat'],
++PROFILES = {'all': [],
+             'bash-red': ['bash', 'dash', 'make', 'socat'],
+             'python-automatizacion': ['dash', 'make', 'micropython'], 'base': []}
+ PACKAGES = {
+@@ -99,6 +99,10 @@
+             path = tree / directory / name
+             remove(path)
+             path.symlink_to('../../bin/busybox')
++        # Remove stale launcher links after replacing BusyBox with the Client build.
++        for name in ('httpd', 'telnetd', 'inetd', 'dnsd'):
++            for directory in ('bin', 'sbin', 'usr/bin', 'usr/sbin'):
++                remove(tree / directory / name)
+         install(PROGRAMS / 'dtach', tree / 'usr/bin/dtach')
+         install(PROGRAMS / 'dtach-b027c27b2439081064d07a86883c8e0b20a183c9/COPYING',
+                 tree / 'usr/share/licenses/dtach/COPYING', 0o644)
