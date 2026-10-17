@@ -110,8 +110,17 @@ launch_target() {
     local target=$1
     shift
     target_snapshot "$target" || return 1
-    # No external-target selection inside a generated snapshot (avoids recursion).
-    (cd "$TARGET_DIR" && ESP32_TARGET_ISOLATED=1 ESP32_TARGET_NAME="$target" bash ./run.sh "$@")
+    # Detect on the host before entering the isolated target, whose run.sh may
+    # be an older upstream snapshot without macOS serial-device support.
+    local detected_port=""
+    if [ -z "$PORT" ]; then
+        detected_port=$(detect_port) || detected_port=""
+    else
+        detected_port=$PORT
+    fi
+    # PORT is inherited by the child script, including interactive menu actions.
+    # Explicit --port arguments in "$@" still take precedence in its parser.
+    (cd "$TARGET_DIR" && PORT="$detected_port" ESP32_TARGET_ISOLATED=1 ESP32_TARGET_NAME="$target" bash ./run.sh "$@")
 }
 
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
@@ -220,6 +229,10 @@ disk_free_gb() {
 detect_port() {
 	local p
 	if [ -n "$PORT" ]; then printf '%s\n' "$PORT"; return 0; fi
+	# macOS USB CDC and USB-to-UART adapters.
+	for p in /dev/cu.usbmodem* /dev/cu.usbserial*; do
+		[ -e "$p" ] && { printf '%s\n' "$p"; return 0; }
+	done
 	for p in /dev/serial/by-id/*"$BOARD_ID_HINT"*; do
 		[ -e "$p" ] && { printf '%s\n' "$p"; return 0; }
 	done
@@ -598,6 +611,11 @@ choose_external_target() {
     # Menu selection automatically refreshes a stale target, with confirmation
     # before deleting any existing build outputs. CLI stays explicit.
     TARGET_AUTO_REFRESH=1
+    # Resolve the host serial port before entering the isolated snapshot.
+    # Older snapshots may not know macOS /dev/cu.usbmodem* devices.
+    if [ -z "$PORT" ]; then
+        PORT=$(detect_port) || PORT=""
+    fi
     # Carry the original command-line options into the selected target menu.
     # Without these, -a/--artifacts and -p/--port are lost on menu switching.
     local forwarded=()
@@ -688,6 +706,10 @@ done
 if [ "${ESP32_TARGET_ISOLATED:-}" != 1 ]; then
     if [ "$TARGET" != n16 ]; then
         external_target "$TARGET" || die "unsupported target: $TARGET"
+        # Pass the detected host port to the isolated target as an explicit option.
+        if [ -z "$PORT" ]; then
+            PORT=$(detect_port) || PORT=""
+        fi
         forwarded=()
         [ "$ASSUME_YES" -eq 0 ] || forwarded+=(--yes)
         [ "$QUIET" -eq 0 ] || forwarded+=(--quiet)
