@@ -41,10 +41,7 @@ index 9c8aa25..21d9d5c 100644
 diff --git a/new-files/toplevel/apply-local-changes.sh b/new-files/toplevel/apply-local-changes.sh
 --- a/new-files/toplevel/apply-local-changes.sh
 +++ b/new-files/toplevel/apply-local-changes.sh
-@@ -47,6 +47,23 @@ buildroot)
- 	git apply --check "$LOCAL/patches/03-buildroot-tracked-changes.patch" >&2 || true
- 	exit 1
- 	fi
+@@ -52,2 +52,19 @@ buildroot)
 +	# Generic N8 Client only: limit Dropbear compilation to dbclient.
 +	# This runs after cloning Buildroot, before its configuration and build.
 +	dropbear_mk=package/dropbear/dropbear.mk
@@ -64,4 +61,3 @@ diff --git a/new-files/toplevel/apply-local-changes.sh b/new-files/toplevel/appl
 +	}
  	cd ../..
  	echo ">>> buildroot: copying new files (board profile, espctl, init scripts)"
- 	rm -rf build/buildroot/board/espressif/esp32s3/patches
