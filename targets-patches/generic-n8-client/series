@@ -2,5 +2,5 @@
 002-package.patch
 003-flash.patch
 004-test.patch
-005-config.patch
+005-config-dbclient
 006-busybox-vi.patch
