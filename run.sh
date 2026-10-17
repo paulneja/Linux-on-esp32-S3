@@ -267,24 +267,49 @@ disk_free_gb() {
     echo $((available_kb / 1024 / 1024))
 }
 detect_port() {
-	local p
-	if [ -n "$PORT" ]; then printf '%s\n' "$PORT"; return 0; fi
-	for p in /dev/serial/by-id/*"$BOARD_ID_HINT"*; do
-		[ -e "$p" ] && { printf '%s\n' "$p"; return 0; }
-	done
-	for p in /dev/serial/by-id/*; do
-		[ -e "$p" ] && { printf '%s\n' "$p"; return 0; }
-	done
-	for p in /dev/ttyACM0 /dev/ttyACM1 /dev/ttyUSB0 /dev/ttyUSB1; do
-		[ -e "$p" ] && { printf '%s\n' "$p"; return 0; }
-	done
-	return 1
+    local p matches=()
+    if [ -n "$PORT" ]; then
+        [ -e "$PORT" ] || { warn "serial port does not exist: $PORT"; return 1; }
+        printf '%s\n' "$PORT"
+        return 0
+    fi
+    if [ "$(uname -s)" = Darwin ]; then
+        # Prefer callout devices on macOS; tty.* devices may block on carrier.
+        for p in /dev/cu.usbmodem* /dev/cu.usbserial* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbserial*; do
+            [ -e "$p" ] && matches+=("$p")
+        done
+    else
+        for p in /dev/serial/by-id/*"$BOARD_ID_HINT"*; do
+            [ -e "$p" ] && { printf '%s\n' "$p"; return 0; }
+        done
+        for p in /dev/serial/by-id/*; do
+            [ -e "$p" ] && { printf '%s\n' "$p"; return 0; }
+        done
+        for p in /dev/ttyACM0 /dev/ttyACM1 /dev/ttyUSB0 /dev/ttyUSB1; do
+            [ -e "$p" ] && matches+=("$p")
+        done
+    fi
+    case "${#matches[@]}" in
+        0) return 1 ;;
+        1) printf '%s\n' "${matches[0]}" ;;
+        *) warn "multiple serial ports found; specify -p PATH:";
+           printf '  %s\n' "${matches[@]}" >&2; return 1 ;;
+    esac
 }
 
 port_holders() {
-	local target
-	target=$(readlink -f "$1" 2>/dev/null || printf '%s' "$1")
-	fuser "$target" 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$' || true
+    local target
+    if [ "$(uname -s)" = Darwin ]; then
+        command -v lsof >/dev/null 2>&1 || return 0
+        lsof -t -- "$1" 2>/dev/null | grep -E '^[0-9]+$' || true
+    else
+        target=$(readlink -f "$1" 2>/dev/null || printf '%s' "$1")
+        if command -v fuser >/dev/null 2>&1; then
+            fuser "$target" 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$' || true
+        elif command -v lsof >/dev/null 2>&1; then
+            lsof -t -- "$target" 2>/dev/null | grep -E '^[0-9]+$' || true
+        fi
+    fi
 }
 
 free_port() {
