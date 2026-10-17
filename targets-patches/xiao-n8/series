@@ -3,4 +3,6 @@
 003-flash.patch
 004-test.patch
 005-config.patch
-006-busybox-vi.patch
+006-busybox.patch
+007-wpa-supplicant.patch
+008-usb-console.patch

@@ -60,8 +60,42 @@ toolchain() {
     make -j"$JOBS"
     ./ct-ng xtensa-esp32s3-linux-uclibcfdpic
     python3 "$repo/build/pin-toolchain.py" .config
-    CT_PREFIX="$PWD/builds" ./ct-ng build
+    if [[ -d /cache/toolchain ]]; then
+        cached_toolchain
+    else
+        CT_PREFIX="$PWD/builds" ./ct-ng build
+    fi
     test -x builds/xtensa-esp32s3-linux-uclibcfdpic/bin/xtensa-esp32s3-linux-uclibcfdpic-gcc
+}
+
+cached_toolchain() {
+    local name=xtensa-esp32s3-linux-uclibcfdpic key store
+    key=$({
+        printf '%s\n' "$BUILD_DRIVER_REV" "$DYNCONFIG_REV" "$ESP32_CONFIG_REV" "$CTNG_REV"
+        grep -v '^CT_PARALLEL_JOBS=' .config
+        find "$repo/new-files/toolchain-patches" -type f -print0 | sort -z | xargs -0 cat
+    } | sha256sum | cut -c1-16)
+    store=/cache/toolchain/$key.tar
+    mkdir -p builds
+    (
+        flock -n 9 || { echo "waiting for another build to finish the toolchain cache"; flock 9; }
+        if [[ ! -f "$store" ]]; then
+            CT_PREFIX="$PWD/builds" ./ct-ng build
+            tar -cf "$store.tmp" -C builds "$name"
+            mv "$store.tmp" "$store"
+            echo "toolchain cached: $key"
+        fi
+    ) 9>/cache/toolchain/.lock
+    if [[ ! -x builds/$name/bin/$name-gcc ]]; then
+        tar -xf "$store" -C builds
+        echo "toolchain from cache: $key"
+    fi
+}
+
+buildroot_cache_args() {
+    if [[ -d /cache/buildroot-dl ]]; then
+        printf '%s\n' BR2_DL_DIR=/cache/buildroot-dl BR2_CCACHE_DIR=/cache/ccache
+    fi
 }
 
 rootfs_base() {
@@ -79,7 +113,12 @@ rootfs_base() {
     "$base/buildroot/utils/config" --file "$br/.config" --set-str WGET 'wget -nd -t 3 --timeout=20'
     grep -qx "sha256  $LINUX_TARBALL_SHA256  linux-$LINUX_VERSION.tar.xz" "$repo/new-files/board/espressif/esp32s3/package-patches/linux/linux.hash"
     grep -qx "BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE=\"$LINUX_VERSION\"" "$br/.config"
-    make -C "$base/buildroot" O="$br" BR2_JLEVEL="$JOBS"
+    local cache_args
+    mapfile -t cache_args < <(buildroot_cache_args)
+    if [[ ${#cache_args[@]} -gt 0 ]]; then
+        "$base/buildroot/utils/config" --file "$br/.config" --enable CCACHE
+    fi
+    make -C "$base/buildroot" O="$br" BR2_JLEVEL="$JOBS" ${cache_args[@]+"${cache_args[@]}"}
     test -s "$br/images/rootfs.cramfs"
 }
 
@@ -92,19 +131,23 @@ firmware() {
     test "$(git -C esp-idf rev-parse HEAD)" = "$ESP_IDF_REV"
     cmake .
     cd esp-idf
-    # github 504s every single time. PLS HELP ME :'(
-    for attempt in 1 2 3 4 5 6; do
-        if [ "$attempt" -ge 3 ]; then
-            export IDF_GITHUB_ASSETS=dl.espressif.com/github_assets
-        fi
-        python3 tools/idf_tools.py --non-interactive install && break
-        if [ "$attempt" -ge 6 ]; then
-            echo "esp-idf tools did not install after $attempt attempts" >&2
-            exit 1
-        fi
-        sleep $((attempt * 15))
-    done
-    python3 tools/idf_tools.py --non-interactive install-python-env
+    mkdir -p "$HOME/.espressif"
+    (
+        flock -n 9 || { echo "waiting for another build to finish the esp-idf tools"; flock 9; }
+        # github 504s every single time. PLS HELP ME :'(
+        for attempt in 1 2 3 4 5 6; do
+            if [ "$attempt" -ge 3 ]; then
+                export IDF_GITHUB_ASSETS=dl.espressif.com/github_assets
+            fi
+            python3 tools/idf_tools.py --non-interactive install && break
+            if [ "$attempt" -ge 6 ]; then
+                echo "esp-idf tools did not install after $attempt attempts" >&2
+                exit 1
+            fi
+            sleep $((attempt * 15))
+        done
+        python3 tools/idf_tools.py --non-interactive install-python-env
+    ) 9>"$HOME/.espressif/.lock"
     set +u
     source export.sh
     set -u

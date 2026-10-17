@@ -192,6 +192,22 @@ it is listed in `BR2_ROOTFS_POST_BUILD_SCRIPT` in the defconfig.
 grep ^root: /etc/passwd     # should end in /home/root
 ```
 
+### The board resets with `TG1WDT_SYS_RST` as soon as `wifi` scans
+
+```
+Scanning for WiFi networks on espsta0 ...
+ESP-ROM:esp32s3-20210327
+rst:0x8 (TG1WDT_SYS_RST),boot:0x8 (SPI_FAST_FLASH_BOOT)
+Saved PC:0x40376609
+```
+
+Try another USB cable or port first. The radio draws a burst of current when
+a scan starts, and a cable with thin power wires lets the voltage sag enough
+for core 0's firmware to fault; it never gets to print a panic, so the
+watchdog resets the chip. A board that did this every time with one cable
+scanned, joined and passed the whole test suite with another. A cable that
+throws `Possible serial noise or corruption` while flashing is a suspect too.
+
 ### The board joined a WiFi network you never configured
 
 See [SECURITY.md](SECURITY.md#past-incidents). Check for a network block with no

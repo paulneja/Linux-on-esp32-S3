@@ -1,136 +1,87 @@
-# Target-specific patch strategy: Generic N8
+# 8 MB boards: generic-n8 and xiao-n8
 
-## Purpose
+The 8 MB targets are built from a copy of the N16 tree with a patch series on
+top. The N16 sources are not changed for them. `run.sh` exports `HEAD` into
+`target-builds/<target>/`, applies `targets-patches/<target>/series` there and
+builds that copy.
 
-This document describes how the **Generic N8** target is maintained in the Linux-on-esp32-S3 project. It covers the relationship to the upstream N16 implementation, target-specific changes, and basic maintenance and verification practices.
+| Target       | Board                                         | Series                        |
+| ------------ | --------------------------------------------- | ----------------------------- |
+| `generic-n8` | ESP32-S3 N8R8 (8 MB flash, 8 MB octal PSRAM)  | `targets-patches/generic-n8/` |
+| `xiao-n8`    | Seeed XIAO ESP32S3 and XIAO ESP32S3 Sense     | `targets-patches/xiao-n8/`    |
+| `xiao-n8-sd` | XIAO ESP32S3 Sense with `/home` on the SD     | `targets-patches/xiao-n8-sd/` |
 
-## Design decision
+`xiao-n8` is `generic-n8` plus one patch that turns on the login on the chip's
+own USB port, since the XIAO has no UART adapter. Its other patches are
+symlinks to the `generic-n8` ones. `xiao-n8-sd` adds one more on top of that.
 
-**Generic N8 is an independently maintained derivative implementation.**
+## Choosing one
 
-- The upstream N16 source is the starting point and remains unchanged.
-- Generic N8 is constructed by copying the upstream N16 source into `target-builds/generic-n8` and then applying Generic N8-specific patches.
-- N8-specific modifications are not intended to be generalized or merged back into the N16 implementation.
-- Changes to Generic N8 must not silently change the default N16 build behavior.
+`./run.sh` asks which board it is for the first time and keeps the answer in
+`.target`. Option 10 in the menu changes it, and `--target n16|generic-n8|xiao-n8`
+picks one for a single run.
 
-This is deliberately different from building a common implementation with target-dependent conditionals.
+## Flash layout
 
-## Differences from the standard N16R8 target
+| Partition | Offset     | Size       |
+| --------- | ---------- | ---------- |
+| factory   | `0x010000` | 768 KiB    |
+| etc       | `0x0d0000` | 320 KiB    |
+| linux     | `0x120000` | 2432 KiB   |
+| rootfs    | `0x380000` | 4224 KiB   |
+| home      | `0x7a0000` | 384 KiB    |
 
-The following table distinguishes **hardware constraints and adopted design decisions** from **planned optimizations**. Generic N8 is still experimental; this table is not a claim that every feature has been implemented and validated on hardware.
+The firmware jumps to `0x42000000` plus the offset of `linux`, and the kernel
+runs in place from there, so `CONFIG_KERNEL_LOAD_ADDRESS` has to follow the
+partition: `0x42120000` here, `0x42140000` on N16. Moving `linux` without it
+gives a board that never starts Linux.
 
-| Area                          | Standard N16R8                                                                | Generic N8                                                                                     | Status / notes                                                                                  |
-| ----------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Flash capacity                | 16 MB                                                                         | 8 MB                                                                                           | Hardware constraint; N8 has half the flash capacity.                                            |
-| PSRAM                         | 8 MB (N16R8)                                                                  | 8 MB for the N8R8 configuration being considered                                               | The target's actual PSRAM must be checked; the name N8 alone specifies flash capacity, not RAM. |
-| Source tree                   | Original upstream implementation                                              | Independent derivative copied to `target-builds/generic-n8/`                                   | Adopted design decision. N16 sources remain untouched.                                          |
-| Customization                 | Original build and feature set                                                | Target-specific patches in `targets-patches/generic-n8/`                                       | Adopted patch management approach; patch application and CI still require verification.         |
-| Flash layout                  | Standard 16 MB partition layout                                               | Must fit all necessary images and writable partitions into 8 MB                                | N8-specific layout and usable free space require verification against the final image sizes.    |
-| Root filesystem               | Includes Bash, Dash, Nano, ncurses, MicroPython, GNU Make and other utilities | Reduced rootfs, centered on BusyBox `sh` and `vi`                                              | **Planned N8 optimization**, not a verified final package manifest.                             |
-| Programs targeted for removal | Present in, or supplied by, the full N16 userspace as applicable              | Bash, Dash, Nano, ncurses, MicroPython, socat and GNU Make                                     | Planned removals; review dependent libraries and tools before finalizing.                       |
-| BusyBox applets               | Standard BusyBox feature selection                                            | Further disabling unused functions, including printing, mail, dial-up/PPP, VLAN and swap tools | Proposed size reduction; exact applet selection and savings have not been established here.     |
-| `/home`                       | Writable Flash-backed `/home` in the standard image                           | Retention, size and placement depend on the finalized 8 MB partition budget                    | Not yet confirmed for Generic N8; do not assume `/home` moves to RAM.                           |
-| SD card                       | Not required for the standard N16R8 image                                     | Not assumed for Generic N8                                                                     | SD-equipped XIAO configurations are separate from the generic N8 target.                        |
-| Maturity                      | Mainline upstream implementation                                              | Experimental derivative; not yet in regular production use                                     | CI, clean builds, image size and actual board behavior must be checked.                         |
+## xiao-n8-sd
 
-### Compatibility objective
+The Sense's expansion board has a microSD slot on SPI: CS on GPIO21, SCK on
+GPIO7, MISO on GPIO8, MOSI on GPIO9. This target turns on SPI, MMC over SPI,
+the block layer and ext2 in the kernel, and mounts the card's first partition
+as `/home`. The card has to be formatted as ext2 first, on a PC:
 
-Generic N8 aims to retain the underlying Linux-on-ESP32-S3 architecture while accommodating a smaller flash device. **Feature parity with N16 is not an objective**: optional programs and services may be removed to meet the 8 MB limit. Conversely, Generic N8-specific changes must not alter the existing N16 build.
-
-### Verification needed before regular use
-
-1. Confirm the exact Generic N8 hardware variant and its actual PSRAM capacity.
-2. Record the finalized N8 flash partition layout, image sizes and remaining space.
-3. Compare the resulting N8 rootfs package/app-list against N16 to identify _implemented_, rather than merely planned, removals.
-4. Confirm whether writable `/etc` and `/home` are retained, their capacities, and their persistence after reboot/update.
-5. Run clean local and CI builds, then flash and test Generic N8 hardware; repeat the N16 build to check for regressions.
-
-## Relevant paths
-
-| Path                          | Role                                                          |
-| ----------------------------- | ------------------------------------------------------------- |
-| `target-builds/generic-n8/`   | Working source tree for the independent Generic N8 derivative |
-| `targets-patches/generic-n8/` | Ordered patches specific to Generic N8                        |
-| `run.sh`                      | Build entry point / target selection and orchestration        |
-| `.gitignore`                  | Excludes generated build products as appropriate              |
-
-The paths above reflect the adopted target-patch approach; refer to the current branch for the definitive patch filenames and invocation details.
-
-## Build and patch workflow
-
-Use the interactive menu provided by `./run.sh`. The commands below describe the **Generic N8 selection and build workflow** rather than a separate manual copy-and-patch procedure.
-
-1. Run `./run.sh` from the repository root. The initial menu shows **Active Target: Generic N16 (Upstream)** and **Build Directory: Original Repository** when the default N16 target is selected.
-2. Enter **`10) Select N8 / XIAO target`**.
-3. In the target menu, enter **`1) Generic N8`**. The other entries, **`2) XIAO N8`** and **`3) XIAO N8 + SD`**, are displayed but marked **`[Not available yet]`**.
-4. The script selects the Generic N8 environment under `target-builds/generic-n8/`. If this environment already exists, it may report **`Reusing target environment: .../target-builds/generic-n8`**. This means the existing target environment is being reused; it does **not** by itself establish that the upstream source was freshly copied or that patches were reapplied.
-5. Return to the main menu and use **`2) Build everything from clean sources`** to request a clean build for the selected target. The main menu also provides **`3) Check the checksums of a build`**, **`4) Flash the board`**, **`5) Run the board tests`**, and **`9) Status`** for the subsequent steps. **`6) EVERYTHING: build, check, flash and test`** is the combined operation.
-6. Confirm the active target and build status, and verify the resulting image on Generic N8 hardware. When checking N16 compatibility, select the upstream N16 path and build/test it separately without applying Generic N8 patches to the original repository.
-
-Example selection shown by `run.sh`:
-
-```text
-=== Linux on ESP32-S3 ===
-  Active Target: Generic N16 (Upstream)
-  Build Directory: Original Repository
-
-  1) Check the environment
-  2) Build everything from clean sources
-  3) Check the checksums of a build
-  4) Flash the board
-  5) Run the board tests
-  6) EVERYTHING: build, check, flash and test
-  7) Reproducibility: two builds and a comparison
-  8) Recover the board (restore /etc and /home)
-  9) Status
-  10) Select N8 / XIAO target
-  0) Quit
-Choice: 10
-
-  1) Generic N8
-  2) XIAO N8       [Not available yet]
-  3) XIAO N8 + SD  [Not available yet]
-  0) Back
-Choice: 1
-
-Reusing target environment: /Volumes/ESP32Linux/Linux-on-esp32-S3-fresh/target-builds/generic-n8
+```sh
+sudo mkfs.ext2 -L home /dev/sdX1
 ```
 
-### How patches fit into the menu workflow
+Without a card `/home` is not mounted and the login has no home directory.
+The kernel grows, so `linux` takes 2688 KiB and `/home` on flash shrinks to a
+64 KiB stub the tools still expect:
 
-The architectural policy remains to copy the upstream N16 source into `target-builds/generic-n8/` and apply the ordered patches from `targets-patches/generic-n8/` **only to that derivative tree**. Users should operate through `run.sh` rather than patching the original N16 files manually.
+| Partition | Offset     | Size       |
+| --------- | ---------- | ---------- |
+| etc       | `0x0d0000` | 320 KiB    |
+| linux     | `0x120000` | 2688 KiB   |
+| rootfs    | `0x3c0000` | 4288 KiB   |
+| home      | `0x7f0000` | 64 KiB     |
 
-**Important:** The example confirms that `run.sh` can select and reuse a Generic N8 target environment. It does not show the internal source-copy or patch-application steps. Confirm those details, including behavior on a new environment or a clean rebuild, against the current `run.sh` implementation and its output. Patch failures must stop the N8 build rather than be ignored.
+## What is left out
 
-## Patch maintenance rules
+Everything the N16 image has, except:
 
-- Keep each patch focused on an understandable Generic N8 change.
-- Make patch paths relative to the patch application's working directory rather than embedding a machine- or CI-specific absolute path.
-- Recreate patches against the _same upstream revision_ used to generate the derivative source.
-- Avoid treating a failed patch as a successful build. Investigate context drift and regenerate the affected patch when upstream changes.
-- Do not modify N16 to accommodate Generic N8; put the customization in the derivative patches.
+- Bash, GNU Make, MicroPython (the Linux build; `mmu-run`'s payload stays) and nano.
+  `/bin/sh` is BusyBox and Dash is there for sessions. BusyBox `vi` replaces nano.
+- ncurses and terminfo, which only Bash and nano used.
+- 54 BusyBox applets nothing on the board calls: bzip2/lzma/xz/lzop, i2c tools,
+  virtual consoles and fonts, swap, runit, dnsd, tftp, hexedit, bc/dc and others.
+- In wpa_supplicant, 802.11r/ac/ax, TDLS, PKCS#12 and the IPv6 control socket.
+  WPA2-PSK and open networks are what `wifi` sets up.
+- In libcurl, cookies, proxies and the protocols other than HTTP(S), FTP and MQTT.
 
-## CI and reproducibility
+SSH, Telnet, the web page, curl with HTTPS, socat, cron and dtach sessions are
+all in. The board test binaries stay too, because the suite checks fork() with
+them.
 
-CI must use the same source revision, copy destination, patch order, and application working directory as the local build. A failure such as `patch does not apply` for a workflow file indicates that the patch context, the working directory, or the source revision needs to be checked; it does not by itself establish which one is wrong.
+The build also skips compiling Bash, Make and the Linux MicroPython for these
+targets.
 
-Suggested verification checkpoints:
+## Keeping the series working
 
-- Generic N8 patches apply cleanly to a fresh copy.
-- N16 files remain unchanged after preparation and build.
-- Generic N8 produces the expected build artifacts.
-- N16 continues to follow its original build path.
-
-## Scope
-
-This document records the **adopted architecture and maintenance policy**. It does not assert that any particular Generic N8 patch or CI workflow has already passed verification; use the branch's CI results and hardware tests for that determination.
-
-## Future plans
-
-The following target-selection options are planned for future development and are **not yet available as fully implemented, verified build options**:
-
-- **Client-only build:** Add a selectable build configuration dedicated to client functionality.
-- **XIAO ESP32-S3:** Allow the XIAO board configuration to be selected as a build target.
-- **XIAO ESP32-S3 with Sean's daughterboard and SD card:** Add a separate selectable target that supports the SD-equipped hardware configuration.
-
-These options will be added to the build target selector as development progresses. Their availability and behavior must be confirmed through build and hardware testing before they are treated as supported configurations.
+Each patch covers one area: build, packaging, flashing, tests, configuration,
+BusyBox and wpa_supplicant. When a change to the N16 tree touches a file in one
+of them, CI's patch check fails on that push; regenerate the affected patch
+against the new `HEAD` and check that the whole series still applies to a fresh
+export.

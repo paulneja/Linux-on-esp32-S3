@@ -1,0 +1,48 @@
+diff --git a/new-files/configs/esp32s3_devkit_c1_16m_defconfig b/new-files/configs/esp32s3_devkit_c1_16m_defconfig
+index 4e68f68..002b532 100644
+--- a/new-files/configs/esp32s3_devkit_c1_16m_defconfig
++++ b/new-files/configs/esp32s3_devkit_c1_16m_defconfig
+@@ -30,7 +30,6 @@ BR2_PACKAGE_DROPBEAR_LOCALOPTIONS_FILE="board/espressif/esp32s3/dropbear-localop
+ BR2_PACKAGE_IW=y
+ BR2_PACKAGE_WIRELESS_REGDB=y
+ BR2_PACKAGE_WPA_SUPPLICANT=y
+-BR2_PACKAGE_NANO=y
+ # BR2_PACKAGE_URANDOM_SCRIPTS is not set
+ BR2_TARGET_GENERIC_ROOT_PASSWD="changeme123"
+ BR2_TARGET_ROOTFS_CRAMFS=y
+@@ -42,3 +41,6 @@ BR2_PACKAGE_MBEDTLS=y
+ BR2_PACKAGE_LIBCURL=y
+ BR2_PACKAGE_LIBCURL_CURL=y
+ BR2_PACKAGE_LIBCURL_MBEDTLS=y
++# BR2_PACKAGE_LIBCURL_PROXY_SUPPORT is not set
++# BR2_PACKAGE_LIBCURL_COOKIES_SUPPORT is not set
++# BR2_PACKAGE_LIBCURL_EXTRA_PROTOCOLS_FEATURES is not set
+diff --git a/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r b/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r
+index 9c8aa25..3c89561 100644
+--- a/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r
++++ b/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r
+@@ -1,7 +1,7 @@
+ nvs,              data, nvs,     0x0000a000, 0x00005000
+ phy_init,         data, phy,     0x0000f000, 0x00001000
+ factory,          app,  factory, 0x00010000, 0x000c0000
+-etc,              0x40, 0x1,     0x000d0000, 0x00070000
+-linux,            0x40, 0x0,     0x00140000, 0x00400000
+-rootfs,           0x40, 0x1,     0x00540000, 0x00780000
+-home,             0x40, 0x1,     0x00cc0000, 0x00340000
++etc,              0x40, 0x1,     0x000d0000, 0x00050000
++linux,            0x40, 0x0,     0x00120000, 0x00260000
++rootfs,           0x40, 0x1,     0x00380000, 0x00420000
++home,             0x40, 0x1,     0x007a0000, 0x00060000
+diff --git a/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config b/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config
+index 8f333ea..e22ed3f 100644
+--- a/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config
++++ b/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config
+@@ -31,7 +31,7 @@ CONFIG_XTENSA_PLATFORM_ESP32=y
+ CONFIG_USE_OF=y
+ CONFIG_BUILTIN_DTB_NAME="esp32s3-devkit-c1"
+ CONFIG_MEMMAP_CACHEATTR=0xffff222f
+-CONFIG_KERNEL_LOAD_ADDRESS=0x42140000
++CONFIG_KERNEL_LOAD_ADDRESS=0x42120000
+ CONFIG_XTENSA_VECTORS_SEPARATE=y
+ # Where core 0 leaves room for our vectors. It follows the firmware: its
+ # space_for_vectors symbol moved by a page when the watchdogs were

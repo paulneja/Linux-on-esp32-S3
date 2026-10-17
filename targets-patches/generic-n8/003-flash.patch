@@ -1,5 +1,5 @@
 diff --git a/flash.sh b/flash.sh
-index e52930c..6c3aba2 100755
+index c33909d..1407ff0
 --- a/flash.sh
 +++ b/flash.sh
 @@ -117,7 +117,27 @@ import sys
@@ -48,7 +48,7 @@ index e52930c..6c3aba2 100755
                  parts[name] = (offset, size)
          end = 0x9000
          for name, (offset, size) in sorted(parts.items(), key=lambda item: item[1][0]):
-@@ -175,15 +196,25 @@ try:
+@@ -175,12 +196,22 @@ try:
                  check_image(filename, parts[name][1])
              elif erase == '1' and (image_dir / filename).exists():
                  check_image(filename, parts[name][1], exact=True)
@@ -58,8 +58,8 @@ index e52930c..6c3aba2 100755
      sys.exit(f'error: preflight failed: {error}; no board data was changed')
  PY
  )
- 
-+# First preflight value is the detected target flash size in bytes.
+-FLASH_ARG=16MB
++
 +# shellcheck disable=SC2086
 +set -- $OFFSETS
 +FLASH_BYTES=$1
@@ -70,19 +70,15 @@ index e52930c..6c3aba2 100755
 +	*) echo "error: unsupported flash size $FLASH_BYTES" >&2; exit 1 ;;
 +esac
 +echo "==> Target flash size: $FLASH_ARG"
-+
+ 
+ check_chip() {
+ 	out=$($ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 --before default_reset --after hard_reset flash_id 2>&1) || {
+@@ -200,8 +231,6 @@ check_chip() {
+ }
+ 
  if [ "$PARTS" = 1 ]; then
 -	# shellcheck disable=SC2086
 -	set -- $OFFSETS
  	OFF_APP=$1; OFF_ETC=$2; OFF_LINUX=$3; OFF_ROOTFS=$4; OFF_HOME=$5
  	set -- 0x0 "$IMG/bootloader.bin" 0x8000 "$IMG/partition-table.bin" \
  		"$OFF_APP" "$IMG/network_adapter.bin" "$OFF_ETC" "$IMG/etc.jffs2" \
-@@ -222,7 +253,7 @@ fi
- echo "==> Flashing validated images"
- # shellcheck disable=SC2086
- $ESPTOOL --chip esp32s3 -p "$PORT" -b 460800 --before default_reset --after hard_reset \
--	write_flash --flash_mode dio --flash_size 16MB --flash_freq 80m "$@"
-+	write_flash --flash_mode dio --flash_size "$FLASH_ARG" --flash_freq 80m "$@"
- 
- cat <<'EOF'
- 

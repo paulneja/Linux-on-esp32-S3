@@ -1,0 +1,148 @@
+diff --git a/new-files/board/espressif/esp32s3/patches/linux/0063-xiao-sd-pins.patch b/new-files/board/espressif/esp32s3/patches/linux/0063-xiao-sd-pins.patch
+new file mode 100644
+index 0000000..92aa4b1
+--- /dev/null
++++ b/new-files/board/espressif/esp32s3/patches/linux/0063-xiao-sd-pins.patch
+@@ -0,0 +1,61 @@
++--- a/arch/xtensa/boot/dts/esp32s3-devkit-c1.dts
+++++ b/arch/xtensa/boot/dts/esp32s3-devkit-c1.dts
++@@ -12,6 +12,7 @@
++ 	};
++ 
++ 	i2c0 {
+++		status = "disabled";
++ 		#address-cells = <1>;
++ 		#size-cells = <0>;
++ 		compatible = "i2c-gpio";
++@@ -34,10 +35,10 @@
++ 	};
++ 	spi2_pins: spi2_pins {
++ 		pinctrl-single,pins = <
++-			PIN(10) (FUN_SEL(4) | FUN_DRV_20MA)	/* CS0 */
++-			PIN(11) (FUN_SEL(4) | FUN_DRV_40MA)	/* MOSI */
++-			PIN(12) (FUN_SEL(4) | FUN_DRV_40MA)	/* SCK */
++-			PIN(13) (FUN_SEL(4) | FUN0_20MA_IE_WPU)>;/* MISO */
+++			PIN(21) (FUN_SEL(0) | FUN_DRV_20MA)	/* CS0 */
+++			PIN(9) (FUN_SEL(0) | FUN_DRV_40MA)	/* MOSI */
+++			PIN(7) (FUN_SEL(0) | FUN_DRV_40MA)	/* SCK */
+++			PIN(8) FUN0_20MA_IE_WPU>;		/* MISO */
++ 	};
++ 	uart0_pins: uart0_pins {
++ 		pinctrl-single,pins = <
++@@ -46,6 +47,26 @@
++ 	};
++ };
++ 
+++&gpio_in_mux {
+++	status = "ok";
+++
+++	spi2_gpio_in: spi2_gpio_in {
+++		pinctrl-single,pins = <
+++			GPIO_FUNC_IN_SEL(102) 0x88>; /* SPI2 MISO: signal 102 <- GPIO8 */
+++	};
+++};
+++
+++&gpio_out_mux {
+++	status = "ok";
+++
+++	spi2_gpio_out: spi2_gpio_out {
+++		pinctrl-single,pins = <
+++			GPIO_FUNC_OUT_SEL(21) 110 /* SPI2 CS0: GPIO21 */
+++			GPIO_FUNC_OUT_SEL(9) 103  /* SPI2 MOSI: GPIO9 */
+++			GPIO_FUNC_OUT_SEL(7) 101>; /* SPI2 SCK: GPIO7 */
+++	};
+++};
+++
++ &gpio0 {
++ 	status = "ok";
++ };
++@@ -57,7 +78,7 @@
++ };
++ 
++ &spi2 {
++-	pinctrl-0 = <&spi2_pins>;
+++	pinctrl-0 = <&spi2_pins &spi2_gpio_out &spi2_gpio_in>;
++ 	pinctrl-names = "default";
++ 	status = "ok";
++ 
+diff --git a/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config b/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config
+index e22ed3f..9b33393 100644
+--- a/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config
++++ b/new-files/board/espressif/esp32s3/devkit_c1_16m_linux.config
+@@ -131,10 +131,10 @@ CONFIG_RESET_SIMPLE=y
+ # CONFIG_NVMEM is not set
+ # CONFIG_DNOTIFY is not set
+ # CONFIG_INOTIFY_USER is not set
+-# CONFIG_MMC is not set
++CONFIG_MMC=y
+ # CONFIG_PWRSEQ_EMMC is not set
+ # CONFIG_PWRSEQ_SIMPLE is not set
+-# CONFIG_MMC_SPI is not set
++CONFIG_MMC_SPI=y
+ CONFIG_JFFS2_FS=y
+ CONFIG_JFFS2_COMPRESSION_OPTIONS=y
+ CONFIG_JFFS2_CMODE_NONE=y
+@@ -188,4 +188,6 @@ CONFIG_SECURITY_DMESG_RESTRICT=y
+ # CONFIG_SUSPEND is not set
+ # CONFIG_INET_DIAG is not set
+ # CONFIG_ETHTOOL_NETLINK is not set
+-# CONFIG_BLOCK is not set
++CONFIG_BLOCK=y
++CONFIG_MMC_BLOCK=y
++CONFIG_EXT2_FS=y
+diff --git a/new-files/board/espressif/esp32s3/rootfs_overlay/etc/fstab b/new-files/board/espressif/esp32s3/rootfs_overlay/etc/fstab
+index 1ca90f2..a625f97 100644
+--- a/new-files/board/espressif/esp32s3/rootfs_overlay/etc/fstab
++++ b/new-files/board/espressif/esp32s3/rootfs_overlay/etc/fstab
+@@ -13,4 +13,4 @@ tmpfs		/tmp		tmpfs	mode=1777	0	0
+ tmpfs		/run		tmpfs	mode=0755,nosuid,nodev	0	0
+ sysfs		/sys		sysfs	defaults	0	0
+ mtd:etc		/etc		jffs2	nofail		0	0
+-mtd:home	/home		jffs2	nofail		0	0
++/dev/mmcblk0p1	/home		ext2	nofail		0	0
+diff --git a/new-files/board/espressif/esp32s3/rootfs_overlay/usr/sbin/home-init b/new-files/board/espressif/esp32s3/rootfs_overlay/usr/sbin/home-init
+index 0f1239b..758e65e 100755
+--- a/new-files/board/espressif/esp32s3/rootfs_overlay/usr/sbin/home-init
++++ b/new-files/board/espressif/esp32s3/rootfs_overlay/usr/sbin/home-init
+@@ -1,7 +1,7 @@
+ #!/bin/sh
+ set -e
+ test "$(id -u)" = 0
+-awk '$2 == "/home" && $3 == "jffs2" && $4 ~ /(^|,)rw(,|$)/ { found=1 }
++awk '$2 == "/home" && ($3 == "jffs2" || $3 == "ext2") && $4 ~ /(^|,)rw(,|$)/ { found=1 }
+      END { exit !found }' /proc/mounts || {
+     echo 'home-init: writable /home is not mounted; defaults not installed' >&2
+     exit 1
+diff --git a/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r b/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r
+index 3c89561..40d7dea 100644
+--- a/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r
++++ b/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r
+@@ -2,6 +2,6 @@ nvs,              data, nvs,     0x0000a000, 0x00005000
+ phy_init,         data, phy,     0x0000f000, 0x00001000
+ factory,          app,  factory, 0x00010000, 0x000c0000
+ etc,              0x40, 0x1,     0x000d0000, 0x00050000
+-linux,            0x40, 0x0,     0x00120000, 0x00260000
+-rootfs,           0x40, 0x1,     0x00380000, 0x00420000
+-home,             0x40, 0x1,     0x007a0000, 0x00060000
++linux,            0x40, 0x0,     0x00120000, 0x002a0000
++rootfs,           0x40, 0x1,     0x003c0000, 0x00430000
++home,             0x40, 0x1,     0x007f0000, 0x00010000
+diff --git a/build/soak-boot.py b/build/soak-boot.py
+index a39c605..8e9f512 100644
+--- a/build/soak-boot.py
++++ b/build/soak-boot.py
+@@ -47,12 +47,12 @@ HEALTH = ('cat /proc/sys/kernel/tainted', 'dmesg')
+ TAINTED = re.compile(rb'^\s*(\d+)\s*$', re.M)
+ OFFSETS = {
+     'etc.jffs2': '0xd0000',
+-    'home.jffs2': '0x7a0000',
++    'home.jffs2': '0x7f0000',
+ }
+ 
+ # Kernel and firmware partitions, read back to identify what actually booted.
+ IDENTITY = {
+-    'linux': ('0x120000', 0x260000),
++    'linux': ('0x120000', 0x2a0000),
+     'factory': ('0x10000', 0xc0000),
+ }
+ 

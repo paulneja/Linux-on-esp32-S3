@@ -1,52 +1,25 @@
 diff --git a/build/container-build.sh b/build/container-build.sh
-index eec3ab7..bc90653 100755
+index 0393e39..90ac730 100755
 --- a/build/container-build.sh
 +++ b/build/container-build.sh
-@@ -130,7 +130,6 @@ userspace() {
+@@ -168,12 +168,9 @@ userspace() {
+     bash "$exp/fork/build-kernel-reclaim.sh"
+     bash "$exp/fork/make-image.sh"
+     bash "$exp/fork/real/fetch.sh"
+-    bash "$exp/fork/real/build.sh" all
+-    OPT_VARIANT=lto bash "$exp/fork/real/build.sh" make
++    bash "$exp/fork/real/build.sh" dash
      bash "$exp/programs/build-atfork-test.sh"
-     bash "$exp/programs/build-micropython.sh"
+-    bash "$exp/programs/build-micropython.sh"
      bash "$exp/programs/fetch-shell-tools.sh"
 -    bash "$exp/programs/build-bash.sh"
      bash "$exp/programs/build-socat.sh"
      bash "$exp/programs/build-netcat.sh"
      curl -fL --retry 2 "https://codeload.github.com/crigler/dtach/tar.gz/$DTACH_REV" -o "$exp/out/programs/dtach-b027c27.tar.gz"
 diff --git a/make-images.sh b/make-images.sh
-index 62b2726..e78ac9d 100755
+index 62b2726..45c7c98 100755
 --- a/make-images.sh
 +++ b/make-images.sh
-@@ -8,15 +8,15 @@ PROFILE=esp32s3_devkit_c1_16m
- 
- die() { echo "error: $*" >&2; exit 1; }
- 
--SRC="${1:-}"
-+SRC="${1:-${ESP32_LINUX_BUILD:-}}"
-+
- if [ -z "$SRC" ]; then
--	for d in ../esp32-linux-build ./esp32-linux-build ./build-output; do
--		if [ -d "$d/build" ] || [ -d "$d/buildroot" ]; then
--			SRC="$d"
--			break
--		fi
--	done
--	[ -n "$SRC" ] || die "cannot find a build tree; pass esp32-linux-build/ or build-output/ as an argument"
-+    for d in ../esp32-linux-build ./esp32-linux-build ./build-output /work/refs/esp32-linux-build; do
-+        if [ -d "$d/build" ] || [ -d "$d/buildroot" ]; then
-+            SRC="$d"
-+            break
-+        fi
-+    done
- fi
- [ -d "$SRC" ] || die "$SRC does not exist"
- SRC=$(CDPATH= cd -- "$SRC" && pwd -P)
-@@ -58,7 +58,7 @@ eval "$(awk -F', *' '
- 		if ($1 == "rootfs") printf "OFF_ROOTFS=%s SIZE_ROOTFS=%s ", $4, $5
- 		if ($1 == "etc")    printf "OFF_ETC=%s SIZE_ETC=%s ",       $4, $5
- 		if ($1 == "factory")printf "OFF_APP=%s SIZE_APP=%s ",       $4, $5
--		if ($1 == "home")   printf "OFF_HOME=%s SIZE_HOME=%s ",     $4, $5
-+		if ($1 == "home") printf "OFF_HOME=%s SIZE_HOME=%s ",       $4, $5
- 	}' "$CSV")"
- 
- echo "==> collecting build outputs"
 @@ -67,30 +67,6 @@ cp -v "$NA/build/network_adapter.bin"       "$OUT/network_adapter.bin"
  cp -v "$BR/etc.jffs2"                        "$OUT/etc.jffs2"
  cp -v "$BR/xipImage"                         "$OUT/xipImage"
@@ -110,3 +83,32 @@ index 62b2726..e78ac9d 100755
  
  echo
  echo "Done. images/ now holds:"
+diff --git a/experiments/mmu-poc/programs/make-image.sh b/experiments/mmu-poc/programs/make-image.sh
+index a67f3e5..f83f9d4 100644
+--- a/experiments/mmu-poc/programs/make-image.sh
++++ b/experiments/mmu-poc/programs/make-image.sh
+@@ -4,20 +4,14 @@ source "$(dirname -- "${BASH_SOURCE[0]}")/env.sh"
+ output=${1:-"$programs_out/rootfs-programs.cramfs"}
+ image_dir=$(mktemp -d "$programs_out/image.XXXXXX")
+ "$host_dir/bin/cramfsck" -x "$image_dir/tree" "$experiment_dir/out/rootfs-fork.cramfs"
+-install -m 755 "$experiment_dir/out/real-bins/dash" "$experiment_dir/out/real-bins/make" "$image_dir/tree/usr/bin/"
++install -m 755 "$experiment_dir/out/real-bins/dash" "$image_dir/tree/usr/bin/"
+ install -m 755 "$experiment_dir/out/fork-test" "$experiment_dir/out/fork-test-dynamic" "$image_dir/tree/usr/bin/"
+-install -m 755 "$programs_out/micropython-linux" "$image_dir/tree/usr/bin/micropython"
+ install -m 755 "$programs_out/atfork-test" "$image_dir/tree/usr/bin/atfork-test"
+ install -m 755 "$experiment_dir/out/libfork.so.0" "$image_dir/tree/usr/lib/"
+-install -d "$image_dir/tree/usr/share/fork-real" "$image_dir/tree/usr/share/program-tests" "$image_dir/tree/usr/lib/micropython"
+-install -m 644 "$experiment_dir/fork/real/"{dash-test.sh,make-test.sh,peer.sh,Makefile.test} "$image_dir/tree/usr/share/fork-real/"
+-install -m 644 "$programs_dir/micropython-test.py" "$image_dir/tree/usr/share/program-tests/"
+-for program in dash make micropython; do
+-    install -d "$image_dir/tree/usr/share/licenses/$program"
+-done
++install -d "$image_dir/tree/usr/share/fork-real" "$image_dir/tree/usr/share/program-tests"
++install -m 644 "$experiment_dir/fork/real/dash-test.sh" "$image_dir/tree/usr/share/fork-real/"
++install -d "$image_dir/tree/usr/share/licenses/dash"
+ install -m 644 "$experiment_dir/out/real-bins/dash-0.5.12/COPYING" "$image_dir/tree/usr/share/licenses/dash/"
+-install -m 644 "$experiment_dir/out/real-bins/make-4.4.1/COPYING" "$image_dir/tree/usr/share/licenses/make/"
+-install -m 644 "$programs_out/micropython/LICENSE" "$image_dir/tree/usr/share/licenses/micropython/"
+ python3 "$programs_dir/strip-rootfs.py" "$image_dir/tree" --strip "$prefix-strip"
+ "$host_dir/bin/mkcramfs" -X -q "$image_dir/tree" "$image_dir/rootfs.cramfs"
+ size=$(wc -c < "$image_dir/rootfs.cramfs")

@@ -19,7 +19,12 @@ parser.add_argument('--reset-from-bootloader', action='store_true',
 args = parser.parse_args()
 repo = Path(__file__).resolve().parent.parent
 exp = repo / 'experiments/mmu-poc'
-manifest = json.loads((args.artifacts / 'build-manifest.json').read_text())
+manifest_path = args.artifacts / 'build-manifest.json'
+if manifest_path.exists():
+    manifest = json.loads(manifest_path.read_text())
+else:
+    sums = (args.artifacts / 'SHA256SUMS').read_text().split()
+    manifest = {'sha256': dict(zip(sums[1::2], sums[0::2])), 'source_commit': 'release images, no build manifest'}
 for name, expected in manifest['sha256'].items():
     assert hashlib.sha256((args.artifacts / name).read_bytes()).hexdigest() == expected, name
 args.output.mkdir(parents=True, exist_ok=False)
@@ -278,7 +283,8 @@ try:
         'test_runner_sha256': results['test_runner_sha256'],
         'scope': 'Local COM, memory, programs, users, loopback network, cron and persistence; no external WiFi test',
     }
-    (args.artifacts / 'build-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+    if manifest_path.exists():
+        manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
 except BaseException:
     results['status'] = 'fail'
     raise

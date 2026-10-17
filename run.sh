@@ -16,14 +16,17 @@ BOARD_ID_HINT="usb-1a86"
 
 # External targets are built from independent snapshots; the original N16 path
 # below is deliberately left unchanged.
-TARGET="n16"
+TARGET=""
+TARGET_FILE="$REPO/.target"
+CACHE=${CACHE:-}
+ESP32_CACHE_DIR=${ESP32_CACHE_DIR:-"$REPO/.cache"}
 TARGET_REFRESH=0
 TARGET_AUTO_REFRESH=0
 TARGET_BUILD_ROOT=${TARGET_BUILD_ROOT:-"$REPO/target-builds"}
 TARGET_PATCH_ROOT=${TARGET_PATCH_ROOT:-"$REPO/targets-patches"}
 
 external_target() {
-    case "$1" in generic-n8-server|generic-n8-client|xiao-n8-server|xiao-n8-client) return 0 ;; *) return 1 ;; esac
+    case "$1" in generic-n8|xiao-n8|xiao-n8-sd) return 0 ;; *) return 1 ;; esac
 }
 
 target_snapshot() {
@@ -110,17 +113,51 @@ launch_target() {
     local target=$1
     shift
     target_snapshot "$target" || return 1
-    # Detect on the host before entering the isolated target, whose run.sh may
-    # be an older upstream snapshot without macOS serial-device support.
-    local detected_port=""
-    if [ -z "$PORT" ]; then
-        detected_port=$(detect_port) || detected_port=""
-    else
-        detected_port=$PORT
-    fi
-    # PORT is inherited by the child script, including interactive menu actions.
-    # Explicit --port arguments in "$@" still take precedence in its parser.
-    (cd "$TARGET_DIR" && PORT="$detected_port" ESP32_TARGET_ISOLATED=1 ESP32_TARGET_NAME="$target" bash ./run.sh "$@")
+    # No external-target selection inside a generated snapshot (avoids recursion).
+    (cd "$TARGET_DIR" && ESP32_TARGET_ISOLATED=1 ESP32_TARGET_NAME="$target" \
+        ESP32_CACHE_DIR="$ESP32_CACHE_DIR" CACHE="$CACHE" bash ./run.sh "$@")
+}
+
+target_label() {
+    case "$1" in
+        n16)               echo "ESP32-S3 N16R8 (16 MB flash)" ;;
+        generic-n8)        echo "Generic N8R8 (8 MB flash)" ;;
+        xiao-n8)           echo "XIAO ESP32S3 and XIAO ESP32S3 Sense (8 MB flash)" ;;
+        xiao-n8-sd)        echo "XIAO ESP32S3 Sense, /home on the SD card" ;;
+        *)                 echo "$1" ;;
+    esac
+}
+
+choose_target() {
+    local choice=""
+    echo
+    bold "Which board is this for?"
+    cat <<'EOF'
+  1) ESP32-S3 N16R8 (16 MB flash)
+  2) Generic N8R8 (8 MB flash)
+  3) XIAO ESP32S3 or XIAO ESP32S3 Sense (8 MB flash, login on its USB port)
+  4) XIAO ESP32S3 Sense with /home on the SD card (ext2, first partition)
+  0) Quit
+EOF
+    while true; do
+        printf 'Board: '
+        read_reply choice || return 1
+        case "$choice" in
+            1) TARGET=n16 ;;
+            2) TARGET=generic-n8 ;;
+            3) TARGET=xiao-n8 ;;
+            4) TARGET=xiao-n8-sd ;;
+            0|q|Q) return 1 ;;
+            *) warn "invalid choice"; continue ;;
+        esac
+        break
+    done
+    printf '%s\n' "$TARGET" > "$TARGET_FILE"
+    info "saved in .target; change it from the menu or with --target"
+}
+
+interactive() {
+    [ "$ASSUME_YES" = 0 ] && { : < /dev/tty; } 2>/dev/null
 }
 
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
@@ -161,6 +198,7 @@ Actions:
   --test         Run the board test suite, the extra tests, the network
                  tests (with WIFI_SSID and WIFI_PASS) and the factory soak
   --all          check, build, verify, flash and test, in that order
+  --bypass       --all without a single question; stops only on a failure
   --repro        Two builds of the same commit and a comparison
   --recover      Put the board's /etc and /home back to factory
   --status       Show existing builds and the state of the board
@@ -171,14 +209,16 @@ Options:
   -j, --jobs N         Parallel build jobs (default: nproc)
   -p, --port PATH      Serial adapter (default: autodetect)
   -a, --artifacts DIR  Artifacts directory to use
-  --target ID          n16 (default), generic-n8-server, generic-n8-client,
-                  xiao-n8-server, xiao-n8-client
+  --target ID          n16, generic-n8, xiao-n8 or xiao-n8-sd; asked the
+                       first time and kept in .target
   --refresh-target     Recreate selected external target (deletes its outputs)
+  --cache              Reuse the build cache in .cache/ (not for releases)
   -h, --help           This help
 
 Environment:
   WIFI_SSID, WIFI_PASS  join this network for the SSH and port tests
   SOAK_ROUNDS           factory boots in the soak (default 20, 0 skips it)
+  CACHE                 dev reuses .cache/, clean builds from nothing
 EOF
 }
 
@@ -229,10 +269,6 @@ disk_free_gb() {
 detect_port() {
 	local p
 	if [ -n "$PORT" ]; then printf '%s\n' "$PORT"; return 0; fi
-	# macOS USB CDC and USB-to-UART adapters.
-	for p in /dev/cu.usbmodem* /dev/cu.usbserial*; do
-		[ -e "$p" ] && { printf '%s\n' "$p"; return 0; }
-	done
 	for p in /dev/serial/by-id/*"$BOARD_ID_HINT"*; do
 		[ -e "$p" ] && { printf '%s\n' "$p"; return 0; }
 	done
@@ -412,15 +448,25 @@ do_build() {
 	bold "about 21 GB. The build output scrolls below as it happens."
 	echo
 	[ "$QUIET" = 1 ] && info "(quiet: output only goes to the log)"
+	if [ -z "$CACHE" ]; then
+		CACHE=clean
+		if interactive; then
+			info "The cache in .cache/ keeps the toolchain, the downloads and the"
+			info "ESP-IDF tools, so the next builds skip the longest part."
+			info "Leave it off for a build you are going to release."
+			ask "  Use the cache?" && CACHE=dev
+		fi
+	fi
+	info "cache: $CACHE"
 	ask "  Start the build?" || { info "cancelled"; return 1; }
 	echo
 	local started rc elapsed
 	started=$(date +%s)
 	if [ "$QUIET" = 1 ]; then
-		JOBS="$JOBS" bash "$REPO/build/reproduce.sh" > "$log" 2>&1
+		JOBS="$JOBS" CACHE="$CACHE" ESP32_CACHE_DIR="$ESP32_CACHE_DIR" bash "$REPO/build/reproduce.sh" > "$log" 2>&1
 		rc=$?
 	else
-		JOBS="$JOBS" bash "$REPO/build/reproduce.sh" 2>&1 | tee "$log"
+		JOBS="$JOBS" CACHE="$CACHE" ESP32_CACHE_DIR="$ESP32_CACHE_DIR" bash "$REPO/build/reproduce.sh" 2>&1 | tee "$log"
 		rc=${PIPESTATUS[0]}
 	fi
 	elapsed=$(( $(date +%s) - started ))
@@ -557,12 +603,16 @@ do_recover() {
 	# The hyphenated spellings are esptool 5 only, and build/Dockerfile pins
 	# 4.8.1, which rejects them -- so this failed against the very version the
 	# project builds with. The underscore forms work in both: esptool 5 takes
-	# them with a deprecation warning. The offsets are the etc and home
-	# partitions; flash.sh reads those from the CSV instead of hardcoding them.
-	local tool; tool=$(have esptool && echo esptool || echo esptool.py)
+	# them with a deprecation warning.
+	local tool offsets
+	tool=$(have esptool && echo esptool || echo esptool.py)
+	offsets=$(awk -F', *' '$1 == "etc" {e = $4} $1 == "home" {h = $4} END {if (e && h) print e, h}' \
+		"$REPO/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r")
+	[ -n "$offsets" ] || { red "no etc or home partition in the partition table"; return 1; }
+	set -- $offsets
 	"$tool" --chip esp32s3 --port "$port" --baud 460800 \
 		--before default_reset --after hard_reset \
-		write_flash 0xd0000 "$a/etc.jffs2" 0xcc0000 "$a/home.jffs2"
+		write_flash "$1" "$a/etc.jffs2" "$2" "$a/home.jffs2"
 	local rc=$?
 	[ "$rc" -eq 0 ] && green "partitions restored; the board was reset" || red "the restore failed"
 	return "$rc"
@@ -571,6 +621,7 @@ do_recover() {
 do_repro() {
 	bold "== Reproducibility: two builds of the same commit =="
 	local first second
+	CACHE=clean
 	first=$(builds | head -1)
 	if [ -z "$first" ]; then
 		info "no build yet; making the first one"
@@ -596,39 +647,27 @@ do_all() {
 	green "complete path finished"
 }
 
-choose_external_target() {
-    [ "${ESP32_TARGET_ISOLATED:-}" != 1 ] || { warn "already in an isolated target"; return 1; }
-    printf '\n  1) Generic N8 Server\n  2) Generic N8 Client\n  3) XIAO N8 Server\n  4) XIAO N8 Client\n  0) Back\nChoice: '
-    local choice="" target=""
-    read_reply choice || return 1
-    case "$choice" in
-        1) target=generic-n8-server ;;
-        2) target=generic-n8-client ;;
-        3) target=xiao-n8-server ;;
-        4) target=xiao-n8-client ;;
-        0) return 0 ;; *) warn "invalid target"; return 1 ;;
-    esac
-    # Menu selection automatically refreshes a stale target, with confirmation
-    # before deleting any existing build outputs. CLI stays explicit.
-    TARGET_AUTO_REFRESH=1
-    # Resolve the host serial port before entering the isolated snapshot.
-    # Older snapshots may not know macOS /dev/cu.usbmodem* devices.
-    if [ -z "$PORT" ]; then
-        PORT=$(detect_port) || PORT=""
-    fi
-    # Carry the original command-line options into the selected target menu.
-    # Without these, -a/--artifacts and -p/--port are lost on menu switching.
-    local forwarded=()
-    [ "$ASSUME_YES" -eq 0 ] || forwarded+=(--yes)
-    [ "$QUIET" -eq 0 ] || forwarded+=(--quiet)
-    forwarded+=(--jobs "$JOBS")
-    [ -z "$PORT" ] || forwarded+=(--port "$PORT")
-    [ -z "$ARTIFACTS" ] || forwarded+=(--artifacts "$ARTIFACTS")
-    launch_target "$target" "${forwarded[@]}"
-    local rc=$?
-    TARGET_AUTO_REFRESH=0
-    TARGET_REFRESH=0
-    return "$rc"
+do_bypass() {
+	local log rc started elapsed
+	log="$LOGDIR/esp32-bypass-$(date +%Y%m%d-%H%M%S).log"
+	bold "== Bypass: everything, no questions =="
+	info "closes whatever holds the port, erases and flashes the board without asking"
+	info "stops at the first failure or when everything is done"
+	info "log: $log"
+	ASSUME_YES=1
+	CACHE=${CACHE:-dev}
+	started=$(date +%s)
+	{ check_env && do_build && do_verify && do_flash && do_test; } 2>&1 | tee "$log"
+	rc=${PIPESTATUS[0]}
+	ASSUME_YES=0
+	elapsed=$(( $(date +%s) - started ))
+	info "elapsed: $((elapsed / 3600))h $((elapsed % 3600 / 60))m"
+	if [ "$rc" -eq 0 ]; then
+		green "bypass finished: built, flashed and every test passed"
+	else
+		red "bypass stopped on a failure; the log is $log"
+	fi
+	return "$rc"
 }
 
 menu() {
@@ -636,10 +675,10 @@ menu() {
         echo
         bold "=== Linux on ESP32-S3 ==="
         if [ "${ESP32_TARGET_ISOLATED:-}" = 1 ]; then
-            blue "  Active Target: ${ESP32_TARGET_NAME:-External target}"
+            blue "  Board: $(target_label "${ESP32_TARGET_NAME:-}")"
             info "Build Directory: $REPO"
         else
-            green "  Active Target: Generic N16 (Upstream)"
+            green "  Board: $(target_label n16)"
             info "Build Directory: Original Repository"
         fi
         echo
@@ -654,11 +693,8 @@ menu() {
   8) Recover the board (restore /etc and /home)
   9) Status
 EOF
-        if [ "${ESP32_TARGET_ISOLATED:-}" = 1 ]; then
-            echo "  10) Switch to N16 (Upstream)"
-        else
-            echo "  10) Select N8 / XIAO target"
-        fi
+        echo "  10) Change the board"
+        echo "  11) Bypass: everything with no questions, stops only on a failure"
         echo "  0) Quit"
         printf 'Choice: '
         local choice=""
@@ -673,14 +709,8 @@ EOF
             7) do_repro ;;
             8) do_recover ;;
             9) do_status ;;
-            10)
-                if [ "${ESP32_TARGET_ISOLATED:-}" = 1 ]; then
-                    green "  Switching to Generic N16 (Upstream)"
-                    return 0
-                else
-                    choose_external_target
-                fi
-                ;;
+            10) return 3 ;;
+            11) do_bypass ;;
             0|q|Q) return 0 ;;
             *) warn "invalid choice" ;;
         esac
@@ -696,32 +726,58 @@ while [ $# -gt 0 ]; do
 		-a|--artifacts)  ARTIFACTS="${2:?-a needs a directory}"; shift 2 ;;
 		--target)         TARGET="${2:?--target needs an ID}"; shift 2 ;;
 		--refresh-target) TARGET_REFRESH=1; shift ;;
+		--cache)          CACHE=dev; shift ;;
 		-h|--help)       usage; exit 0 ;;
-		--check|--build|--verify|--flash|--test|--all|--repro|--recover|--status)
+		--check|--build|--verify|--flash|--test|--all|--bypass|--repro|--recover|--status)
 		                 ACTION="${1#--}"; shift ;;
 		*)               red "unknown option: $1"; usage; exit 1 ;;
 	esac
 done
 
-if [ "${ESP32_TARGET_ISOLATED:-}" != 1 ]; then
-    if [ "$TARGET" != n16 ]; then
-        external_target "$TARGET" || die "unsupported target: $TARGET"
-        # Pass the detected host port to the isolated target as an explicit option.
-        if [ -z "$PORT" ]; then
-            PORT=$(detect_port) || PORT=""
-        fi
-        forwarded=()
-        [ "$ASSUME_YES" -eq 0 ] || forwarded+=(--yes)
-        [ "$QUIET" -eq 0 ] || forwarded+=(--quiet)
-        forwarded+=(--jobs "$JOBS")
-        [ -z "$PORT" ] || forwarded+=(--port "$PORT")
-        [ -z "$ARTIFACTS" ] || forwarded+=(--artifacts "$ARTIFACTS")
-        [ -z "$ACTION" ] || forwarded+=("--$ACTION")
+forward_args() {
+    forwarded=()
+    [ "$ASSUME_YES" -eq 0 ] || forwarded+=(--yes)
+    [ "$QUIET" -eq 0 ] || forwarded+=(--quiet)
+    forwarded+=(--jobs "$JOBS")
+    [ -z "$PORT" ] || forwarded+=(--port "$PORT")
+    [ -z "$ARTIFACTS" ] || forwarded+=(--artifacts "$ARTIFACTS")
+    [ -z "$ACTION" ] || forwarded+=("--$ACTION")
+}
+
+if [ "${ESP32_TARGET_ISOLATED:-}" = 1 ]; then
+    [ -z "$TARGET" ] || die "nested external target selection is disabled"
+    TARGET=n16
+else
+    if [ -z "$TARGET" ] && [ -f "$TARGET_FILE" ]; then
+        TARGET=$(head -n1 "$TARGET_FILE")
+    fi
+    if [ -z "$TARGET" ]; then
+        interactive || die "no board chosen yet; run ./run.sh once or pass --target n16|generic-n8|xiao-n8|xiao-n8-sd"
+        choose_target || exit 0
+    fi
+    [ "$TARGET" = n16 ] || external_target "$TARGET" || die "unsupported target: $TARGET"
+    if [ -n "$ACTION" ] && [ "$TARGET" != n16 ]; then
+        forward_args
         launch_target "$TARGET" "${forwarded[@]}"
         exit $?
     fi
-elif [ "$TARGET" != n16 ]; then
-    die "nested external target selection is disabled"
+    if [ -z "$ACTION" ]; then
+        while true; do
+            if [ "$TARGET" = n16 ]; then
+                menu
+                rc=$?
+            else
+                forward_args
+                TARGET_AUTO_REFRESH=1
+                launch_target "$TARGET" "${forwarded[@]}"
+                rc=$?
+                TARGET_AUTO_REFRESH=0
+                TARGET_REFRESH=0
+            fi
+            [ "$rc" -eq 3 ] || exit "$rc"
+            choose_target || exit 0
+        done
+    fi
 fi
 
 if [ -n "$ARTIFACTS" ] && [ ! -d "$ARTIFACTS" ]; then
@@ -735,6 +791,7 @@ case "$ACTION" in
 	flash)   do_flash ;;
 	test)    do_test ;;
 	all)     do_all ;;
+	bypass)  do_bypass ;;
 	repro)   do_repro ;;
 	recover) do_recover ;;
 	status)  do_status ;;

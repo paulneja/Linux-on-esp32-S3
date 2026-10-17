@@ -38,6 +38,10 @@ class FlashTests(unittest.TestCase):
         mock.write_text(f'#!{sys.executable}\n' + '''import json, os, sys
 with open(os.environ['FLASH_TEST_LOG'], 'a') as stream:
     stream.write(json.dumps(sys.argv[1:]) + '\\n')
+if 'flash_id' in sys.argv:
+    size = os.environ.get('FLASH_TEST_SIZE', '16MB')
+    if size:
+        print('Detected flash size: ' + size)
 if 'erase_flash' in sys.argv and os.environ.get('FAIL_ERASE') == '1':
     sys.exit(9)
 if 'write_flash' in sys.argv and os.environ.get('FAIL_WRITE') == '1':
@@ -51,7 +55,8 @@ if 'write_flash' in sys.argv and os.environ.get('FAIL_WRITE') == '1':
         result = subprocess.run(['sh', self.root / 'flash.sh', '-p', 'COM test', *args],
                                 env=self.env, capture_output=True, text=True, timeout=10)
         calls = [json.loads(line) for line in self.log.read_text().splitlines()] if self.log.exists() else []
-        return result, calls
+        self.probes = [call for call in calls if 'flash_id' in call]
+        return result, [call for call in calls if 'flash_id' not in call]
 
     def reject(self, *args):
         result, calls = self.run_flash(*args)
@@ -199,6 +204,27 @@ if 'write_flash' in sys.argv and os.environ.get('FAIL_WRITE') == '1':
         self.assertEqual(calls, [])
         self.assertIn('Usage:', result.stdout)
         self.assertNotIn('set -eu', result.stdout)
+
+    def test_chip_is_checked_before_writing(self):
+        result, calls = self.run_flash('--erase')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.probes), 1)
+        self.assertIn('Board flash: 16MB', result.stdout)
+        self.assertIn('16MB', calls[1])
+
+    def test_wrong_chip_size_never_erases(self):
+        self.env['FLASH_TEST_SIZE'] = '8MB'
+        result, calls = self.run_flash('--erase')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(calls, [])
+        self.assertIn('the board has 8MB', result.stderr)
+
+    def test_unknown_chip_size_only_warns(self):
+        self.env['FLASH_TEST_SIZE'] = ''
+        result, calls = self.run_flash()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(calls), 1)
+        self.assertIn('was not checked', result.stdout)
 
     def test_unknown_option_never_accesses_device(self):
         result, calls = self.run_flash('--wrong')

@@ -11,16 +11,15 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: "Build target"
+        description: "Build target (XIAO variants are not available yet)"
         required: true
         type: choice
         default: n16
         options:
           - n16
-          - generic-n8-server
-          - generic-n8-client
-          - xiao-n8-server
-          - xiao-n8-client
+          - generic-n8
+          - xiao-n8
+          - xiao-n8-sd
 
 permissions:
   contents: read
@@ -39,10 +38,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Check isolated N8 target patches (when present)
+      - name: Check Generic N8 target patches (when present)
         run: |
           set -euo pipefail
-          for target in generic-n8-server generic-n8-client xiao-n8-server xiao-n8-client; do
+          for target in generic-n8 xiao-n8 xiao-n8-sd; do
             if [ ! -f "targets-patches/$target/series" ]; then
               echo "Skipping $target (no series file)"
               continue
@@ -85,16 +84,15 @@ jobs:
       - name: Check the patches are well formed
         run: |
           status=0
-          # Ignore unmatched patterns; include all isolated N8 patch sets.
+          # Ignore unmatched patterns; include both isolated N8 patch sets.
           shopt -s nullglob
           patches=(
             new-files/board/espressif/esp32s3/patches/linux/*.patch
             patches/*.patch
             experiments/mmu-poc/fork/*.patch
-            targets-patches/generic-n8-server/*.patch
-            targets-patches/generic-n8-client/*.patch
-            targets-patches/xiao-n8-server/*.patch
-            targets-patches/xiao-n8-client/*.patch
+            targets-patches/generic-n8/*.patch
+            targets-patches/xiao-n8/*.patch
+            targets-patches/xiao-n8-sd/*.patch
           )
           for p in "${patches[@]}"; do
             grep -q '^--- ' "$p" || { echo "$p: no diff header"; status=1; }
@@ -104,6 +102,12 @@ jobs:
               echo "$p: carries a binary hunk, which git apply cannot replay"
               status=1
             fi
+            case "$p" in targets-patches/*)
+              if grep -qE '^(old|new) mode ' "$p"; then
+                echo "$p: changes a file mode; a target patch must not"
+                status=1
+              fi ;;
+            esac
           done
           exit "$status"
 
@@ -253,7 +257,7 @@ jobs:
             n16)
               echo "build_dir=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
               ;;
-            generic-n8-server|generic-n8-client|xiao-n8-server|xiao-n8-client)
+            generic-n8|xiao-n8|xiao-n8-sd)
               bash ./run.sh --yes --target "$BUILD_TARGET" --status
               echo "build_dir=$GITHUB_WORKSPACE/target-builds/$BUILD_TARGET" >> "$GITHUB_ENV"
               ;;
