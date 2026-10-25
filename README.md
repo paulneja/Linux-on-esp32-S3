@@ -19,14 +19,12 @@ computer attached to keep it running.
 > ideas: see [CONTRIBUTING.md](CONTRIBUTING.md). And if it saved you a
 > weekend, you can [chip in ❤️](https://donation.streamiverse.io/paulneja).
 
-<p align="center">
-  <a href="https://youtu.be/PIKFfzMpfwY"><img alt="Video: Linux 7.2.4 booting on an ESP32-S3 N16R8 over the serial console, the login, then uname, free, /proc/mtd, fork-test, a program through the MMU and MicroPython" src="docs/videos/boot.jpg" width="860"></a>
-</p>
+https://github.com/user-attachments/assets/b61513ad-231e-4974-be6b-94484b470f0c
 
 <p align="center"><sub>Boot, login, then uname, free, /proc/mtd, fork-test, a program run through the
 MMU and MicroPython. Every line is from the board's serial console (a 0.9.1 test
 build), replayed with the measured boot and command times; the quiet stretch of
-the boot plays at ×4.</sub></p>
+the boot plays at ×4. <a href="https://youtu.be/PIKFfzMpfwY">Also on YouTube</a>.</sub></p>
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
@@ -242,9 +240,9 @@ still get copied. [ARCHITECTURE.md](ARCHITECTURE.md) and the
 Every release from 0.1 to 0.9.1, and from 0.7 on the free RAM, kernel size and
 slowest switch between forked processes measured on the board:
 
-<p align="center">
-  <a href="https://youtu.be/XXXRvTYfJ28"><img alt="Video: the changelog from 0.1 to 0.9.1, with free RAM, kernel image size and the slowest fork switch for each release from 0.7 on" src="docs/videos/releases.jpg" width="860"></a>
-</p>
+https://github.com/user-attachments/assets/776bdbe8-a40a-4454-a127-1fddc7db7f40
+
+<p align="center"><sub><a href="https://youtu.be/XXXRvTYfJ28">Also on YouTube</a>.</sub></p>
 
 Free RAM is MemAvailable when the suite starts (0.7: after boot): 1340 kB on
 0.7, 3744 on 0.8, 3708 on 0.8.1, 4204 on 0.9, 4248 on 0.9.1. The kernel image
@@ -278,13 +276,11 @@ records name the image hash they ran on.
 A boot counts as clean only if `dmesg` and the taint flags are clean. 0.8
 found out the hard way that a quiet console isn't enough.
 
-<p align="center">
-  <a href="https://youtu.be/VTMhL-nGyTw"><img alt="Video: the 20 cold boots of the 0.9 release side by side, all reaching the login between 14.3 and 15.7 s, 20 of 20 clean" src="docs/videos/20-boots.jpg" width="860"></a>
-</p>
+https://github.com/user-attachments/assets/25f653c1-a013-4418-b6e6-5290de3ef262
 
 <p align="center"><sub>The 20 cold boots of the 0.9 release, one board, one after another, shown side
 by side. Each pane is that boot's console log and reaches the login at its
-measured time, 14.3 to 15.7 s; the quiet stretch plays at ×4.</sub></p>
+measured time, 14.3 to 15.7 s; the quiet stretch plays at ×4. <a href="https://youtu.be/VTMhL-nGyTw">Also on YouTube</a>.</sub></p>
 
 ## Limits
 
