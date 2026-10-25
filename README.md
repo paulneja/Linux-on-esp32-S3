@@ -20,9 +20,13 @@ computer attached to keep it running.
 > weekend, you can [chip in ❤️](https://donation.streamiverse.io/paulneja).
 
 <p align="center">
-  <img alt="A boot of Linux 7.2.4 on an ESP32-S3 N16R8, recorded from the serial console: the boot log, the login, then uname, free, a fork from Bash, MicroPython and a ping" src="docs/demo.svg" width="860">
+  <a href="https://youtu.be/PIKFfzMpfwY"><img alt="Video: Linux 7.2.4 booting on an ESP32-S3 N16R8 over the serial console, the login, then uname, free, /proc/mtd, fork-test, a program through the MMU and MicroPython" src="docs/videos/boot.jpg" width="860"></a>
 </p>
-<p align="center"><sub>Recorded from the board's serial console, boot to ping. Long pauses are cut to 1.6 s.</sub></p>
+
+<p align="center"><sub>Boot, login, then uname, free, /proc/mtd, fork-test, a program run through the
+MMU and MicroPython. Every line is from the board's serial console (a 0.9.1 test
+build), replayed with the measured boot and command times; the quiet stretch of
+the boot plays at ×4.</sub></p>
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
@@ -235,13 +239,17 @@ still get copied. [ARCHITECTURE.md](ARCHITECTURE.md) and the
 
 ## Results
 
-Free RAM, kernel size and the slowest switch between forked processes, measured
-on the board for each release:
+Every release from 0.1 to 0.9.1, and from 0.7 on the free RAM, kernel size and
+slowest switch between forked processes measured on the board:
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/releases-dark.svg">
-  <img alt="Three charts by release. Free RAM when the suite starts: 1340 kB on 0.7, 3744 on 0.8, 3708 on 0.8.1, 4204 on 0.9, 4248 on 0.9.1. Kernel image: 3.43 MB, 2.98, 2.98, 2.42, 2.42. Slowest switch between forked processes: 21.9 ms on 0.8 and 21.8 ms on 0.8.1 with interrupts off, 5.0 ms on 0.9, 5.8 ms on 0.9.1" src="docs/releases.svg">
-</picture>
+<p align="center">
+  <a href="https://youtu.be/XXXRvTYfJ28"><img alt="Video: the changelog from 0.1 to 0.9.1, with free RAM, kernel image size and the slowest fork switch for each release from 0.7 on" src="docs/videos/releases.jpg" width="860"></a>
+</p>
+
+Free RAM is MemAvailable when the suite starts (0.7: after boot): 1340 kB on
+0.7, 3744 on 0.8, 3708 on 0.8.1, 4204 on 0.9, 4248 on 0.9.1. The kernel image
+went from 3.43 MB to 2.42, and the slowest fork switch from 21.9 ms on 0.8 (with
+interrupts off) to 5.8 ms on 0.9.1.
 
 The same 0.9 image under load, with the MMU path turned off and on
 (`fork_bank_mmu=0` and `1`):
@@ -253,7 +261,7 @@ The same 0.9 image under load, with the MMU path turned off and on
 
 All of it read off the board. The records are in
 [`build/verification/`](build/verification/), and
-[`build/plot-releases.py`](build/plot-releases.py) draws the charts from them.
+[`build/plot-releases.py`](build/plot-releases.py) draws the fork chart from them.
 
 ### Tested on the board
 
@@ -269,6 +277,14 @@ records name the image hash they ran on.
 
 A boot counts as clean only if `dmesg` and the taint flags are clean. 0.8
 found out the hard way that a quiet console isn't enough.
+
+<p align="center">
+  <a href="https://youtu.be/VTMhL-nGyTw"><img alt="Video: the 20 cold boots of the 0.9 release side by side, all reaching the login between 14.3 and 15.7 s, 20 of 20 clean" src="docs/videos/20-boots.jpg" width="860"></a>
+</p>
+
+<p align="center"><sub>The 20 cold boots of the 0.9 release, one board, one after another, shown side
+by side. Each pane is that boot's console log and reaches the login at its
+measured time, 14.3 to 15.7 s; the quiet stretch plays at ×4.</sub></p>
 
 ## Limits
 
