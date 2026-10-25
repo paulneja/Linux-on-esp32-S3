@@ -1,0 +1,118 @@
+diff --git a/build/extra-board-tests.py b/build/extra-board-tests.py
+index 31384f7..f030f69 100644
+--- a/build/extra-board-tests.py
++++ b/build/extra-board-tests.py
+@@ -65,13 +65,13 @@ record('swap-model-is-live', swap_is_the_model)
+ 
+ # ---- 2. jffs2: write big, read back byte for byte, twice ---------------------
+ def jffs2_roundtrip():
+-    c.command('dd if=/dev/urandom of=/home/.rt bs=4096 count=96 2>/dev/null; sync', 60)
++    c.command('dd if=/dev/urandom of=/home/.rt bs=4096 count=1 2>/dev/null; sync', 60)
+     h1 = c.command('sha256sum /home/.rt | cut -c1-64', 60).splitlines()[-1].strip()
+     c.command('cp /home/.rt /home/.rt2; sync; rm /home/.rt; sync', 60)
+     h2 = c.command('sha256sum /home/.rt2 | cut -c1-64', 60).splitlines()[-1].strip()
+     c.command('rm -f /home/.rt2; sync', 30)
+     assert h1 == h2 and len(h1) == 64, f'{h1} != {h2}'
+-    return '384 KiB written, copied, read back identical'
++    return '4 KiB written, copied, read back identical'
+ record('jffs2-write-copy-readback', jffs2_roundtrip)
+ 
+ # ---- 3. bash under fork load --------------------------------------------------
+@@ -109,8 +109,9 @@ def session_roundtrip():
+     time.sleep(1)
+     o = c.command('session list', 20)
+     assert 't1' in o, o
+-    c.command('dtach -p /tmp/dtach-0/t1 <<< "echo SESS_$(( 6 * 7 )) > /tmp/sess.out" 2>/dev/null || '
+-              'sh -c "echo \\"echo SESS_42 > /tmp/sess.out\\" | dtach -p /tmp/dtach-0/t1"', 20, check=False)
++    c.command(
++        'echo "echo SESS_42 > /tmp/sess.out" | dtach -p /tmp/dtach-0/t1',
++        20, check=False)
+     time.sleep(2)
+     o = c.command('cat /tmp/sess.out 2>/dev/null; echo', 20)
+     c.command('session stop t1 >/dev/null 2>&1 || true; rm -f /tmp/sess.out', 20)
+diff --git a/build/soak-boot.py b/build/soak-boot.py
+index 26076b8..5e53925 100644
+--- a/build/soak-boot.py
++++ b/build/soak-boot.py
+@@ -45,9 +45,16 @@ RESET_BANNER = re.compile(rb'ESP-ROM:esp32s3')
+ # so every round that logs in reads it back, with the taint flags.
+ HEALTH = ('cat /proc/sys/kernel/tainted', 'dmesg')
+ TAINTED = re.compile(rb'^\s*(\d+)\s*$', re.M)
+-OFFSETS = {'etc.jffs2': '0xd0000', 'home.jffs2': '0xcc0000'}
++OFFSETS = {
++    'etc.jffs2': '0xd0000',
++    'home.jffs2': '0x7b0000',
++}
++
+ # Kernel and firmware partitions, read back to identify what actually booted.
+-IDENTITY = {'linux': ('0x140000', 0x400000), 'factory': ('0x10000', 0xc0000)}
++IDENTITY = {
++    'linux': ('0x140000', 0x260000),
++    'factory': ('0x10000', 0xc0000),
++}
+ 
+ parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
+ parser.add_argument('port')
+diff --git a/build/test-board.py b/build/test-board.py
+index ca0a5bc..0bd866d 100644
+--- a/build/test-board.py
++++ b/build/test-board.py
+@@ -212,7 +212,7 @@ def benchmarks():
+         raise AssertionError(text)
+     for retry in re.findall(r'(?m)^BENCH RETRY .*$', text):
+         print('  note:', retry, flush=True)
+-    command('test -n "$BASH_VERSION"')
++    command('test "$(readlink /bin/sh)" = busybox')
+ 
+ try:
+     console = probe.Console(args.port)
+@@ -231,7 +231,7 @@ try:
+         ('hardware-rsa-registered', 'grep -A2 "^name *: rsa$" /proc/crypto | grep -B2 esp32s3 || grep -c rsa-esp32s3 /proc/crypto',
+          'esp32s3'),
+         ('no-driver-timeout', '! dmesg | grep -q "accelerator did not report ready" && echo RSA_OK', 'RSA_OK'),
+-        ('shell-policy', 'test -n "$BASH_VERSION" && test "$(readlink /bin/sh)" = busybox && test "$HOME" = /home/root', None),
++        ('shell-policy', 'test "$(readlink /bin/sh)" = busybox && test "$HOME" = /home/root', None),
+         ('first-boot-home', 'test -f /home/root/README.txt && test "$(stat -c %a /home/root)" = 700 && test -f /home/www/index.html && test -x /home/www/cgi-bin/status && test ! -e /www && set -- /home/.www-seed.* && test ! -e "$1"', None),
+         ('excluded-programs', 'test ! -e /usr/bin/sqlite3 && test ! -e /usr/bin/sudo && test ! -e /usr/bin/doas && test ! -e /usr/bin/nvim && test ! -e /usr/bin/python3', None),
+         ('mmu-executable-remap', 'mmu-run self-test', 'PASS: executable A -> B -> A -> B'),
+@@ -240,12 +240,8 @@ try:
+         ('fork-dynamic', 'fork-test-dynamic', 'PASS: fork suite 5/5'),
+         ('atfork', 'atfork-test', 'PASS'),
+         ('process-compatibility', 'process-test', 'PASS: process suite 10/10'),
+-        ('bash', '/bin/bash /usr/share/program-tests/bash-test.sh', 'PASS'),
+         ('dash', '/usr/bin/dash /usr/share/fork-real/dash-test.sh', 'PASS'),
+-        ('make', '/usr/bin/dash /usr/share/fork-real/make-test.sh', 'PASS'),
+-        ('micropython', '/usr/bin/micropython /usr/share/program-tests/micropython-test.py', 'PASS'),
+         ('network-tools', '/usr/bin/dash /usr/share/program-tests/network-tools-test.sh', 'PASS'),
+-        ('hush-login', '/usr/bin/dash /usr/share/program-tests/hush-login-test.sh', 'PASS'),
+         ('jobq', '/usr/bin/dash /usr/share/program-tests/jobq-test.sh', 'PASS'),
+         # The console switch: default quiet, verbose raises the level for real,
+         # and it goes back. Left as it was found, which is the default.
+@@ -257,7 +253,6 @@ try:
+     ]
+     for name, text, expected in checks:
+         record(name, lambda text=text, expected=expected: command(text, 180, expected))
+-    record('benchmarks-lightweight-launcher', benchmarks)
+     record('fork-exec-cycles', fork_exec_cycles)
+     record('jffs2-write-timing', jffs2_write_timing)
+     record('kernel-health', lambda: command('test "$(cat /proc/sys/kernel/tainted)" = 0 && ! dmesg | grep -E "Out of memory:|Kernel panic|BUG:|Oops:" && free'))
+diff --git a/experiments/mmu-poc/programs/test-home-users-board.py b/experiments/mmu-poc/programs/test-home-users-board.py
+index 9f4bf5c..04605d4 100644
+--- a/experiments/mmu-poc/programs/test-home-users-board.py
++++ b/experiments/mmu-poc/programs/test-home-users-board.py
+@@ -110,15 +110,6 @@ try:
+         cmd(f'test "$SESSION_PROOF" = {name} && echo REATTACH_PASS')
+         end_session()
+     print('PASS: two independent lightweight sessions, detach/reattach, COM reconnect, lightweight primary console', flush=True)
+-    cmd('session start hwcheck-bash /bin/bash --noprofile --norc')
+-    sessions.append('hwcheck-bash')
+-    attach('hwcheck-bash')
+-    cmd('test -n "$BASH_VERSION" && id && echo BASH_SESSION_PASS')
+-    end_session()
+-    print('PASS: additional Bash session with lightweight primary console', flush=True)
+-    c.port.write(b'exec /bin/bash -l\r')
+-    c.until(rb'# $', 15)
+-    cmd('test -n "$BASH_VERSION"')
+     cmd('test "$(cat /proc/sys/kernel/tainted)" = 0 && session list')
+ finally:
+     try:

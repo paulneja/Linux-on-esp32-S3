@@ -65,9 +65,9 @@ record('swap-model-is-live', swap_is_the_model)
 
 # ---- 2. jffs2: write big, read back byte for byte, twice ---------------------
 def jffs2_roundtrip():
-    c.command('dd if=/dev/urandom of=/home/.rt bs=4096 count=96 2>/dev/null; sync', 60)
+    c.command('dd if=/dev/urandom of=/home/.rt bs=4096 count=96 2>/dev/null && sync', 60)
     h1 = c.command('sha256sum /home/.rt | cut -c1-64', 60).splitlines()[-1].strip()
-    c.command('cp /home/.rt /home/.rt2; sync; rm /home/.rt; sync', 60)
+    c.command('cp /home/.rt /home/.rt2 && sync && rm /home/.rt && sync', 60)
     h2 = c.command('sha256sum /home/.rt2 | cut -c1-64', 60).splitlines()[-1].strip()
     c.command('rm -f /home/.rt2; sync', 30)
     assert h1 == h2 and len(h1) == 64, f'{h1} != {h2}'
@@ -133,7 +133,7 @@ record('cron-runs-a-job', cron_fires)
 
 # ---- 7. passwd, then log in with the new one, then put it back ---------------
 def passwd_roundtrip():
-    before = os.environ.get('MMU_BOARD_PASSWORD', 'changeme123')
+    before = os.environ.get('MMU_BOARD_PASSWORD', probe.TEST_PASSWORD)
     o = c.command('printf "tmp-pw-1\\ntmp-pw-1\\n" | passwd root 2>&1; echo PW_$?', 30)
     assert 'PW_0' in o, o[-200:]
     logout(c)

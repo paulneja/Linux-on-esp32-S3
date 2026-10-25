@@ -338,6 +338,7 @@ is in the [changelog](CHANGELOG.md).
 | [SECURITY.md](SECURITY.md) | the login, SSH and Telnet, what is and is not protected |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | when something does not work |
 | [CHANGELOG.md](CHANGELOG.md) | every release, with causes and measurements |
+| [N8-TARGET-PATCHES.md](N8-TARGET-PATCHES.md) | the 8 MB boards: a generic N8R8 and the XIAO ESP32S3 |
 
 <details>
 <summary><b>Earlier releases</b></summary>

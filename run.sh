@@ -14,8 +14,155 @@ ACTION=""
 LOGDIR=${LOGDIR:-$(dirname "$REPO")}
 BOARD_ID_HINT="usb-1a86"
 
+# External targets are built from independent snapshots; the original N16 path
+# below is deliberately left unchanged.
+TARGET=""
+TARGET_FILE="$REPO/.target"
+CACHE=${CACHE:-}
+ESP32_CACHE_DIR=${ESP32_CACHE_DIR:-"$REPO/.cache"}
+TARGET_REFRESH=0
+TARGET_AUTO_REFRESH=0
+TARGET_BUILD_ROOT=${TARGET_BUILD_ROOT:-"$REPO/target-builds"}
+TARGET_PATCH_ROOT=${TARGET_PATCH_ROOT:-"$REPO/targets-patches"}
+
+external_target() {
+    case "$1" in generic-n8|xiao-n8|xiao-n8-sd) return 0 ;; *) return 1 ;; esac
+}
+
+target_snapshot() {
+    local target=$1 dir="$TARGET_BUILD_ROOT/$1" patch_dir="$TARGET_PATCH_ROOT/$1"
+    local source_commit patch_hash state_dir existing staging patch rc
+    command -v git >/dev/null 2>&1 || die "git is required for external targets"
+    command -v python3 >/dev/null 2>&1 || die "python3 is required for external targets"
+    [ -d "$REPO/.git" ] || die "source repository must have a .git directory"
+    [ -f "$patch_dir/series" ] || die "missing patch list: $patch_dir/series"
+    source_commit=$(git -C "$REPO" rev-parse HEAD) || return 1
+    # Hash the actual patches and their application order, not merely filenames.
+    patch_hash=$(python3 - "$patch_dir" <<'PYHASH'
+import hashlib, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+series = [x.strip() for x in (root / 'series').read_text().splitlines()
+          if x.strip() and not x.lstrip().startswith('#')]
+if not series:
+    raise SystemExit('error: patch series is empty')
+h = hashlib.sha256()
+for name in series:
+    rel = pathlib.PurePosixPath(name)
+    if rel.is_absolute() or '..' in rel.parts:
+        raise SystemExit(f'error: invalid patch path: {name}')
+    patch = root / name
+    if not patch.is_file():
+        raise SystemExit(f'error: missing patch: {patch}')
+    h.update(name.encode() + b'\0' + patch.read_bytes() + b'\0')
+print(h.hexdigest())
+PYHASH
+    ) || return 1
+    state_dir="$dir/.git"
+    if [ -d "$dir" ] && [ "$TARGET_REFRESH" -eq 0 ]; then
+        if [ -f "$state_dir/target-source" ] && [ -f "$state_dir/target-patches" ] &&
+           [ "$(cat "$state_dir/target-source")" = "$source_commit" ] &&
+           [ "$(cat "$state_dir/target-patches")" = "$patch_hash" ]; then
+            printf '  Reusing target environment: %s\n' "$dir"
+            TARGET_DIR=$dir
+            return 0
+        fi
+        if [ "$TARGET_AUTO_REFRESH" -eq 1 ]; then
+            info "Target environment is out of date; preparing a fresh $target snapshot."
+            TARGET_REFRESH=1
+        else
+            die "target environment is out of date: $dir (use --refresh-target to recreate it)"
+        fi
+    fi
+    if [ -e "$dir" ] && [ "$TARGET_REFRESH" -eq 1 ]; then
+        printf '  Target refresh will delete its previous build outputs: %s\n' "$dir"
+        ask "  Recreate target environment?" || return 1
+        rm -rf -- "$dir" || return 1
+    fi
+    mkdir -p "$TARGET_BUILD_ROOT" || return 1
+    staging=$(mktemp -d "$TARGET_BUILD_ROOT/.${target}.tmp.XXXXXXXX") || return 1
+    if ! (git -C "$REPO" archive "$source_commit" | tar -xf - -C "$staging"); then
+        rm -rf -- "$staging"
+        die "could not export baseline source"
+    fi
+    if ! git -C "$staging" init -q; then rm -rf -- "$staging"; return 1; fi
+    if ! (cd "$staging" && git add -A &&
+          git -c user.name='Target Builder' -c user.email='target-builder@localhost' commit -qm 'Baseline source snapshot'); then
+        rm -rf -- "$staging"; die "could not commit baseline snapshot"
+    fi
+    while IFS= read -r patch || [ -n "$patch" ]; do
+        patch=${patch%$'\r'}
+        [[ -z "$patch" || "$patch" =~ ^[[:space:]]*# ]] && continue
+        patch="${patch_dir}/${patch}"
+        if ! git -C "$staging" apply --check "$patch" || ! git -C "$staging" apply "$patch"; then
+            rm -rf -- "$staging"
+            die "patch failed: $patch"
+        fi
+    done < "$patch_dir/series"
+    if ! (cd "$staging" && git add -A &&
+          git -c user.name='Target Builder' -c user.email='target-builder@localhost' commit --allow-empty -qm "Apply $target patches"); then
+        rm -rf -- "$staging"; die "could not commit target patches"
+    fi
+    printf '%s\n' "$source_commit" > "$staging/.git/target-source"
+    printf '%s\n' "$patch_hash" > "$staging/.git/target-patches"
+    if ! mv "$staging" "$dir"; then rm -rf -- "$staging"; return 1; fi
+    printf '  Prepared target environment: %s\n' "$dir"
+    TARGET_DIR=$dir
+}
+
+launch_target() {
+    local target=$1
+    shift
+    target_snapshot "$target" || return 1
+    # No external-target selection inside a generated snapshot (avoids recursion).
+    (cd "$TARGET_DIR" && ESP32_TARGET_ISOLATED=1 ESP32_TARGET_NAME="$target" \
+        ESP32_CACHE_DIR="$ESP32_CACHE_DIR" CACHE="$CACHE" bash ./run.sh "$@")
+}
+
+target_label() {
+    case "$1" in
+        n16)               echo "ESP32-S3 N16R8 (16 MB flash)" ;;
+        generic-n8)        echo "Generic N8R8 (8 MB flash)" ;;
+        xiao-n8)           echo "XIAO ESP32S3 and XIAO ESP32S3 Sense (8 MB flash)" ;;
+        xiao-n8-sd)        echo "XIAO ESP32S3 Sense, /home on the SD card" ;;
+        *)                 echo "$1" ;;
+    esac
+}
+
+choose_target() {
+    local choice=""
+    echo
+    bold "Which board is this for?"
+    cat <<'EOF'
+  1) ESP32-S3 N16R8 (16 MB flash)
+  2) Generic N8R8 (8 MB flash)
+  3) XIAO ESP32S3 or XIAO ESP32S3 Sense (8 MB flash, login on its USB port)
+  4) XIAO ESP32S3 Sense with /home on the SD card (ext2, first partition)
+  0) Quit
+EOF
+    while true; do
+        printf 'Board: '
+        read_reply choice || return 1
+        case "$choice" in
+            1) TARGET=n16 ;;
+            2) TARGET=generic-n8 ;;
+            3) TARGET=xiao-n8 ;;
+            4) TARGET=xiao-n8-sd ;;
+            0|q|Q) return 1 ;;
+            *) warn "invalid choice"; continue ;;
+        esac
+        break
+    done
+    printf '%s\n' "$TARGET" > "$TARGET_FILE"
+    info "saved in .target; change it from the menu or with --target"
+}
+
+interactive() {
+    [ "$ASSUME_YES" = 0 ] && { : < /dev/tty; } 2>/dev/null
+}
+
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
+blue()  { printf '\033[34m%s\033[0m\n' "$*"; }
 bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
 warn()  { printf '  ! %s\n' "$*" >&2; }
 info()  { printf '  %s\n' "$*"; }
@@ -51,6 +198,7 @@ Actions:
   --test         Run the board test suite, the extra tests, the network
                  tests (with WIFI_SSID and WIFI_PASS) and the factory soak
   --all          check, build, verify, flash and test, in that order
+  --bypass       --all without a single question; stops only on a failure
   --repro        Two builds of the same commit and a comparison
   --recover      Put the board's /etc and /home back to factory
   --status       Show existing builds and the state of the board
@@ -61,11 +209,16 @@ Options:
   -j, --jobs N         Parallel build jobs (default: nproc)
   -p, --port PATH      Serial adapter (default: autodetect)
   -a, --artifacts DIR  Artifacts directory to use
+  --target ID          n16, generic-n8, xiao-n8 or xiao-n8-sd; asked the
+                       first time and kept in .target
+  --refresh-target     Recreate selected external target (deletes its outputs)
+  --cache              Reuse the build cache in .cache/ (not for releases)
   -h, --help           This help
 
 Environment:
   WIFI_SSID, WIFI_PASS  join this network for the SSH and port tests
   SOAK_ROUNDS           factory boots in the soak (default 20, 0 skips it)
+  CACHE                 dev reuses .cache/, clean builds from nothing
 EOF
 }
 
@@ -114,24 +267,49 @@ disk_free_gb() {
     echo $((available_kb / 1024 / 1024))
 }
 detect_port() {
-	local p
-	if [ -n "$PORT" ]; then printf '%s\n' "$PORT"; return 0; fi
-	for p in /dev/serial/by-id/*"$BOARD_ID_HINT"*; do
-		[ -e "$p" ] && { printf '%s\n' "$p"; return 0; }
-	done
-	for p in /dev/serial/by-id/*; do
-		[ -e "$p" ] && { printf '%s\n' "$p"; return 0; }
-	done
-	for p in /dev/ttyACM0 /dev/ttyACM1 /dev/ttyUSB0 /dev/ttyUSB1; do
-		[ -e "$p" ] && { printf '%s\n' "$p"; return 0; }
-	done
-	return 1
+    local p matches=()
+    if [ -n "$PORT" ]; then
+        [ -e "$PORT" ] || { warn "serial port does not exist: $PORT"; return 1; }
+        printf '%s\n' "$PORT"
+        return 0
+    fi
+    if [ "$(uname -s)" = Darwin ]; then
+        # Prefer callout devices on macOS; tty.* devices may block on carrier.
+        for p in /dev/cu.usbmodem* /dev/cu.usbserial* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbserial*; do
+            [ -e "$p" ] && matches+=("$p")
+        done
+    else
+        for p in /dev/serial/by-id/*"$BOARD_ID_HINT"*; do
+            [ -e "$p" ] && { printf '%s\n' "$p"; return 0; }
+        done
+        for p in /dev/serial/by-id/*; do
+            [ -e "$p" ] && { printf '%s\n' "$p"; return 0; }
+        done
+        for p in /dev/ttyACM0 /dev/ttyACM1 /dev/ttyUSB0 /dev/ttyUSB1; do
+            [ -e "$p" ] && matches+=("$p")
+        done
+    fi
+    case "${#matches[@]}" in
+        0) return 1 ;;
+        1) printf '%s\n' "${matches[0]}" ;;
+        *) warn "multiple serial ports found; specify -p PATH:";
+           printf '  %s\n' "${matches[@]}" >&2; return 1 ;;
+    esac
 }
 
 port_holders() {
-	local target
-	target=$(readlink -f "$1" 2>/dev/null || printf '%s' "$1")
-	fuser "$target" 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$' || true
+    local target
+    if [ "$(uname -s)" = Darwin ]; then
+        command -v lsof >/dev/null 2>&1 || return 0
+        lsof -t -- "$1" 2>/dev/null | grep -E '^[0-9]+$' || true
+    else
+        target=$(readlink -f "$1" 2>/dev/null || printf '%s' "$1")
+        if command -v fuser >/dev/null 2>&1; then
+            fuser "$target" 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$' || true
+        elif command -v lsof >/dev/null 2>&1; then
+            lsof -t -- "$target" 2>/dev/null | grep -E '^[0-9]+$' || true
+        fi
+    fi
 }
 
 free_port() {
@@ -295,15 +473,25 @@ do_build() {
 	bold "about 21 GB. The build output scrolls below as it happens."
 	echo
 	[ "$QUIET" = 1 ] && info "(quiet: output only goes to the log)"
+	if [ -z "$CACHE" ]; then
+		CACHE=clean
+		if interactive; then
+			info "The cache in .cache/ keeps the toolchain, the downloads and the"
+			info "ESP-IDF tools, so the next builds skip the longest part."
+			info "Leave it off for a build you are going to release."
+			ask "  Use the cache?" && CACHE=dev
+		fi
+	fi
+	info "cache: $CACHE"
 	ask "  Start the build?" || { info "cancelled"; return 1; }
 	echo
 	local started rc elapsed
 	started=$(date +%s)
 	if [ "$QUIET" = 1 ]; then
-		JOBS="$JOBS" bash "$REPO/build/reproduce.sh" > "$log" 2>&1
+		JOBS="$JOBS" CACHE="$CACHE" ESP32_CACHE_DIR="$ESP32_CACHE_DIR" bash "$REPO/build/reproduce.sh" > "$log" 2>&1
 		rc=$?
 	else
-		JOBS="$JOBS" bash "$REPO/build/reproduce.sh" 2>&1 | tee "$log"
+		JOBS="$JOBS" CACHE="$CACHE" ESP32_CACHE_DIR="$ESP32_CACHE_DIR" bash "$REPO/build/reproduce.sh" 2>&1 | tee "$log"
 		rc=${PIPESTATUS[0]}
 	fi
 	elapsed=$(( $(date +%s) - started ))
@@ -440,12 +628,16 @@ do_recover() {
 	# The hyphenated spellings are esptool 5 only, and build/Dockerfile pins
 	# 4.8.1, which rejects them -- so this failed against the very version the
 	# project builds with. The underscore forms work in both: esptool 5 takes
-	# them with a deprecation warning. The offsets are the etc and home
-	# partitions; flash.sh reads those from the CSV instead of hardcoding them.
-	local tool; tool=$(have esptool && echo esptool || echo esptool.py)
+	# them with a deprecation warning.
+	local tool offsets
+	tool=$(have esptool && echo esptool || echo esptool.py)
+	offsets=$(awk -F', *' '$1 == "etc" {e = $4} $1 == "home" {h = $4} END {if (e && h) print e, h}' \
+		"$REPO/new-files/esp-hosted/network_adapter/partition_table.esp32s3.16m8r")
+	[ -n "$offsets" ] || { red "no etc or home partition in the partition table"; return 1; }
+	set -- $offsets
 	"$tool" --chip esp32s3 --port "$port" --baud 460800 \
 		--before default_reset --after hard_reset \
-		write_flash 0xd0000 "$a/etc.jffs2" 0xcc0000 "$a/home.jffs2"
+		write_flash "$1" "$a/etc.jffs2" "$2" "$a/home.jffs2"
 	local rc=$?
 	[ "$rc" -eq 0 ] && green "partitions restored; the board was reset" || red "the restore failed"
 	return "$rc"
@@ -454,6 +646,7 @@ do_recover() {
 do_repro() {
 	bold "== Reproducibility: two builds of the same commit =="
 	local first second
+	CACHE=clean
 	first=$(builds | head -1)
 	if [ -z "$first" ]; then
 		info "no build yet; making the first one"
@@ -479,11 +672,42 @@ do_all() {
 	green "complete path finished"
 }
 
+do_bypass() {
+	local log rc started elapsed
+	log="$LOGDIR/esp32-bypass-$(date +%Y%m%d-%H%M%S).log"
+	bold "== Bypass: everything, no questions =="
+	info "closes whatever holds the port, erases and flashes the board without asking"
+	info "stops at the first failure or when everything is done"
+	info "log: $log"
+	ASSUME_YES=1
+	CACHE=${CACHE:-dev}
+	started=$(date +%s)
+	{ check_env && do_build && do_verify && do_flash && do_test; } 2>&1 | tee "$log"
+	rc=${PIPESTATUS[0]}
+	ASSUME_YES=0
+	elapsed=$(( $(date +%s) - started ))
+	info "elapsed: $((elapsed / 3600))h $((elapsed % 3600 / 60))m"
+	if [ "$rc" -eq 0 ]; then
+		green "bypass finished: built, flashed and every test passed"
+	else
+		red "bypass stopped on a failure; the log is $log"
+	fi
+	return "$rc"
+}
+
 menu() {
-	while true; do
-		echo
-		bold "=== Linux on ESP32-S3 ==="
-		cat <<'EOF'
+    while true; do
+        echo
+        bold "=== Linux on ESP32-S3 ==="
+        if [ "${ESP32_TARGET_ISOLATED:-}" = 1 ]; then
+            blue "  Board: $(target_label "${ESP32_TARGET_NAME:-}")"
+            info "Build Directory: $REPO"
+        else
+            green "  Board: $(target_label n16)"
+            info "Build Directory: Original Repository"
+        fi
+        echo
+        cat <<'EOF'
   1) Check the environment
   2) Build everything from clean sources
   3) Check the checksums of a build
@@ -493,25 +717,29 @@ menu() {
   7) Reproducibility: two builds and a comparison
   8) Recover the board (restore /etc and /home)
   9) Status
-  0) Quit
 EOF
-		printf 'Choice: '
-		local choice=""
-		read_reply choice || { echo; return 0; }
-		case "$choice" in
-			1) check_env ;;
-			2) do_build ;;
-			3) do_verify ;;
-			4) do_flash ;;
-			5) do_test ;;
-			6) do_all ;;
-			7) do_repro ;;
-			8) do_recover ;;
-			9) do_status ;;
-			0|q|Q) return 0 ;;
-			*) warn "invalid choice" ;;
-		esac
-	done
+        echo "  10) Change the board"
+        echo "  11) Bypass: everything with no questions, stops only on a failure"
+        echo "  0) Quit"
+        printf 'Choice: '
+        local choice=""
+        read_reply choice || { echo; return 0; }
+        case "$choice" in
+            1) check_env ;;
+            2) do_build ;;
+            3) do_verify ;;
+            4) do_flash ;;
+            5) do_test ;;
+            6) do_all ;;
+            7) do_repro ;;
+            8) do_recover ;;
+            9) do_status ;;
+            10) return 3 ;;
+            11) do_bypass ;;
+            0|q|Q) return 0 ;;
+            *) warn "invalid choice" ;;
+        esac
+    done
 }
 
 while [ $# -gt 0 ]; do
@@ -521,12 +749,61 @@ while [ $# -gt 0 ]; do
 		-j|--jobs)       JOBS="${2:?-j needs a number}"; shift 2 ;;
 		-p|--port)       PORT="${2:?-p needs a path}"; shift 2 ;;
 		-a|--artifacts)  ARTIFACTS="${2:?-a needs a directory}"; shift 2 ;;
+		--target)         TARGET="${2:?--target needs an ID}"; shift 2 ;;
+		--refresh-target) TARGET_REFRESH=1; shift ;;
+		--cache)          CACHE=dev; shift ;;
 		-h|--help)       usage; exit 0 ;;
-		--check|--build|--verify|--flash|--test|--all|--repro|--recover|--status)
+		--check|--build|--verify|--flash|--test|--all|--bypass|--repro|--recover|--status)
 		                 ACTION="${1#--}"; shift ;;
 		*)               red "unknown option: $1"; usage; exit 1 ;;
 	esac
 done
+
+forward_args() {
+    forwarded=()
+    [ "$ASSUME_YES" -eq 0 ] || forwarded+=(--yes)
+    [ "$QUIET" -eq 0 ] || forwarded+=(--quiet)
+    forwarded+=(--jobs "$JOBS")
+    [ -z "$PORT" ] || forwarded+=(--port "$PORT")
+    [ -z "$ARTIFACTS" ] || forwarded+=(--artifacts "$ARTIFACTS")
+    [ -z "$ACTION" ] || forwarded+=("--$ACTION")
+}
+
+if [ "${ESP32_TARGET_ISOLATED:-}" = 1 ]; then
+    [ -z "$TARGET" ] || die "nested external target selection is disabled"
+    TARGET=n16
+else
+    if [ -z "$TARGET" ] && [ -f "$TARGET_FILE" ]; then
+        TARGET=$(head -n1 "$TARGET_FILE")
+    fi
+    if [ -z "$TARGET" ]; then
+        interactive || die "no board chosen yet; run ./run.sh once or pass --target n16|generic-n8|xiao-n8|xiao-n8-sd"
+        choose_target || exit 0
+    fi
+    [ "$TARGET" = n16 ] || external_target "$TARGET" || die "unsupported target: $TARGET"
+    if [ -n "$ACTION" ] && [ "$TARGET" != n16 ]; then
+        forward_args
+        launch_target "$TARGET" "${forwarded[@]}"
+        exit $?
+    fi
+    if [ -z "$ACTION" ]; then
+        while true; do
+            if [ "$TARGET" = n16 ]; then
+                menu
+                rc=$?
+            else
+                forward_args
+                TARGET_AUTO_REFRESH=1
+                launch_target "$TARGET" "${forwarded[@]}"
+                rc=$?
+                TARGET_AUTO_REFRESH=0
+                TARGET_REFRESH=0
+            fi
+            [ "$rc" -eq 3 ] || exit "$rc"
+            choose_target || exit 0
+        done
+    fi
+fi
 
 if [ -n "$ARTIFACTS" ] && [ ! -d "$ARTIFACTS" ]; then
 	die "artifacts directory does not exist: $ARTIFACTS"
@@ -539,6 +816,7 @@ case "$ACTION" in
 	flash)   do_flash ;;
 	test)    do_test ;;
 	all)     do_all ;;
+	bypass)  do_bypass ;;
 	repro)   do_repro ;;
 	recover) do_recover ;;
 	status)  do_status ;;

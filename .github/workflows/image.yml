@@ -9,6 +9,17 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      target:
+        description: "Build target (XIAO variants are not available yet)"
+        required: true
+        type: choice
+        default: n16
+        options:
+          - n16
+          - generic-n8
+          - xiao-n8
+          - xiao-n8-sd
 
 permissions:
   contents: read
@@ -26,6 +37,19 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+
+      - name: Check Generic N8 target patches (when present)
+        run: |
+          set -euo pipefail
+          for target in generic-n8 xiao-n8 xiao-n8-sd; do
+            if [ ! -f "targets-patches/$target/series" ]; then
+              echo "Skipping $target (no series file)"
+              continue
+            fi
+            bash ./run.sh --yes --target "$target" --status
+            test -d "target-builds/$target/.git"
+            git -C "target-builds/$target" diff --exit-code
+          done
 
       - name: Check the shell scripts parse
         run: |
@@ -60,16 +84,30 @@ jobs:
       - name: Check the patches are well formed
         run: |
           status=0
-          for p in new-files/board/espressif/esp32s3/patches/linux/*.patch \
-                   patches/*.patch experiments/mmu-poc/fork/*.patch; do
+          # Ignore unmatched patterns; include both isolated N8 patch sets.
+          shopt -s nullglob
+          patches=(
+            new-files/board/espressif/esp32s3/patches/linux/*.patch
+            patches/*.patch
+            experiments/mmu-poc/fork/*.patch
+            targets-patches/generic-n8/*.patch
+            targets-patches/xiao-n8/*.patch
+            targets-patches/xiao-n8-sd/*.patch
+          )
+          for p in "${patches[@]}"; do
             grep -q '^--- ' "$p" || { echo "$p: no diff header"; status=1; }
             grep -q '^+++ ' "$p" || { echo "$p: no diff header"; status=1; }
-            # A binary hunk cannot be reconstructed by git apply and is
-            # rejected in full; incident 5 in DEVELOPMENT.md is this.
+            # Reject unsupported binary hunks.
             if grep -q '^Binary files' "$p"; then
               echo "$p: carries a binary hunk, which git apply cannot replay"
               status=1
             fi
+            case "$p" in targets-patches/*)
+              if grep -qE '^(old|new) mode ' "$p"; then
+                echo "$p: changes a file mode; a target patch must not"
+                status=1
+              fi ;;
+            esac
           done
           exit "$status"
 
@@ -177,7 +215,7 @@ jobs:
           done
 
   build:
-    name: Full image ${{ matrix.run }}
+    name: Full image ${{ inputs.target || 'n16' }} / run ${{ matrix.run }}
     needs: host-tests
     # Manual only, as the comment at the top says.
     if: github.event_name == 'workflow_dispatch'
@@ -210,8 +248,28 @@ jobs:
           test -n "$(git config user.name)"
           test -n "$(git config user.email)"
 
+      - name: Prepare selected target
+        env:
+          BUILD_TARGET: ${{ inputs.target || 'n16' }}
+        run: |
+          set -euo pipefail
+          case "$BUILD_TARGET" in
+            n16)
+              echo "build_dir=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+              ;;
+            generic-n8|xiao-n8|xiao-n8-sd)
+              bash ./run.sh --yes --target "$BUILD_TARGET" --status
+              echo "build_dir=$GITHUB_WORKSPACE/target-builds/$BUILD_TARGET" >> "$GITHUB_ENV"
+              ;;
+            *)
+              echo "Unsupported target: $BUILD_TARGET" >&2
+              exit 1
+              ;;
+          esac
+
       - name: Build everything from pinned sources
         run: JOBS=$(nproc) bash build/reproduce.sh
+        working-directory: ${{ env.build_dir }}
 
       - name: Report the disk left
         if: always()
@@ -220,9 +278,9 @@ jobs:
       - name: Locate the artifacts
         id: out
         run: |
-          dir=$(ls -dt build-output/reproduce.*/artifacts | head -1)
-
-          test -d "$dir"
+          set -euo pipefail
+          dir=$(find "$build_dir/build-output" -maxdepth 2 -type d -name artifacts -path '*/reproduce.*/artifacts' | sort -r | head -1)
+          test -n "$dir" && test -d "$dir"
           echo "dir=$dir" >> "$GITHUB_OUTPUT"
 
       - name: Verify the checksums
@@ -232,9 +290,9 @@ jobs:
       - name: Report what was built
         run: |
           {
-            echo "## Build ${{ matrix.run }}"
+            echo "## ${{ inputs.target || 'n16' }} / Build ${{ matrix.run }}"
             echo
-            echo "Source commit \`${{ github.sha }}\`. Board verification stays"
+            echo "Upstream commit \`${{ github.sha }}\`. Board verification stays"
             echo "pending: this runner has no hardware attached."
             echo
             echo '```'
@@ -245,7 +303,7 @@ jobs:
       - name: Upload the images
         uses: actions/upload-artifact@v7
         with:
-          name: image-${{ matrix.run }}
+          name: image-${{ inputs.target || 'n16' }}-${{ matrix.run }}
           path: ${{ steps.out.outputs.dir }}
           if-no-files-found: error
           retention-days: 14
@@ -254,8 +312,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: logs-${{ matrix.run }}
-          path: build-output/reproduce.*/logs/
+          name: logs-${{ inputs.target || 'n16' }}-${{ matrix.run }}
+          path: ${{ env.build_dir }}/build-output/reproduce.*/logs/
           if-no-files-found: warn
           retention-days: 14
 
@@ -272,13 +330,13 @@ jobs:
       - name: Download the first build
         uses: actions/download-artifact@v8
         with:
-          name: image-1
+          name: image-${{ inputs.target || 'n16' }}-1
           path: left/artifacts
 
       - name: Download the second build
         uses: actions/download-artifact@v8
         with:
-          name: image-2
+          name: image-${{ inputs.target || 'n16' }}-2
           path: right/artifacts
 
       - name: Compare every artifact
